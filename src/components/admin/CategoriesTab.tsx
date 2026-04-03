@@ -136,31 +136,31 @@ export default function CategoriesTab() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10 shadow-sm">
-            <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm">
-              <th className="pb-3 font-medium">
+      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
+            <table className="w-full text-left border-collapse min-w-full">
+          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
+            <tr className="text-gray-500 dark:text-gray-400 text-sm">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('type')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Type <ArrowUpDown size={14} className={sortColumn === 'type' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('description')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Description <ArrowUpDown size={14} className={sortColumn === 'description' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('isActive')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Status <ArrowUpDown size={14} className={sortColumn === 'isActive' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium text-right">Actions</th>
+              <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -169,7 +169,7 @@ export default function CategoriesTab() {
                 <td className="py-4 text-gray-900 dark:text-gray-200 font-medium">{c.name}</td>
                 <td className="py-4 text-gray-600 dark:text-gray-300 text-sm">
                   <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
-                    {c.type}
+                    {MASTER_CATEGORY_TYPES[c.type as keyof typeof MASTER_CATEGORY_TYPES] || c.type}
                   </span>
                 </td>
                 <td className="py-4 text-gray-600 dark:text-gray-300 text-sm max-w-xs truncate" title={c.description}>{c.description || '-'}</td>
@@ -197,8 +197,8 @@ export default function CategoriesTab() {
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Type</label>
                 <select name="type" defaultValue={editingItem?.type || ''} onChange={() => setError(null)} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
                   <option value="" disabled>Select Type...</option>
-                  {MASTER_CATEGORY_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
+                  {Object.entries(MASTER_CATEGORY_TYPES).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
               </div>

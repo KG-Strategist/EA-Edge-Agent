@@ -232,21 +232,24 @@ export async function seedDatabase() {
           admPhase: "Phase C: Information Systems",
           artifactType: "Matrix",
           description: "Maps application components to the business services they support.",
-          ownerRole: "Lead Enterprise Architect"
+          ownerRole: "Lead Enterprise Architect",
+          status: "Active"
         },
         {
           name: "Business Footprint Diagram",
           admPhase: "Phase B: Business Architecture",
           artifactType: "Diagram",
           description: "Visualizes the links between business goals, organizational units, and functions.",
-          ownerRole: "Business Architect"
+          ownerRole: "Business Architect",
+          status: "Active"
         },
         {
           name: "Technology Standards Catalog",
           admPhase: "Phase D: Technology Architecture",
           artifactType: "Catalog",
           description: "An agreed list of standard technologies for the enterprise.",
-          ownerRole: "Technology Architect"
+          ownerRole: "Technology Architect",
+          status: "Active"
         }
       ]);
     }
@@ -329,14 +332,6 @@ export async function seedDatabase() {
           layerId: getLayerId('Ingestion'), 
           status: 'Active' 
         },
-      ]);
-    }
-
-    if (bianCount === 0) {
-      await db.bian_domains.bulkAdd([
-        { name: 'Payments', description: 'Execution and management of payment transactions.', status: 'Active' },
-        { name: 'Customer Offer', description: 'Management of customer offers and campaigns.', status: 'Active' },
-        { name: 'Lending', description: 'Management of loans and credit facilities.', status: 'Active' },
       ]);
     }
 

@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ArchitecturePrinciple, NetworkIntegration } from '../../lib/db';
 import { Download, Upload, Plus, Edit, Trash2, ChevronDown, ChevronUp, ArrowUpDown, Globe, Loader2 } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import Select from 'react-select';
+import { reactSelectClassNames } from '../ui/CreatableDropdown';
 import { fetchFromProvider } from '../../lib/byoeGateway';
 import { initAIEngine, analyzeWithHybridProvider } from '../../lib/aiEngine';
 
@@ -21,6 +23,9 @@ export default function PrinciplesTab() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof ArchitecturePrinciple | 'layerName'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  const [selectedLayerId, setSelectedLayerId] = useState<number | ''>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('Active');
 
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<NetworkIntegration | null>(null);
@@ -55,6 +60,8 @@ export default function PrinciplesTab() {
   const openModal = (item: ArchitecturePrinciple | null = null) => {
     setEditingItem(item);
     setError(null);
+    setSelectedLayerId(item?.layerId || layers[0]?.id || '');
+    setSelectedStatus(item?.status || 'Active');
     setIsModalOpen(true);
   };
 
@@ -223,15 +230,15 @@ export default function PrinciplesTab() {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10 shadow-sm">
-            <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm">
-              <th className="pb-3 font-medium w-8"></th>
-              <th className="pb-3 font-medium"><button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="pb-3 font-medium"><button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="pb-3 font-medium"><button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="pb-3 text-right font-medium">Actions</th>
+      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
+            <table className="w-full text-left border-collapse min-w-full">
+          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
+            <tr className="text-gray-500 dark:text-gray-400 text-sm">
+              <th className="px-4 py-3 font-medium w-8"></th>
+              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} /></button></th>
+              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} /></button></th>
+              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} /></button></th>
+              <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -263,7 +270,7 @@ export default function PrinciplesTab() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-[95%] max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{editingItem ? 'Edit Principle' : 'Add Principle'}</h3>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-name">Name</label><input id="principle-name" name="name" defaultValue={editingItem?.name} placeholder="e.g., Always encrypt data at rest" aria-label="Principle name" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" /></div>
@@ -271,8 +278,36 @@ export default function PrinciplesTab() {
               <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-rationale">Rationale</label><textarea id="principle-rationale" name="rationale" defaultValue={editingItem?.rationale} placeholder="Why this principle matters" aria-label="Principle rationale" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" /></div>
               <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-implications">Implications</label><textarea id="principle-implications" name="implications" defaultValue={editingItem?.implications} placeholder="Potential impact and effects" aria-label="Principle implications" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-layer">Layer</label><select id="principle-layer" name="layerId" defaultValue={editingItem?.layerId || layers[0]?.id} aria-label="Architecture layer" title="Select architecture layer" className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">{layers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-status">Status</label><select id="principle-status" name="status" defaultValue={editingItem?.status || 'Active'} aria-label="Principle status" title="Select principle status" className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500"><option>Active</option><option>Needs Review</option><option>Deprecated</option></select></div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-layer">Layer</label>
+                  <input type="hidden" name="layerId" value={selectedLayerId} />
+                  <Select
+                    inputId="principle-layer"
+                    unstyled
+                    classNames={reactSelectClassNames}
+                    options={layers.map(l => ({ label: l.name, value: l.id }))}
+                    value={selectedLayerId ? { label: layers.find(l => l.id === selectedLayerId)?.name || '', value: selectedLayerId } : null}
+                    onChange={(v: any) => setSelectedLayerId(v ? v.value : '')}
+                    aria-label="Architecture layer" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-status">Status</label>
+                  <input type="hidden" name="status" value={selectedStatus} />
+                  <Select
+                    inputId="principle-status"
+                    unstyled
+                    classNames={reactSelectClassNames}
+                    options={[
+                      { label: 'Active', value: 'Active' },
+                      { label: 'Needs Review', value: 'Needs Review' },
+                      { label: 'Deprecated', value: 'Deprecated' }
+                    ]}
+                    value={{ label: selectedStatus, value: selectedStatus }}
+                    onChange={(v: any) => setSelectedStatus(v ? v.value : 'Active')}
+                    aria-label="Principle status"
+                  />
+                </div>
               </div>
               <div className="flex justify-end gap-3 mt-4"><button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">Save</button></div>
             </form>

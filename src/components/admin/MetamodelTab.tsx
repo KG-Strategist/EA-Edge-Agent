@@ -4,6 +4,10 @@ import { db, ContentMetamodel } from '../../lib/db';
 import { Plus, Edit, Trash2, ArrowUpDown } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import { useMasterData } from '../../hooks/useMasterData';
+import CreatableDropdown, { reactSelectClassNames } from '../ui/CreatableDropdown';
+import Select from 'react-select';
+
+type SortableColumn = keyof ContentMetamodel;
 
 export default function MetamodelTab() {
   const metamodels = useLiveQuery(() => db.content_metamodel.toArray()) || [];
@@ -11,13 +15,19 @@ export default function MetamodelTab() {
   const [editingItem, setEditingItem] = useState<ContentMetamodel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
-  const [sortColumn, setSortColumn] = useState<keyof ContentMetamodel>('admPhase');
+  const [sortColumn, setSortColumn] = useState<SortableColumn>('admPhase');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  const [selectedPhase, setSelectedPhase] = useState<string>('');
+  const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('Active');
+  const [selectedOwner, setSelectedOwner] = useState<string>('');
   
   const admPhases = useMasterData('ADM Phase');
   const artifactTypes = useMasterData('Artifact Type');
+  const ownerRoles = useMasterData('Owner Role');
 
-  const handleSort = (column: keyof ContentMetamodel) => {
+  const handleSort = (column: SortableColumn) => {
     if (sortColumn === column) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -27,7 +37,7 @@ export default function MetamodelTab() {
   };
 
   const sortedMetamodels = useMemo(() => {
-    const phaseOrder = ['Preliminary', 'Phase A', 'Phase B: Business Architecture', 'Phase C: Information Systems', 'Phase D: Technology Architecture', 'Phases E-F'];
+    const phaseOrder = ['Preliminary', 'Phase A', 'Phase B: Business Architecture', 'Phase C: Information Systems', 'Phase D: Technology Architecture', 'Phases E-F', 'Phase G: Implementation Governance', 'Phase H: Architecture Change Management'];
     return [...metamodels].sort((a, b) => {
       if (sortColumn === 'admPhase') {
         let indexA = phaseOrder.indexOf(a.admPhase);
@@ -37,18 +47,19 @@ export default function MetamodelTab() {
         return sortDirection === 'asc' ? indexA - indexB : indexB - indexA;
       }
       
-      const aVal = a[sortColumn] || '';
-      const bVal = b[sortColumn] || '';
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-      return 0;
+      const aVal = String(a[sortColumn] || '');
+      const bVal = String(b[sortColumn] || '');
+      return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     });
   }, [metamodels, sortColumn, sortDirection]);
 
   const openModal = (item: ContentMetamodel | null = null) => {
     setEditingItem(item);
     setError(null);
+    setSelectedPhase(item?.admPhase || '');
+    setSelectedType(item?.artifactType || '');
+    setSelectedStatus(item?.status || 'Active');
+    setSelectedOwner(item?.ownerRole || '');
     setIsModalOpen(true);
   };
 
@@ -71,12 +82,13 @@ export default function MetamodelTab() {
       return;
     }
 
-    const item = {
+    const item: Omit<ContentMetamodel, 'id'> = {
       name,
       admPhase: formData.get('admPhase') as string,
       artifactType: formData.get('artifactType') as string,
       description: formData.get('description') as string,
       ownerRole: formData.get('ownerRole') as string,
+      status: formData.get('status') as 'Active' | 'Deprecated',
     };
 
     if (editingItem?.id) {
@@ -88,6 +100,38 @@ export default function MetamodelTab() {
     setEditingItem(null);
   };
 
+  const getArtifactTypeBadge = (type: string) => {
+    switch (type) {
+      case 'Catalog':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'Matrix':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'Diagram':
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
+      default:
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Active':
+        return 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400';
+      case 'Deprecated':
+        return 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400';
+      default:
+        return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+    }
+  };
+
+  const SortHeader = ({ column, label }: { column: SortableColumn; label: string }) => (
+    <th className="px-4 py-3 font-medium">
+      <button onClick={() => handleSort(column)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+        {label} <ArrowUpDown size={14} className={sortColumn === column ? 'text-blue-500' : 'opacity-50'} />
+      </button>
+    </th>
+  );
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex justify-between items-center mb-6">
@@ -98,49 +142,39 @@ export default function MetamodelTab() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10 shadow-sm">
-            <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm">
-              <th className="pb-3 font-medium">
-                <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="pb-3 font-medium">
-                <button onClick={() => handleSort('admPhase')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  ADM Phase <ArrowUpDown size={14} className={sortColumn === 'admPhase' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="pb-3 font-medium">
-                <button onClick={() => handleSort('artifactType')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Artifact Type <ArrowUpDown size={14} className={sortColumn === 'artifactType' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="pb-3 font-medium">
-                <button onClick={() => handleSort('description')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Description <ArrowUpDown size={14} className={sortColumn === 'description' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="pb-3 font-medium text-right">Actions</th>
+      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
+        <table className="w-full text-left border-collapse min-w-[900px]">
+          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
+            <tr className="text-gray-500 dark:text-gray-400 text-sm">
+              <SortHeader column="name" label="Name" />
+              <SortHeader column="admPhase" label="ADM Phase" />
+              <SortHeader column="artifactType" label="Artifact Type" />
+              <SortHeader column="description" label="Description" />
+              <SortHeader column="ownerRole" label="Owner Role" />
+              <SortHeader column="status" label="Status" />
+              <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {sortedMetamodels.map(m => (
               <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="py-4 text-gray-900 dark:text-gray-200 font-medium">{m.name}</td>
-                <td className="py-4 text-gray-600 dark:text-gray-300 text-sm">{m.admPhase}</td>
-                <td className="py-4 text-gray-600 dark:text-gray-300 text-sm">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    m.artifactType === 'Catalog' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                    m.artifactType === 'Matrix' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
-                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  }`}>
+                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium whitespace-nowrap">{m.name}</td>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm whitespace-nowrap">{m.admPhase}</td>
+                <td className="px-4 py-4 text-sm">
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getArtifactTypeBadge(m.artifactType)}`}>
                     {m.artifactType}
                   </span>
                 </td>
-                <td className="py-4 text-gray-600 dark:text-gray-300 text-sm max-w-xs truncate" title={m.description}>{m.description}</td>
-                <td className="py-4 text-right">
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-[200px]" title={m.description}>
+                  <span className="block truncate">{m.description}</span>
+                </td>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm whitespace-nowrap">{m.ownerRole}</td>
+                <td className="px-4 py-4 text-sm">
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(m.status || 'Active')}`}>
+                    {m.status || 'Active'}
+                  </span>
+                </td>
+                <td className="px-4 py-4 text-right whitespace-nowrap">
                   <button onClick={() => openModal(m)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
                   <button onClick={() => setItemToDelete(m.id!)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
                 </td>
@@ -152,7 +186,7 @@ export default function MetamodelTab() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{editingItem ? 'Edit Artifact' : 'Add Artifact'}</h3>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div>
@@ -164,21 +198,25 @@ export default function MetamodelTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">ADM Phase</label>
-                  <select name="admPhase" defaultValue={editingItem?.admPhase || ''} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
-                    <option value="">Select Phase...</option>
-                    {admPhases.map(phase => (
-                      <option key={phase.id} value={phase.name}>{phase.name}</option>
-                    ))}
-                  </select>
+                  <input type="hidden" name="admPhase" value={selectedPhase} />
+                  <CreatableDropdown
+                    value={selectedPhase || null}
+                    onChange={(val) => setSelectedPhase(val)}
+                    options={admPhases.map(p => ({ label: p.name, value: p.name }))}
+                    categoryType="ADM Phase"
+                    placeholder="Select or type..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Artifact Type</label>
-                  <select name="artifactType" defaultValue={editingItem?.artifactType || ''} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
-                    <option value="">Select Type...</option>
-                    {artifactTypes.map(type => (
-                      <option key={type.id} value={type.name}>{type.name}</option>
-                    ))}
-                  </select>
+                  <input type="hidden" name="artifactType" value={selectedType} />
+                  <CreatableDropdown
+                    value={selectedType || null}
+                    onChange={(val) => setSelectedType(val)}
+                    options={artifactTypes.map(t => ({ label: t.name, value: t.name }))}
+                    categoryType="Artifact Type"
+                    placeholder="Select or type..."
+                  />
                 </div>
               </div>
 
@@ -187,9 +225,32 @@ export default function MetamodelTab() {
                 <textarea name="description" defaultValue={editingItem?.description} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" placeholder="Brief description of the artifact..." />
               </div>
 
-              <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Owner Role</label>
-                <input name="ownerRole" defaultValue={editingItem?.ownerRole} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., Lead Enterprise Architect" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Owner Role</label>
+                  <input type="hidden" name="ownerRole" value={selectedOwner} />
+                  <CreatableDropdown
+                    value={selectedOwner || null}
+                    onChange={(val) => setSelectedOwner(val)}
+                    options={ownerRoles.map(o => ({ label: o.name, value: o.name }))}
+                    categoryType="Owner Role"
+                    placeholder="Select or create role..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                  <input type="hidden" name="status" value={selectedStatus} />
+                  <Select
+                    unstyled
+                    classNames={reactSelectClassNames}
+                    options={[
+                      { label: 'Active', value: 'Active' },
+                      { label: 'Deprecated', value: 'Deprecated' }
+                    ]}
+                    value={{ label: selectedStatus, value: selectedStatus }}
+                    onChange={(v: any) => setSelectedStatus(v ? v.value : 'Active')}
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 mt-4">

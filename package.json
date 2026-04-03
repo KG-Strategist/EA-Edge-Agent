@@ -1,8 +1,11 @@
 {
-  "name": "react-example",
+  "name": "ea-edge-agent",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Offline-first, air-gapped Enterprise Architecture review co-pilot powered by WebGPU and local AI.",
+  "author": "KG-Strategist",
+  "license": "MIT",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
@@ -13,8 +16,6 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@mlc-ai/web-llm": "^0.2.82",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
     "@xenova/transformers": "^2.17.2",
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
@@ -29,12 +30,13 @@
     "react-markdown": "^10.1.0",
     "react-select": "^5.10.2",
     "tesseract.js": "^7.0.0",
-    "vite": "^6.2.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",

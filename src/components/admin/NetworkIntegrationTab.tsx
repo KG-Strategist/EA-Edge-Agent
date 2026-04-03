@@ -153,17 +153,17 @@ export default function NetworkIntegrationTab() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl">
+    <div className="flex flex-col max-w-4xl">
       <div className="mb-6">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">Network Integrations</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure external data providers for trends and analysis.</p>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">Network & Privacy</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure external data providers and manage privacy controls.</p>
       </div>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Enable Network Integrations</h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Allow the app to connect to external endpoints.</p>
+            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Enable External Network Features</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Allow the app to connect to external endpoints for market trends and analysis.</p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
             <input

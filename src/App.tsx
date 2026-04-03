@@ -27,7 +27,7 @@ function AppContent() {
     <div className="flex h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 font-sans overflow-hidden transition-colors duration-200">
       <Navbar currentView={currentView} setCurrentView={setCurrentView} />
       
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8">
         {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} setCurrentSessionId={setCurrentSessionId} />}
         {currentView === 'intake' && <ReviewIntake />}
         {currentView === 'admin' && <AdminPanel />}

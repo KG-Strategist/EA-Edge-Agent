@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, BespokeTag } from '../../lib/db';
 import { Plus, Edit, Trash2, ArrowUpDown } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import CreatableDropdown from '../ui/CreatableDropdown';
 
 const TAILWIND_COLORS = [
   { name: 'Red', value: 'bg-red-500/20 text-red-700 dark:text-red-400', bgClass: 'bg-red-500' },
@@ -37,6 +38,7 @@ export default function TagsTab() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   const [selectedColor, setSelectedColor] = useState(TAILWIND_COLORS[10].value); // Default to Blue
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const handleSort = (column: keyof BespokeTag) => {
     if (sortColumn === column) {
@@ -59,6 +61,7 @@ export default function TagsTab() {
   const openModal = (item: BespokeTag | null = null) => {
     setEditingItem(item);
     setError(null);
+    setSelectedCategory(item?.category || '');
     setSelectedColor(item?.colorCode || TAILWIND_COLORS[10].value);
     setIsModalOpen(true);
   };
@@ -111,21 +114,21 @@ export default function TagsTab() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10 shadow-sm">
-            <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm">
-              <th className="pb-3 font-medium">
+      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
+            <table className="w-full text-left border-collapse min-w-full">
+          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
+            <tr className="text-gray-500 dark:text-gray-400 text-sm">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium">
+              <th className="px-4 py-3 font-medium">
                 <button onClick={() => handleSort('category')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Category <ArrowUpDown size={14} className={sortColumn === 'category' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
-              <th className="pb-3 font-medium text-right">Actions</th>
+              <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -159,18 +162,15 @@ export default function TagsTab() {
               </div>
               <div>
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Category</label>
-                <select 
-                  name="category" 
-                  defaultValue={editingItem?.category || ''} 
-                  required 
-                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500"
-                >
-                  <option value="" disabled>Select Category...</option>
-                  {tagCategories.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-                {tagCategories.length === 0 && (
+                <input type="hidden" name="category" value={selectedCategory} />
+                <CreatableDropdown
+                  value={selectedCategory || null}
+                  onChange={(val) => setSelectedCategory(val)}
+                  options={tagCategories.map(c => ({ label: c.name, value: c.name }))}
+                  categoryType="Tag Category"
+                  placeholder="Select or type Category..."
+                />
+                {!selectedCategory && tagCategories.length === 0 && (
                   <p className="text-xs text-amber-500 mt-1">No Tag Categories found in Master Categories. Please add some first.</p>
                 )}
               </div>

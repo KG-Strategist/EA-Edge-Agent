@@ -1,8 +1,9 @@
 import Dexie, { Table } from 'dexie';
+import { MASTER_CATEGORY_TYPES } from './constants';
 
 export interface MasterCategory {
   id?: number;
-  type: string;
+  type: keyof typeof MASTER_CATEGORY_TYPES | string;
   name: string;
   description?: string;
   isActive: boolean;
@@ -22,12 +23,17 @@ export interface ContentMetamodel {
   artifactType: string;
   description: string;
   ownerRole: string;
+  status: 'Active' | 'Deprecated';
 }
 
 export interface ArchitectureLayer {
   id?: number;
   name: string;
-  categoryId: number;
+  coreLayer: string;
+  contextLayer: string;
+  description: string;
+  abstractionLevels: string;
+  categoryId?: number; // Kept for backward compatibility during migration
   category?: string; // Kept for backward compatibility during migration
 }
 
@@ -44,8 +50,12 @@ export interface ArchitecturePrinciple {
 export interface BianDomain {
   id?: number;
   name: string;
+  businessArea: string;
+  businessDomain: string;
+  controlRecord: string;
+  functionalPattern: string;
   description: string;
-  status: 'Active' | 'Deprecated';
+  status: 'Active' | 'Draft' | 'Deprecated';
 }
 
 export interface BespokeTag {
@@ -169,6 +179,60 @@ export class EADatabase extends Dexie {
       review_embeddings: '++id, sessionId',
       app_settings: 'key',
       network_integrations: '++id, providerType, isDefault'
+    });
+    this.version(10).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, categoryId',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, status',
+      bespoke_tags: '++id, name, category',
+      review_sessions: '++id, projectName, status',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault'
+    }).upgrade(tx => {
+      return tx.table('content_metamodel').toCollection().modify(item => {
+        if (!item.status) item.status = 'Active';
+      });
+    });
+    this.version(11).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, categoryId',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category',
+      review_sessions: '++id, projectName, status',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault'
+    }).upgrade(tx => {
+      // Clear out the old flat BIAN domains, so the new hook will seed the rich ones
+      return tx.table('bian_domains').clear();
+    });
+    this.version(12).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category',
+      review_sessions: '++id, projectName, status',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault'
+    }).upgrade(tx => {
+      // Ensure existing records have default strings to prevent UI crashes over undefined constraints
+      return tx.table('architecture_layers').toCollection().modify(layer => {
+        if (!layer.coreLayer) layer.coreLayer = layer.category || 'Unknown';
+        if (!layer.contextLayer) layer.contextLayer = '';
+        if (!layer.description) layer.description = '';
+        if (!layer.abstractionLevels) layer.abstractionLevels = '';
+      });
     });
   }
 }
