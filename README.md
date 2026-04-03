@@ -55,32 +55,32 @@ The biggest hurdle to using AI in Enterprise Architecture is data privacy. You c
 ### Installation
 ```bash
 # Clone the repository
-git clone [https://github.com/yourusername/ea-edge-agent.git](https://github.com/yourusername/ea-edge-agent.git)
+git clone https://github.com/yourusername/ea-edge-agent.git
 cd ea-edge-agent
 
 # Install dependencies
 npm install
-Run Locally
-Bash
+```
+
+### Run Locally
+```bash
 # Start development server
 npm run dev
 
 # Open http://localhost:3000 in your browser
-Note on First Run: Upon the first launch, the app will download the LLM weights (~1.8GB for Phi-3-mini) and embedding models into your browser cache. Subsequent loads are instantaneous and fully offline.
+```
+
+**Note on First Run:** Upon the first launch, the app will download the LLM weights (~1.8GB for Phi-3-mini) and embedding models into your browser cache. Subsequent loads are instantaneous and fully offline.
 
 🤝 Contributing
 We welcome contributions from the open-source community and Enterprise Architects alike!
 If you want to add new compliance frameworks (like NIST or DORA) to the baseline seeder, or improve the Web Worker memory management, please open a PR.
 
-Fork the repository
-
-Create a feature branch (git checkout -b feature/AmazingFeature)
-
-Commit your changes (git commit -m 'Add some AmazingFeature')
-
-Push to the branch (git push origin feature/AmazingFeature)
-
-Open a Pull Request
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
