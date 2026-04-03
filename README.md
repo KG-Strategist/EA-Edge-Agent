@@ -88,5 +88,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 (You are free to use, modify, and distribute this software within your own enterprise environments).
 
 <div align="center">
-<p><strong>Transforming Enterprise Architecture, entirely at the edge.</strong></p>
+  <p><strong>Transforming Enterprise Architecture, entirely at the edge.</strong></p>
 </div>
