@@ -1,0 +1,5 @@
+{
+  "name": "EA Edge Agent",
+  "description": "Localized, air-gapped web application for Enterprise Architecture review cycles.",
+  "requestFramePermissions": []
+}
