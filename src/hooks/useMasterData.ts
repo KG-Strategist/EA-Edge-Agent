@@ -5,7 +5,7 @@ export function useMasterData(type: string) {
   return useLiveQuery(
     () => db.master_categories
       .where('type').equals(type)
-      .filter(cat => cat.isActive)
+      .filter(cat => cat.status === 'Active')
       .toArray(),
     [type]
   ) || [];

@@ -202,26 +202,31 @@ export async function seedDatabase() {
 
     if (masterCategoriesCount === 0) {
       await db.master_categories.bulkAdd([
-        { type: 'Review Type', name: 'New System Implementation (NSI)', isActive: true },
-        { type: 'Review Type', name: 'Enhancement Review (ER)', isActive: true },
-        { type: 'Application Tier', name: 'Tier 1', isActive: true },
-        { type: 'Application Tier', name: 'Tier 2', isActive: true },
-        { type: 'Application Tier', name: 'Tier 3', isActive: true },
-        { type: 'Hosting Model', name: 'Cloud Native', isActive: true },
-        { type: 'Hosting Model', name: 'On-Premise', isActive: true },
-        { type: 'Hosting Model', name: 'Hybrid', isActive: true },
-        { type: 'ADM Phase', name: 'Preliminary', isActive: true },
-        { type: 'ADM Phase', name: 'Phase A', isActive: true },
-        { type: 'ADM Phase', name: 'Phase B: Business Architecture', isActive: true },
-        { type: 'ADM Phase', name: 'Phase C: Information Systems', isActive: true },
-        { type: 'ADM Phase', name: 'Phase D: Technology Architecture', isActive: true },
-        { type: 'ADM Phase', name: 'Phases E-F', isActive: true },
-        { type: 'Artifact Type', name: 'Catalog', isActive: true },
-        { type: 'Artifact Type', name: 'Matrix', isActive: true },
-        { type: 'Artifact Type', name: 'Diagram', isActive: true },
-        { type: 'Tag Category', name: 'Tier', isActive: true },
-        { type: 'Tag Category', name: 'Hosting', isActive: true },
-        { type: 'Tag Category', name: 'Lifecycle', isActive: true },
+        { type: 'Review Type', name: 'New System Implementation (NSI)', status: 'Active' },
+        { type: 'Review Type', name: 'Enhancement Review (ER)', status: 'Active' },
+        { type: 'Application Tier', name: 'Tier 1', status: 'Active' },
+        { type: 'Application Tier', name: 'Tier 2', status: 'Active' },
+        { type: 'Application Tier', name: 'Tier 3', status: 'Active' },
+        { type: 'Hosting Model', name: 'Cloud Native', status: 'Active' },
+        { type: 'Hosting Model', name: 'On-Premise', status: 'Active' },
+        { type: 'Hosting Model', name: 'Hybrid', status: 'Active' },
+        { type: 'ADM Phase', name: 'Preliminary', status: 'Active' },
+        { type: 'ADM Phase', name: 'Phase A', status: 'Active' },
+        { type: 'ADM Phase', name: 'Phase B: Business Architecture', status: 'Active' },
+        { type: 'ADM Phase', name: 'Phase C: Information Systems', status: 'Active' },
+        { type: 'ADM Phase', name: 'Phase D: Technology Architecture', status: 'Active' },
+        { type: 'ADM Phase', name: 'Phases E-F', status: 'Active' },
+        { type: 'Artifact Type', name: 'Catalog', status: 'Active' },
+        { type: 'Artifact Type', name: 'Matrix', status: 'Active' },
+        { type: 'Artifact Type', name: 'Diagram', status: 'Active' },
+        { type: 'Tag Category', name: 'Tier', status: 'Active' },
+        { type: 'Tag Category', name: 'Hosting', status: 'Active' },
+        { type: 'Tag Category', name: 'Lifecycle', status: 'Active' },
+        { type: 'Prompt Category', name: 'DDQ Audit', status: 'Active' },
+        { type: 'Prompt Category', name: 'Anomaly Detection', status: 'Active' },
+        { type: 'Prompt Category', name: 'ADR Generation', status: 'Active' },
+        { type: 'Prompt Category', name: 'Threat Modeling', status: 'Active' },
+        { type: 'Prompt Category', name: 'Custom', status: 'Active' },
       ]);
     }
 
@@ -259,21 +264,21 @@ export async function seedDatabase() {
       const getCatId = (name: string) => categories.find(c => c.name === name)?.id || 1;
 
       const layers = [
-        { name: 'Business', categoryId: getCatId('Core BDAT') },
-        { name: 'Data', categoryId: getCatId('Core BDAT') },
-        { name: 'Application', categoryId: getCatId('Core BDAT') },
-        { name: 'Technology', categoryId: getCatId('Core BDAT') },
-        { name: 'Presentation', categoryId: getCatId('Architectural (3-Tier)') },
-        { name: 'Persistence', categoryId: getCatId('Architectural (3-Tier)') },
-        { name: 'Service', categoryId: getCatId('Architectural (3-Tier)') },
-        { name: 'Strategic', categoryId: getCatId('Strategic & GRC') },
-        { name: 'GRC', categoryId: getCatId('Strategic & GRC') },
-        { name: 'Security', categoryId: getCatId('Strategic & GRC') },
-        { name: 'Ingestion', categoryId: getCatId('Data-Specific') },
-        { name: 'Data Processing', categoryId: getCatId('Data-Specific') },
-        { name: 'Consumption', categoryId: getCatId('Data-Specific') },
-        { name: 'Infrastructure Services', categoryId: getCatId('Infrastructure & Cloud') },
-        { name: 'Platform Services', categoryId: getCatId('Infrastructure & Cloud') },
+        { name: 'Business', coreLayer: 'Core BDAT', contextLayer: 'Strategic', description: 'Defines business strategy, governance, and organizational structures.', abstractionLevels: 'Conceptual', status: 'Active' as const },
+        { name: 'Data', coreLayer: 'Core BDAT', contextLayer: 'Information', description: 'Manages data assets, models, and governance across the enterprise.', abstractionLevels: 'Logical', status: 'Active' as const },
+        { name: 'Application', coreLayer: 'Core BDAT', contextLayer: 'Solutions', description: 'Describes application components, interactions, and service mappings.', abstractionLevels: 'Logical', status: 'Active' as const },
+        { name: 'Technology', coreLayer: 'Core BDAT', contextLayer: 'Infrastructure', description: 'Covers infrastructure, platforms, networks, and hosting environments.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Presentation', coreLayer: 'Architectural (3-Tier)', contextLayer: 'User Experience', description: 'Front-end interfaces and user interaction patterns.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Persistence', coreLayer: 'Architectural (3-Tier)', contextLayer: 'Data Storage', description: 'Database patterns, storage engines, and data persistence mechanisms.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Service', coreLayer: 'Architectural (3-Tier)', contextLayer: 'Integration', description: 'Service-oriented patterns including APIs, middleware, and buses.', abstractionLevels: 'Logical', status: 'Active' as const },
+        { name: 'Strategic', coreLayer: 'Strategic & GRC', contextLayer: 'Governance', description: 'Strategic alignment with enterprise goals, roadmaps, and investment planning.', abstractionLevels: 'Conceptual', status: 'Active' as const },
+        { name: 'GRC', coreLayer: 'Strategic & GRC', contextLayer: 'Compliance', description: 'Governance, risk, and compliance frameworks and audit controls.', abstractionLevels: 'Conceptual', status: 'Active' as const },
+        { name: 'Security', coreLayer: 'Strategic & GRC', contextLayer: 'InfoSec', description: 'Security architecture covering IAM, encryption, and threat modeling.', abstractionLevels: 'Logical', status: 'Active' as const },
+        { name: 'Ingestion', coreLayer: 'Data-Specific', contextLayer: 'Data Pipeline', description: 'Data ingestion pipelines, ETL/ELT processes, and streaming.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Data Processing', coreLayer: 'Data-Specific', contextLayer: 'Analytics', description: 'Data transformation, enrichment, and processing engines.', abstractionLevels: 'Logical', status: 'Active' as const },
+        { name: 'Consumption', coreLayer: 'Data-Specific', contextLayer: 'Reporting', description: 'Data consumption via dashboards, reports, and analytical tools.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Infrastructure Services', coreLayer: 'Infrastructure & Cloud', contextLayer: 'Platform', description: 'IaaS/PaaS services, compute, storage, and networking.', abstractionLevels: 'Physical', status: 'Active' as const },
+        { name: 'Platform Services', coreLayer: 'Infrastructure & Cloud', contextLayer: 'Platform', description: 'Managed services, container orchestration, and serverless.', abstractionLevels: 'Physical', status: 'Active' as const },
       ];
       await db.architecture_layers.bulkAdd(layers);
     }
@@ -337,13 +342,122 @@ export async function seedDatabase() {
 
     if (tagsCount === 0) {
       await db.bespoke_tags.bulkAdd([
-        { name: 'Tier 1', category: 'Tier', colorCode: 'bg-red-500/20 text-red-400' },
-        { name: 'Tier 2', category: 'Tier', colorCode: 'bg-orange-500/20 text-orange-400' },
-        { name: 'Tier 3', category: 'Tier', colorCode: 'bg-yellow-500/20 text-yellow-400' },
-        { name: 'Cloud Native', category: 'Hosting', colorCode: 'bg-blue-500/20 text-blue-400' },
-        { name: 'On-Premise', category: 'Hosting', colorCode: 'bg-gray-500/20 text-gray-400' },
+        { name: 'Tier 1', category: 'Tier', colorCode: 'bg-red-500/20 text-red-400', status: 'Active' },
+        { name: 'Tier 2', category: 'Tier', colorCode: 'bg-orange-500/20 text-orange-400', status: 'Active' },
+        { name: 'Tier 3', category: 'Tier', colorCode: 'bg-yellow-500/20 text-yellow-400', status: 'Active' },
+        { name: 'Cloud Native', category: 'Hosting', colorCode: 'bg-blue-500/20 text-blue-400', status: 'Active' },
+        { name: 'On-Premise', category: 'Hosting', colorCode: 'bg-gray-500/20 text-gray-400', status: 'Active' },
       ]);
     }
+
+    const promptsCount = await db.prompt_templates.count();
+    if (promptsCount === 0) {
+      const now = new Date();
+      await db.prompt_templates.bulkAdd([
+        {
+          name: 'DDQ Score Validation',
+          category: 'DDQ Audit',
+          promptText: `You are an Enterprise Architecture auditor for a Tier-1 financial institution. A vendor has self-assessed their architecture using a Due Diligence Questionnaire (DDQ).
+
+Vendor's Self-Assessment Summary:
+{{scorecardSummary}}
+
+Architecture Documentation (extracted via OCR):
+{{documentText}}
+
+Instructions:
+1. For each design principle where the vendor scored 5 ("Fully implemented"), critically verify whether the uploaded architecture documentation actually supports that claim.
+2. Flag any discrepancies where the vendor over-scored themselves.
+3. Highlight any design principles that are completely missing from the documentation.
+4. Output your findings as a structured JSON array with fields: principle, vendorScore, auditedScore, finding.`,
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'Migration Loophole Detection',
+          category: 'Anomaly Detection',
+          promptText: `You are an Enterprise Architecture governance engine. A delivery team has submitted a review classified as "{{reviewType}}".
+
+Project Metadata:
+- Project Name: {{projectName}}
+- Current Hosting: {{hostingModel}}
+- Application Tier: {{appTier}}
+- Tags: {{tags}}
+
+Architecture Description:
+{{documentText}}
+
+Instructions:
+Analyze whether this submission is correctly classified. If the project involves ANY of the following, it MUST be classified as "New System Implementation (NSI)" regardless of what the team selected:
+- Changing the core technology stack
+- Altering the disaster recovery profile
+- Shifting deployment models (e.g., IaaS to SaaS, On-Premise to Cloud)
+- Replacing the primary database engine
+- Introducing a new vendor for a mission-critical component
+
+Respond with:
+1. CLASSIFICATION_VALID: true/false
+2. REASON: Brief explanation
+3. RECOMMENDED_ACTION: What the ARB should do`,
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'ADR Generator',
+          category: 'ADR Generation',
+          promptText: `You are an Architecture Decision Record (ADR) author. Generate a formal ADR based on the following review session data.
+
+Project: {{projectName}}
+Review Type: {{reviewType}}
+Status: {{status}}
+BIAN Domain: {{bianDomain}}
+Tags: {{tags}}
+DDQ Score: {{overallScore}}%
+
+Key Findings:
+{{findings}}
+
+Generate an ADR in the standard format:
+# ADR-{{adrNumber}}: [Decision Title]
+## Status: [Proposed/Accepted/Deprecated]
+## Context: [Why this decision was needed]
+## Decision: [What was decided]
+## Consequences: [Positive and negative impacts]
+## Compliance Notes: [Regulatory alignment]`,
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'STRIDE Threat Model',
+          category: 'Threat Modeling',
+          promptText: `You are a security architect performing a STRIDE threat analysis. Analyze the following architecture for potential threats.
+
+Architecture Documentation:
+{{documentText}}
+
+Network Posture: {{networkPosture}}
+Data Classification: {{dataClassification}}
+Hosting Model: {{hostingModel}}
+
+For each STRIDE category, identify:
+1. **Spoofing**: Authentication weaknesses
+2. **Tampering**: Data integrity risks
+3. **Repudiation**: Audit trail gaps
+4. **Information Disclosure**: Data leakage risks
+5. **Denial of Service**: Availability threats
+6. **Elevation of Privilege**: Authorization flaws
+
+Output as a structured threat matrix with severity (Critical/High/Medium/Low) and recommended mitigations.`,
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+      ]);
+    }
+
     return true;
   } catch (error) {
     console.error('Failed to seed database:', error);

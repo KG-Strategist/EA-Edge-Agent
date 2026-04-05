@@ -30,16 +30,12 @@ export function StateProvider({ children }: { children: ReactNode }) {
     aiModelsStatus: 'Unloaded' as const,
   });
   
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-
-  useEffect(() => {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('ea-theme') as 'light' | 'dark' | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      setTheme('light');
-    }
-  }, []);
+    if (savedTheme) return savedTheme;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+    return 'dark';
+  });
 
   useEffect(() => {
     const hasWebGPU = !!(navigator as any).gpu;
@@ -60,7 +56,7 @@ export function StateProvider({ children }: { children: ReactNode }) {
   };
 
   const activeBianDomains = useLiveQuery(() => db.bian_domains.where('status').equals('Active').toArray()) || [];
-  const activeTags = useLiveQuery(() => db.bespoke_tags.toArray()) || [];
+  const activeTags = useLiveQuery(() => db.bespoke_tags.filter(t => t.status !== 'Deprecated').toArray()) || [];
 
   return (
     <StateContext.Provider

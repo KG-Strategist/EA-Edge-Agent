@@ -55,7 +55,29 @@ self.onmessage = async (e: MessageEvent) => {
       }
       self.postMessage({ id, success: true, embeddings });
     } 
-    else if (type === 'FIND_SIMILAR') {
+    else if (type === 'EMBED_ENTERPRISE') {
+      const { text, filename } = payload;
+      const chunks = chunkText(text, 500, 100); // User requested ~500 tokens. Using generous chunk size.
+      const embeddings = [];
+      
+      let processed = 0;
+      for (const chunk of chunks) {
+        if (processed % 5 === 0 || processed === chunks.length - 1) {
+          self.postMessage({ id, type: 'PROGRESS', progressMsg: `Vectorizing chunk ${processed + 1} of ${chunks.length}...` });
+        }
+        const output = await extract(chunk, { pooling: 'mean', normalize: true });
+        embeddings.push({
+          sourceFile: filename,
+          sourceType: filename.split('.').pop()?.toLowerCase() || 'txt',
+          textChunk: chunk,
+          embedding: Array.from(output.data),
+          ingestedAt: new Date()
+        });
+        processed++;
+      }
+      self.postMessage({ id, success: true, embeddings });
+    }
+    else if (type === 'FIND_SIMILAR' || type === 'FIND_SIMILAR_ENTERPRISE') {
       const { queryText, storedEmbeddings } = payload;
       const output = await extract(queryText, { pooling: 'mean', normalize: true });
       const queryEmbedding = Array.from(output.data) as number[];

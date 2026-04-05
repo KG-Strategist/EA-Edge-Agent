@@ -53,7 +53,7 @@ export default function CreatableDropdown({
         await db.master_categories.add({
           name: trimmed,
           type: categoryType,
-          isActive: true
+          status: 'Active'
         });
       }
       

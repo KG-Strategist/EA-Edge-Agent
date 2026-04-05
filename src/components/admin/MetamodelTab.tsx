@@ -1,9 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ContentMetamodel } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import StatusToggle from '../ui/StatusToggle';
+import AIRewriteButton from '../ui/AIRewriteButton';
+import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { useMasterData } from '../../hooks/useMasterData';
+import { useDataPortability } from '../../hooks/useDataPortability';
+import PageInfoTile from '../ui/PageInfoTile';
+import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown, { reactSelectClassNames } from '../ui/CreatableDropdown';
 import Select from 'react-select';
 
@@ -26,6 +32,9 @@ export default function MetamodelTab() {
   const admPhases = useMasterData('ADM Phase');
   const artifactTypes = useMasterData('Artifact Type');
   const ownerRoles = useMasterData('Owner Role');
+  const [showArchived, setShowArchived] = useState(false);
+  const [descriptionValue, setDescriptionValue] = useState('');
+  const { handleExport, handleImport } = useDataPortability({ tableName: 'content_metamodel', filename: 'content_metamodel' });
 
   const handleSort = (column: SortableColumn) => {
     if (sortColumn === column) {
@@ -36,9 +45,13 @@ export default function MetamodelTab() {
     }
   };
 
+  const filteredMetamodels = showArchived
+    ? metamodels.filter(m => m.status === 'Deprecated')
+    : metamodels.filter(m => m.status !== 'Deprecated');
+
   const sortedMetamodels = useMemo(() => {
     const phaseOrder = ['Preliminary', 'Phase A', 'Phase B: Business Architecture', 'Phase C: Information Systems', 'Phase D: Technology Architecture', 'Phases E-F', 'Phase G: Implementation Governance', 'Phase H: Architecture Change Management'];
-    return [...metamodels].sort((a, b) => {
+    return [...filteredMetamodels].sort((a, b) => {
       if (sortColumn === 'admPhase') {
         let indexA = phaseOrder.indexOf(a.admPhase);
         let indexB = phaseOrder.indexOf(b.admPhase);
@@ -51,7 +64,7 @@ export default function MetamodelTab() {
       const bVal = String(b[sortColumn] || '');
       return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     });
-  }, [metamodels, sortColumn, sortDirection]);
+  }, [filteredMetamodels, sortColumn, sortDirection]);
 
   const openModal = (item: ContentMetamodel | null = null) => {
     setEditingItem(item);
@@ -60,6 +73,7 @@ export default function MetamodelTab() {
     setSelectedType(item?.artifactType || '');
     setSelectedStatus(item?.status || 'Active');
     setSelectedOwner(item?.ownerRole || '');
+    setDescriptionValue(item?.description || '');
     setIsModalOpen(true);
   };
 
@@ -134,23 +148,33 @@ export default function MetamodelTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6">
+      <PageInfoTile 
+        title="Content Metamodel"
+        description="The TOGAF Content Metamodel defines the standardized taxonomy of architectural artifacts produced across each ADM phase. Use this to ensure consistency across architectural outputs."
+      />
+
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">Content Metamodel</h3>
-        <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
-          <Plus size={16} />
-          Add New
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowArchived(!showArchived)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${showArchived ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+            <Archive size={14} />{showArchived ? 'Exit Archive' : 'Archive'}
+          </button>
+          <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
+          <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
+            <Plus size={16} /> Add New
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse min-w-[900px]">
+        <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
             <tr className="text-gray-500 dark:text-gray-400 text-sm">
               <SortHeader column="name" label="Name" />
               <SortHeader column="admPhase" label="ADM Phase" />
               <SortHeader column="artifactType" label="Artifact Type" />
-              <SortHeader column="description" label="Description" />
-              <SortHeader column="ownerRole" label="Owner Role" />
+              <th className="px-4 py-3 font-medium hidden lg:table-cell"><button onClick={() => handleSort('description')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Description <ArrowUpDown size={14} className={sortColumn === 'description' ? 'text-blue-500' : 'opacity-50'} /></button></th>
+              <th className="px-4 py-3 font-medium hidden xl:table-cell"><button onClick={() => handleSort('ownerRole')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Owner <ArrowUpDown size={14} className={sortColumn === 'ownerRole' ? 'text-blue-500' : 'opacity-50'} /></button></th>
               <SortHeader column="status" label="Status" />
               <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
@@ -158,25 +182,43 @@ export default function MetamodelTab() {
           <tbody>
             {sortedMetamodels.map(m => (
               <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium whitespace-nowrap">{m.name}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm whitespace-nowrap">{m.admPhase}</td>
+                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium">{m.name}</td>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">{m.admPhase}</td>
                 <td className="px-4 py-4 text-sm">
-                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getArtifactTypeBadge(m.artifactType)}`}>
-                    {m.artifactType}
-                  </span>
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getArtifactTypeBadge(m.artifactType)}`}>{m.artifactType}</span>
                 </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-[200px]" title={m.description}>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-[200px] hidden lg:table-cell" title={m.description}>
                   <span className="block truncate">{m.description}</span>
                 </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm whitespace-nowrap">{m.ownerRole}</td>
-                <td className="px-4 py-4 text-sm">
-                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(m.status || 'Active')}`}>
-                    {m.status || 'Active'}
-                  </span>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm hidden xl:table-cell">{m.ownerRole}</td>
+                <td className="px-4 py-4">
+                  {showArchived ? (
+                    <StatusToggle 
+                      currentStatus="Deprecated" 
+                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                      onChange={() => {}} 
+                      readonly={true} 
+                    />
+                  ) : (
+                    <StatusToggle 
+                      currentStatus={m.status || 'Active'} 
+                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                      onChange={async (s) => { if (m.id) await db.content_metamodel.update(m.id, { status: s as any }); }} 
+                    />
+                  )}
                 </td>
                 <td className="px-4 py-4 text-right whitespace-nowrap">
-                  <button onClick={() => openModal(m)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                  <button onClick={() => setItemToDelete(m.id!)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                  {showArchived ? (
+                    <>
+                      <button onClick={async () => { if (m.id) await db.content_metamodel.update(m.id, { status: 'Active' }); }} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
+                      <button onClick={() => setItemToDelete(m.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => openModal(m)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
+                      <button onClick={async () => { if (m.id) await db.content_metamodel.update(m.id, { status: 'Deprecated' }); }} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -221,8 +263,11 @@ export default function MetamodelTab() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Description</label>
-                <textarea name="description" defaultValue={editingItem?.description} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" placeholder="Brief description of the artifact..." />
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-sm text-gray-600 dark:text-gray-400">Description</label>
+                  <AIRewriteButton context={descriptionValue} onResult={(text) => setDescriptionValue(text)} />
+                </div>
+                <textarea name="description" value={descriptionValue} onChange={(e) => setDescriptionValue(e.target.value)} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" placeholder="Brief description of the artifact..." />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -239,17 +284,7 @@ export default function MetamodelTab() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Status</label>
-                  <input type="hidden" name="status" value={selectedStatus} />
-                  <Select
-                    unstyled
-                    classNames={reactSelectClassNames}
-                    options={[
-                      { label: 'Active', value: 'Active' },
-                      { label: 'Deprecated', value: 'Deprecated' }
-                    ]}
-                    value={{ label: selectedStatus, value: selectedStatus }}
-                    onChange={(v: any) => setSelectedStatus(v ? v.value : 'Active')}
-                  />
+                  <StatusSelect value={selectedStatus} onChange={setSelectedStatus} name="status" />
                 </div>
               </div>
 

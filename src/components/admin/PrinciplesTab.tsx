@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ArchitecturePrinciple, NetworkIntegration } from '../../lib/db';
-import { Download, Upload, Plus, Edit, Trash2, ChevronDown, ChevronUp, ArrowUpDown, Globe, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, ChevronDown, ChevronUp, ArrowUpDown, Globe, Loader2, Archive, RotateCcw } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import StatusToggle from '../ui/StatusToggle';
+import AIRewriteButton from '../ui/AIRewriteButton';
+import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import Select from 'react-select';
 import { reactSelectClassNames } from '../ui/CreatableDropdown';
 import { fetchFromProvider } from '../../lib/byoeGateway';
 import { initAIEngine, analyzeWithHybridProvider } from '../../lib/aiEngine';
+import { useDataPortability } from '../../hooks/useDataPortability';
+import PageInfoTile from '../ui/PageInfoTile';
+import StatusSelect from '../ui/StatusSelect';
 
 export default function PrinciplesTab() {
   const principles = useLiveQuery(() => db.architecture_principles.toArray()) || [];
@@ -23,15 +29,21 @@ export default function PrinciplesTab() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof ArchitecturePrinciple | 'layerName'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showArchived, setShowArchived] = useState(false);
   
   const [selectedLayerId, setSelectedLayerId] = useState<number | ''>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('Active');
+  const [statementValue, setStatementValue] = useState('');
+  const [rationaleValue, setRationaleValue] = useState('');
+  const [implicationsValue, setImplicationsValue] = useState('');
 
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<NetworkIntegration | null>(null);
   const [consentEndpoint, setConsentEndpoint] = useState('');
   const [isFetchingTrends, setIsFetchingTrends] = useState(false);
   const [trendProgress, setTrendProgress] = useState('');
+
+  const { handleExport, handleImport } = useDataPortability({ tableName: 'architecture_principles', filename: 'architecture_principles' });
 
   const handleSort = (column: keyof ArchitecturePrinciple | 'layerName') => {
     if (sortColumn === column) {
@@ -44,7 +56,11 @@ export default function PrinciplesTab() {
 
   const getLayerName = (layerId: number) => layers.find(l => l.id === layerId)?.name || 'Unknown';
 
-  const sortedPrinciples = [...principles].sort((a, b) => {
+  const filteredPrinciples = showArchived
+    ? principles.filter(p => p.status === 'Deprecated')
+    : principles.filter(p => p.status !== 'Deprecated');
+
+  const sortedPrinciples = [...filteredPrinciples].sort((a, b) => {
     let aVal = '';
     let bVal = '';
     if (sortColumn === 'layerName') {
@@ -62,34 +78,10 @@ export default function PrinciplesTab() {
     setError(null);
     setSelectedLayerId(item?.layerId || layers[0]?.id || '');
     setSelectedStatus(item?.status || 'Active');
+    setStatementValue(item?.statement || '');
+    setRationaleValue(item?.rationale || '');
+    setImplicationsValue(item?.implications || '');
     setIsModalOpen(true);
-  };
-
-  const handleExport = () => {
-    const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(principles))}`;
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute('href', dataStr);
-    downloadAnchorNode.setAttribute('download', 'architecture_principles.json');
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-  };
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (!reader.result) return;
-      try {
-        const importedData = JSON.parse(reader.result as string);
-        await db.architecture_principles.bulkPut(importedData);
-      } catch (e) {
-        console.error('Error importing data', e);
-        alert('Failed to import principles. See console for details.');
-      }
-    };
-    reader.readAsText(file);
   };
 
   const handleDeleteConfirm = async () => {
@@ -97,6 +89,20 @@ export default function PrinciplesTab() {
       await db.architecture_principles.delete(itemToDelete);
       setItemToDelete(null);
     }
+  };
+
+  const handleStatusChange = async (item: ArchitecturePrinciple, newStatus: string) => {
+    if (item.id) {
+      await db.architecture_principles.update(item.id, { status: newStatus as any });
+    }
+  };
+
+  const handleRestore = async (id: number) => {
+    await db.architecture_principles.update(id, { status: 'Needs Review' as any });
+  };
+
+  const handleArchive = async (id: number) => {
+    await db.architecture_principles.update(id, { status: 'Deprecated' as any });
   };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -112,9 +118,9 @@ export default function PrinciplesTab() {
 
     const item = {
       name,
-      statement: formData.get('statement') as string,
-      rationale: formData.get('rationale') as string,
-      implications: formData.get('implications') as string,
+      statement: statementValue,
+      rationale: rationaleValue,
+      implications: implicationsValue,
       layerId: parseInt(formData.get('layerId') as string, 10),
       status: formData.get('status') as any,
     };
@@ -205,9 +211,14 @@ export default function PrinciplesTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6">
+      <PageInfoTile 
+        title="Architecture Principles"
+        description="Architecture Principles are the foundational rules and guidelines that inform and restrict enterprise architecture decisions and designs. They align IT strategies with business objectives."
+      />
+      
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">Architecture Principles</h3>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {enableNetworkIntegrations && (
             <button
               onClick={handleOpenConsentModal}
@@ -215,41 +226,77 @@ export default function PrinciplesTab() {
               className="flex items-center gap-2 px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 hover:bg-indigo-200 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-400 rounded-lg transition-colors text-sm border border-indigo-200 dark:border-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isFetchingTrends ? <Loader2 size={16} className="animate-spin" /> : <Globe size={16} />} 
-              {isFetchingTrends ? trendProgress : 'Fetch Trends & Discover'}
+              {isFetchingTrends ? trendProgress : 'Fetch Trends'}
             </button>
           )}
-          <label className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg cursor-pointer transition-colors text-sm border border-gray-200 dark:border-transparent">
-            <Upload size={16} /> Import
-            <input type="file" accept=".json" className="hidden" onChange={handleImport} />
-          </label>
-          <button onClick={handleExport} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors text-sm border border-gray-200 dark:border-transparent">
-            <Download size={16} /> Export
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+              showArchived
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Archive size={14} />
+            {showArchived ? 'Exit Archive' : 'Archive'}
           </button>
+          <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
           <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
-            <Plus size={16} /> Add New
+            <Plus size={16} />
+            Add New
           </button>
         </div>
       </div>
       <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-            <table className="w-full text-left border-collapse min-w-full">
+        <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
             <tr className="text-gray-500 dark:text-gray-400 text-sm">
               <th className="px-4 py-3 font-medium w-8"></th>
               <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} /></button></th>
+              <th className="px-4 py-3 font-medium hidden md:table-cell"><button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} /></button></th>
               <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} /></button></th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
+            {sortedPrinciples.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">{showArchived ? 'No deprecated principles.' : 'No principles found.'}</td></tr>
+            )}
             {sortedPrinciples.map(p => (
               <React.Fragment key={p.id}>
                 <tr className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                  <td className="py-4"><button aria-label={expandedId === p.id ? 'Collapse details' : 'Expand details'} onClick={() => setExpandedId(expandedId === p.id ? null : (p.id || null))} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{expandedId === p.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button></td>
-                  <td className="py-4 text-gray-900 dark:text-gray-200"><div className="font-medium">{p.name}</div><div className="text-xs text-gray-500 truncate max-w-md">{p.statement}</div></td>
-                  <td className="py-4 text-gray-600 dark:text-gray-300 text-sm">{getLayerName(p.layerId)}</td>
-                  <td className="py-4"><span className={`text-xs px-2 py-1 rounded-full ${p.status === 'Active' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400' : p.status === 'Needs Review' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>{p.status}</span></td>
-                  <td className="py-4 text-right"><button aria-label="Edit principle" onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"><Edit size={16} /></button><button aria-label="Delete principle" onClick={() => setItemToDelete(p.id!)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400"><Trash2 size={16} /></button></td>
+                  <td className="py-4 pl-4"><button aria-label={expandedId === p.id ? 'Collapse details' : 'Expand details'} onClick={() => setExpandedId(expandedId === p.id ? null : (p.id || null))} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{expandedId === p.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button></td>
+                  <td className="py-4 text-gray-900 dark:text-gray-200"><div className="font-medium">{p.name}</div><div className="text-xs text-gray-500 truncate max-w-xs">{p.statement}</div></td>
+                  <td className="py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">{getLayerName(p.layerId)}</td>
+                  <td className="py-4">
+                    {showArchived ? (
+                      <StatusToggle
+                        currentStatus="Deprecated"
+                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                        onChange={() => {}}
+                        readonly={true}
+                      />
+                    ) : (
+                      <StatusToggle
+                        currentStatus={p.status}
+                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                        onChange={(s) => handleStatusChange(p, s)}
+                      />
+                    )}
+                  </td>
+                  <td className="py-4 text-right pr-4 whitespace-nowrap">
+                    {showArchived ? (
+                      <>
+                        <button onClick={() => handleRestore(p.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
+                        <button onClick={() => setItemToDelete(p.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
+                        <button onClick={() => handleArchive(p.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
+                      </>
+                    )}
+                  </td>
                 </tr>
                 {expandedId === p.id && (
                   <tr className="bg-gray-50 dark:bg-gray-800/20 border-b border-gray-100 dark:border-gray-800/50">
@@ -273,40 +320,28 @@ export default function PrinciplesTab() {
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-[95%] max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{editingItem ? 'Edit Principle' : 'Add Principle'}</h3>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
-              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-name">Name</label><input id="principle-name" name="name" defaultValue={editingItem?.name} placeholder="e.g., Always encrypt data at rest" aria-label="Principle name" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" /></div>
-              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-statement">Statement</label><textarea id="principle-statement" name="statement" defaultValue={editingItem?.statement} placeholder="Enter the principle statement" aria-label="Principle statement" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" /></div>
-              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-rationale">Rationale</label><textarea id="principle-rationale" name="rationale" defaultValue={editingItem?.rationale} placeholder="Why this principle matters" aria-label="Principle rationale" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" /></div>
-              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-implications">Implications</label><textarea id="principle-implications" name="implications" defaultValue={editingItem?.implications} placeholder="Potential impact and effects" aria-label="Principle implications" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" /></div>
+              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label><input name="name" defaultValue={editingItem?.name} placeholder="e.g., Always encrypt data at rest" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" />{error && <p className="text-sm text-red-500 mt-1">{error}</p>}</div>
+              <div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Statement</label><AIRewriteButton context={statementValue} onResult={setStatementValue} /></div>
+                <textarea name="statement" value={statementValue} onChange={e => setStatementValue(e.target.value)} placeholder="Enter the principle statement" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Rationale</label><AIRewriteButton context={rationaleValue} onResult={setRationaleValue} /></div>
+                <textarea name="rationale" value={rationaleValue} onChange={e => setRationaleValue(e.target.value)} placeholder="Why this principle matters" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Implications</label><AIRewriteButton context={implicationsValue} onResult={setImplicationsValue} /></div>
+                <textarea name="implications" value={implicationsValue} onChange={e => setImplicationsValue(e.target.value)} placeholder="Potential impact and effects" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-layer">Layer</label>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Layer</label>
                   <input type="hidden" name="layerId" value={selectedLayerId} />
-                  <Select
-                    inputId="principle-layer"
-                    unstyled
-                    classNames={reactSelectClassNames}
-                    options={layers.map(l => ({ label: l.name, value: l.id }))}
-                    value={selectedLayerId ? { label: layers.find(l => l.id === selectedLayerId)?.name || '', value: selectedLayerId } : null}
-                    onChange={(v: any) => setSelectedLayerId(v ? v.value : '')}
-                    aria-label="Architecture layer" 
-                  />
+                  <Select inputId="principle-layer" unstyled classNames={reactSelectClassNames} options={layers.map(l => ({ label: l.name, value: l.id }))} value={selectedLayerId ? { label: layers.find(l => l.id === selectedLayerId)?.name || '', value: selectedLayerId } : null} onChange={(v: any) => setSelectedLayerId(v ? v.value : '')} />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1" htmlFor="principle-status">Status</label>
-                  <input type="hidden" name="status" value={selectedStatus} />
-                  <Select
-                    inputId="principle-status"
-                    unstyled
-                    classNames={reactSelectClassNames}
-                    options={[
-                      { label: 'Active', value: 'Active' },
-                      { label: 'Needs Review', value: 'Needs Review' },
-                      { label: 'Deprecated', value: 'Deprecated' }
-                    ]}
-                    value={{ label: selectedStatus, value: selectedStatus }}
-                    onChange={(v: any) => setSelectedStatus(v ? v.value : 'Active')}
-                    aria-label="Principle status"
-                  />
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                  <StatusSelect value={selectedStatus} onChange={setSelectedStatus} name="status" />
                 </div>
               </div>
               <div className="flex justify-end gap-3 mt-4"><button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">Save</button></div>
@@ -315,13 +350,8 @@ export default function PrinciplesTab() {
         </div>
       )}
 
-      <ConfirmModal isOpen={!!itemToDelete} title="Delete Principle" message="Are you sure you want to delete this principle? This action cannot be undone." onConfirm={handleDeleteConfirm} onCancel={() => setItemToDelete(null)} />
-
-      <ConfirmModal isOpen={isConsentModalOpen} title="Authorize External Network Request" message={`This action will connect to: ${consentEndpoint}
-
-Only the generic search query will be transmitted. Absolutely ZERO local architecture data, principles, or bespoke tags will leave this device.
-
-Do you authorize this connection?`} onConfirm={handleFetchTrends} onCancel={() => setIsConsentModalOpen(false)} />
+      <ConfirmModal isOpen={!!itemToDelete} title="Delete Principle Permanently" message="Are you sure? This action cannot be undone." onConfirm={handleDeleteConfirm} onCancel={() => setItemToDelete(null)} />
+      <ConfirmModal isOpen={isConsentModalOpen} title="Authorize External Network Request" message={`This action will connect to: ${consentEndpoint}\n\nOnly the generic search query will be transmitted. Absolutely ZERO local architecture data will leave this device.\n\nDo you authorize this connection?`} onConfirm={handleFetchTrends} onCancel={() => setIsConsentModalOpen(false)} />
     </div>
   );
 }

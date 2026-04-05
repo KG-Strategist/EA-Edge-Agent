@@ -23,8 +23,8 @@ export default function Dashboard({ setCurrentView, setCurrentSessionId }: Dashb
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">Dashboard</h2>
+    <div className="w-full">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Dashboard</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm dark:shadow-none">

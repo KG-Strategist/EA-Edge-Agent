@@ -1,4 +1,4 @@
-# 🛡️ EA Edge Agent
+# 🛡️ Project NITI
 
 <div align="center">
   <h2>Reduce EA Review Cycles from Weeks to Hours with Absolute Data Privacy</h2>
@@ -12,9 +12,9 @@
 
 ---
 
-## 🚀 What is the EA Edge Agent?
+## 🚀 What is NITI?
 
-The EA Edge Agent is a groundbreaking Progressive Web App (PWA) designed as an assistive tool for lean Enterprise Architecture teams. Traditionally, EA reviews (NSI, ER) take weeks of manual analysis and documentation. Our solution reduces this to hours by leveraging cutting-edge browser technologies.
+NITI (**N**etwork-isolated, **I**n-browser, **T**riage & **I**nference) is a groundbreaking Progressive Web App (PWA) designed as an assistive tool for lean Enterprise Architecture teams. Traditionally, EA reviews (NSI, ER) take weeks of manual analysis and documentation. Our solution reduces this to hours by leveraging cutting-edge browser technologies.
 
 💡 **Project Scope & InfoSec Reality:** This tool is designed to be a frictionless, single-user local utility. It intentionally does **not** include heavyweight enterprise identity integrations (like UAM, PAM, or SSO). Because the app runs 100% locally in your browser and stores data via IndexedDB, it bypasses the need for complex access management while guaranteeing zero data leakage.
 
@@ -55,8 +55,8 @@ The biggest hurdle to using AI in Enterprise Architecture is data privacy. You c
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ea-edge-agent.git
-cd ea-edge-agent
+git clone https://github.com/yourusername/project-niti.git
+cd project-niti
 
 # Install dependencies
 npm install
@@ -70,7 +70,18 @@ npm run dev
 # Open http://localhost:3000 in your browser
 ```
 
-**Note on First Run:** Upon the first launch, the app will download the LLM weights (~1.8GB for Phi-3-mini) and embedding models into your browser cache. Subsequent loads are instantaneous and fully offline.
+### 🔒 Preparing the Offline Edge AI (Cache Initialization)
+
+Due to out strict air-gapped security policy, the internal AI engine cannot automatically download inference weights from the public internet. You must explicitly consent via the **UI Control Flow** on first launch.
+
+**Steps to securely cache the AI Engine:**
+1. Navigate to the **Control Panel** > **Network & Privacy**.
+2. **Enable "External Network Features"** (This temporarily allows your browser to fetch the WebLLM models).
+3. Try triggering an AI feature (e.g., go to `Master Categories` > click `Auto Generate`).
+4. An Air-Gap Block consent modal will intercept the action. Click **"Consent & Download"**.
+5. Wait for the browser to download and shard the `~1.8GB` weights into IndexedDB.
+6. Once complete, return to **Network & Privacy** and **Disable** external network access.
+7. The application is now fully air-gapped. The AI natively executes from `IndexedDB` forever.
 
 🤝 Contributing
 We welcome contributions from the open-source community and Enterprise Architects alike!

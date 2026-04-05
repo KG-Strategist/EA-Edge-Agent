@@ -65,16 +65,16 @@ export function useBianDomains(searchTerm: string = '') {
           const masterAdditions = [];
           
           const uniqueAreas = Array.from(new Set(SEED_DOMAINS.map(d => d.businessArea)));
-          uniqueAreas.forEach(a => masterAdditions.push({ name: a, type: 'bian_business_area', isActive: true }));
+          uniqueAreas.forEach(a => masterAdditions.push({ name: a, type: 'bian_business_area', status: 'Active' }));
           
           const uniqueDomains = Array.from(new Set(SEED_DOMAINS.map(d => d.businessDomain)));
-          uniqueDomains.forEach(d => masterAdditions.push({ name: d, type: 'bian_business_domain', isActive: true }));
+          uniqueDomains.forEach(d => masterAdditions.push({ name: d, type: 'bian_business_domain', status: 'Active' }));
           
           const uniqueCRs = Array.from(new Set(SEED_DOMAINS.map(d => d.controlRecord)));
-          uniqueCRs.forEach(c => masterAdditions.push({ name: c, type: 'bian_control_record', isActive: true }));
+          uniqueCRs.forEach(c => masterAdditions.push({ name: c, type: 'bian_control_record', status: 'Active' }));
           
           const uniqueFPs = Array.from(new Set(SEED_DOMAINS.map(d => d.functionalPattern)));
-          uniqueFPs.forEach(f => masterAdditions.push({ name: f, type: 'bian_functional_pattern', isActive: true }));
+          uniqueFPs.forEach(f => masterAdditions.push({ name: f, type: 'bian_functional_pattern', status: 'Active' }));
 
           await db.master_categories.bulkAdd(masterAdditions as any);
         }

@@ -22,7 +22,7 @@ export default function ReviewIntake() {
     tags: [] as string[],
   });
   
-  const [vendorDdqFile, setVendorDdqFile] = useState<File | null>(null);
+  const [vendorDdqFiles, setVendorDdqFiles] = useState<File[]>([]);
   const [architectureFiles, setArchitectureFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState('');
   const [isSaved, setIsSaved] = useState(false);
@@ -43,16 +43,22 @@ export default function ReviewIntake() {
       alert("Please enter a project name first.");
       return;
     }
-    generateDDQ(formData.projectName, formData.type, formData.tags);
+    generateDDQ(formData.projectName, formData.type, formData.tags, formData.appTier, formData.hostingModel);
   };
 
   const handleDdqUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.name.endsWith('.xlsx')) {
-      setVendorDdqFile(file);
+    const files = Array.from(e.target.files || []);
+    const validFiles = files.filter(f => f.name.endsWith('.xlsx'));
+    
+    if (validFiles.length > 0) {
+      setVendorDdqFiles(prev => [...prev, ...validFiles]);
     } else {
-      alert("Please upload a valid .xlsx file.");
+      alert("Please upload valid .xlsx DDQ files.");
     }
+  };
+
+  const removeDdqFile = (index: number) => {
+    setVendorDdqFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const validateAndAddFiles = (files: File[]) => {
@@ -95,13 +101,19 @@ export default function ReviewIntake() {
 
   const handleSaveDraft = async () => {
     try {
+      const activeWorkflow = await db.review_workflows
+        .filter(wf => wf.triggerReviewType === formData.type && wf.status === 'Active')
+        .first();
+
       await db.review_sessions.add({
         projectName: formData.projectName || 'Untitled Project',
         type: formData.type,
+        workflowId: activeWorkflow?.id,
+        currentStageIndex: 0,
         bianDomainId: formData.bianDomainId ? parseInt(formData.bianDomainId) : null,
         tags: formData.tags,
         status: 'Draft',
-        vendorDdqBlob: vendorDdqFile,
+        ddqBlobs: vendorDdqFiles.map(f => ({ name: f.name, type: f.type, blob: f })),
         architectureBlobs: architectureFiles.map(f => ({ name: f.name, type: f.type, blob: f })),
         createdAt: new Date()
       });
@@ -124,7 +136,7 @@ export default function ReviewIntake() {
           onClick={() => {
             setStep(1);
             setFormData({ projectName: '', type: '', appTier: '', hostingModel: '', bianDomainId: '', tags: [] });
-            setVendorDdqFile(null);
+            setVendorDdqFiles([]);
             setArchitectureFiles([]);
             setIsSaved(false);
           }}
@@ -137,7 +149,7 @@ export default function ReviewIntake() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto pb-20">
+    <div className="w-full max-w-5xl mx-auto pb-20">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Review Intake Wizard</h2>
         <p className="text-gray-600 dark:text-gray-400">Submit new architecture artifacts for automated review.</p>
@@ -278,21 +290,25 @@ export default function ReviewIntake() {
                 </div>
                 <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors cursor-pointer">
                   <UploadCloud size={18} />
-                  Browse File
-                  <input type="file" accept=".xlsx" className="hidden" onChange={handleDdqUpload} />
+                  Browse Files
+                  <input type="file" accept=".xlsx" multiple className="hidden" onChange={handleDdqUpload} />
                 </label>
               </div>
               
-              {vendorDdqFile && (
-                <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <FileSpreadsheet className="text-green-600 dark:text-green-400" size={24} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{vendorDdqFile.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{(vendorDdqFile.size / 1024).toFixed(1)} KB</p>
-                  </div>
-                  <button onClick={() => setVendorDdqFile(null)} className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
-                    <X size={18} />
-                  </button>
+              {vendorDdqFiles.length > 0 && (
+                <div className="space-y-2">
+                  {vendorDdqFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <FileSpreadsheet className="text-green-600 dark:text-green-400" size={24} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{file.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                      <button onClick={() => removeDdqFile(idx)} className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
+                        <X size={18} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

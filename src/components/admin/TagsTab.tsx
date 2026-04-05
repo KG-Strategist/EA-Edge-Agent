@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, BespokeTag } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import StatusToggle from '../ui/StatusToggle';
+import DataPortabilityButtons from '../ui/DataPortabilityButtons';
+import PageInfoTile from '../ui/PageInfoTile';
+import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown from '../ui/CreatableDropdown';
+import { useDataPortability } from '../../hooks/useDataPortability';
 
 const TAILWIND_COLORS = [
   { name: 'Red', value: 'bg-red-500/20 text-red-700 dark:text-red-400', bgClass: 'bg-red-500' },
@@ -26,6 +31,7 @@ const TAILWIND_COLORS = [
   { name: 'Gray', value: 'bg-gray-500/20 text-gray-700 dark:text-gray-400', bgClass: 'bg-gray-500' },
 ];
 
+
 export default function TagsTab() {
   const tags = useLiveQuery(() => db.bespoke_tags.toArray()) || [];
   const tagCategories = useLiveQuery(() => db.master_categories.where('type').equals('Tag Category').toArray()) || [];
@@ -36,9 +42,12 @@ export default function TagsTab() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof BespokeTag>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showArchived, setShowArchived] = useState(false);
   
-  const [selectedColor, setSelectedColor] = useState(TAILWIND_COLORS[10].value); // Default to Blue
+  const [selectedColor, setSelectedColor] = useState(TAILWIND_COLORS[10].value);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+
+  const { handleExport, handleImport } = useDataPortability({ tableName: 'bespoke_tags', filename: 'bespoke_tags' });
 
   const handleSort = (column: keyof BespokeTag) => {
     if (sortColumn === column) {
@@ -49,7 +58,11 @@ export default function TagsTab() {
     }
   };
 
-  const sortedTags = [...tags].sort((a, b) => {
+  const filteredTags = showArchived
+    ? tags.filter(t => t.status === 'Deprecated')
+    : tags.filter(t => t.status !== 'Deprecated');
+
+  const sortedTags = [...filteredTags].sort((a, b) => {
     const aVal = a[sortColumn] || '';
     const bVal = b[sortColumn] || '';
     if (typeof aVal === 'string' && typeof bVal === 'string') {
@@ -73,6 +86,20 @@ export default function TagsTab() {
     }
   };
 
+  const handleStatusChange = async (item: BespokeTag, newStatus: string) => {
+    if (item.id) {
+       await db.bespoke_tags.update(item.id, { status: newStatus as any });
+    }
+  };
+
+  const handleArchive = async (id: number) => {
+    await db.bespoke_tags.update(id, { status: 'Deprecated' });
+  };
+
+  const handleRestore = async (id: number) => {
+    await db.bespoke_tags.update(id, { status: 'Active' });
+  };
+
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -94,6 +121,7 @@ export default function TagsTab() {
       name,
       category,
       colorCode: selectedColor,
+      status: (formData.get('status') as any) || 'Active',
     };
     if (editingItem?.id) {
       await db.bespoke_tags.update(editingItem.id, item);
@@ -106,16 +134,35 @@ export default function TagsTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6">
+      <PageInfoTile 
+        title="Bespoke Tags"
+        description="Bespoke Tags allow you to assign arbitrary, custom metadata to architectural artifacts that don't fit into standard BIAN domains or metamodels. They offer lightweight filtering and categorization."
+      />
+
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">Tags</h3>
-        <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
-          <Plus size={16} />
-          Add New
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+              showArchived
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Archive size={14} />
+            {showArchived ? 'Exit Archive' : 'Archive'}
+          </button>
+          <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
+          <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
+            <Plus size={16} />
+            Add New
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-            <table className="w-full text-left border-collapse min-w-full">
+        <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
             <tr className="text-gray-500 dark:text-gray-400 text-sm">
               <th className="px-4 py-3 font-medium">
@@ -128,21 +175,58 @@ export default function TagsTab() {
                   Category <ArrowUpDown size={14} className={sortColumn === 'category' ? 'text-blue-500' : 'opacity-50'} />
                 </button>
               </th>
+              <th className="px-4 py-3 font-medium">
+                <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                  Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
+                </button>
+              </th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
+            {sortedTags.length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">
+                {showArchived ? 'No archived tags.' : 'No tags found.'}
+              </td></tr>
+            )}
             {sortedTags.map(t => (
               <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="py-4">
+                <td className="px-4 py-4">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${t.colorCode}`}>
                     {t.name}
                   </span>
                 </td>
-                <td className="py-4 text-gray-600 dark:text-gray-300 text-sm">{t.category}</td>
-                <td className="py-4 text-right">
-                  <button onClick={() => openModal(t)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                  <button onClick={() => setItemToDelete(t.id!)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">
+                  {t.category}
+                </td>
+                <td className="px-4 py-4">
+                  {showArchived ? (
+                    <StatusToggle 
+                      currentStatus="Deprecated" 
+                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                      onChange={() => {}} 
+                      readonly={true} 
+                    />
+                  ) : (
+                    <StatusToggle 
+                      currentStatus={t.status || 'Active'} 
+                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                      onChange={(s) => handleStatusChange(t, s)} 
+                    />
+                  )}
+                </td>
+                <td className="px-4 py-4 text-right whitespace-nowrap">
+                  {showArchived ? (
+                    <>
+                      <button onClick={() => handleRestore(t.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
+                      <button onClick={() => setItemToDelete(t.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => openModal(t)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
+                      <button onClick={() => handleArchive(t.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -152,7 +236,7 @@ export default function TagsTab() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{editingItem ? 'Edit Tag' : 'Add Tag'}</h3>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div>
@@ -204,6 +288,10 @@ export default function TagsTab() {
                   </span>
                 </div>
               </div>
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                <StatusSelect value={editingItem?.status || 'Active'} name="status" />
+              </div>
               <div className="flex justify-end gap-3 mt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">Save</button>
@@ -215,8 +303,8 @@ export default function TagsTab() {
 
       <ConfirmModal
         isOpen={!!itemToDelete}
-        title="Delete Tag"
-        message="Are you sure you want to delete this tag? This action cannot be undone."
+        title="Delete Tag Permanently"
+        message="Are you sure you want to permanently delete this tag? This action cannot be undone."
         onConfirm={handleDeleteConfirm}
         onCancel={() => setItemToDelete(null)}
       />

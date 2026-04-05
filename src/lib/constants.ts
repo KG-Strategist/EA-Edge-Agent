@@ -14,5 +14,6 @@ export const MASTER_CATEGORY_TYPES = {
   'Owner Role': 'Owner Role',
   'Core Layer': 'Core Layer',
   'Context Layer': 'Context Layer',
-  'Abstraction Level': 'Abstraction Level'
+  'Abstraction Level': 'Abstraction Level',
+  'Prompt Category': 'Prompt Category'
 } as const;
