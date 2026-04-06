@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, NetworkIntegration } from '../../lib/db';
-import { Plus, Edit, Trash2, Eye, EyeOff, ShieldAlert, Save, RefreshCw, Loader2, Globe } from 'lucide-react';
+import { db, NetworkIntegration, GlobalSetting } from '../../lib/db';
+import { Plus, Edit, Trash2, Eye, EyeOff, ShieldAlert, Save, RefreshCw, Loader2, Globe, KeyRound, ExternalLink, CheckCircle2 } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import { OAUTH_PROVIDERS, getRedirectUri } from '../../lib/oauthConfig';
 
 export default function NetworkIntegrationTab() {
   const providers = useLiveQuery(() => db.network_integrations.toArray()) || [];
   const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
+  const globalConfig = useLiveQuery(() => db.global_settings.get('SSO_CONFIG')) as GlobalSetting | undefined;
 
   const enableNetworkIntegrations =
     appSettings.find(s => s.key === 'enableNetworkIntegrations')?.value === true;
+
+  const isHybridMode = globalConfig?.connection_mode === 'HYBRID';
 
   const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<NetworkIntegration | null>(null);
@@ -26,12 +30,22 @@ export default function NetworkIntegrationTab() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [isPullingLive, setIsPullingLive] = useState(false);
 
+  // SSO Provider Config State
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [microsoftClientId, setMicrosoftClientId] = useState('');
+  const [ssoSaveMessage, setSsoSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   useEffect(() => {
     const loadSettings = async () => {
       const setting = await db.app_settings.get('enableNetworkIntegrations');
       if (!setting) {
         await db.app_settings.put({ key: 'enableNetworkIntegrations', value: false });
       }
+      // Load SSO client IDs
+      const gId = await db.app_settings.get('SSO_GOOGLE_CLIENT_ID');
+      const mId = await db.app_settings.get('SSO_MICROSOFT_CLIENT_ID');
+      if (gId?.value) setGoogleClientId(gId.value);
+      if (mId?.value) setMicrosoftClientId(mId.value);
     };
     loadSettings();
   }, []);
@@ -153,6 +167,26 @@ export default function NetworkIntegrationTab() {
     }
   };
 
+  const handleSaveSsoConfig = async () => {
+    try {
+      if (googleClientId.trim()) {
+        await db.app_settings.put({ key: 'SSO_GOOGLE_CLIENT_ID', value: googleClientId.trim() });
+      } else {
+        await db.app_settings.delete('SSO_GOOGLE_CLIENT_ID');
+      }
+      if (microsoftClientId.trim()) {
+        await db.app_settings.put({ key: 'SSO_MICROSOFT_CLIENT_ID', value: microsoftClientId.trim() });
+      } else {
+        await db.app_settings.delete('SSO_MICROSOFT_CLIENT_ID');
+      }
+      setSsoSaveMessage({ type: 'success', text: 'SSO configuration saved successfully!' });
+      setTimeout(() => setSsoSaveMessage(null), 3000);
+    } catch {
+      setSsoSaveMessage({ type: 'error', text: 'Failed to save SSO configuration.' });
+      setTimeout(() => setSsoSaveMessage(null), 3000);
+    }
+  };
+
   const handlePullLiveLearnings = async () => {
     if (!enableNetworkIntegrations) {
         setSaveMessage({ type: 'error', text: 'Network Integrations are globally disabled. Enable them above.' });
@@ -187,12 +221,113 @@ export default function NetworkIntegrationTab() {
     }
   };
 
+  const redirectUri = getRedirectUri();
+
   return (
     <div className="flex flex-col max-w-4xl">
       <div className="mb-6">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">Network & Privacy</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure external data providers and manage privacy controls.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure external data providers, SSO identity providers, and manage privacy controls.</p>
       </div>
+
+      {/* ─── Public SSO Provider Configuration (Hybrid Mode Only) ─── */}
+      {isHybridMode && (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+              <KeyRound size={20} />
+            </div>
+            <div>
+              <h4 className="text-base font-medium text-gray-900 dark:text-white">Public SSO Providers</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">OAuth 2.0 PKCE Client IDs — no secrets required (public SPA clients).</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Google */}
+            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Globe size={16} className="text-red-500" />
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Google</span>
+                </div>
+                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline">
+                  <ExternalLink size={10} /> Console
+                </a>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">Client ID</label>
+                  <input
+                    type="text"
+                    value={googleClientId}
+                    onChange={e => setGoogleClientId(e.target.value)}
+                    placeholder={OAUTH_PROVIDERS.google.defaultClientId}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 font-mono text-xs"
+                  />
+                </div>
+                <div className="flex gap-4 text-[10px] text-gray-500 dark:text-gray-400">
+                  <span><strong>Auth:</strong> {OAUTH_PROVIDERS.google.authEndpoint}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Microsoft */}
+            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Globe size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Microsoft</span>
+                </div>
+                <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline">
+                  <ExternalLink size={10} /> Azure AD
+                </a>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">Client ID</label>
+                  <input
+                    type="text"
+                    value={microsoftClientId}
+                    onChange={e => setMicrosoftClientId(e.target.value)}
+                    placeholder={OAUTH_PROVIDERS.microsoft.defaultClientId}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 font-mono text-xs"
+                  />
+                </div>
+                <div className="flex gap-4 text-[10px] text-gray-500 dark:text-gray-400">
+                  <span><strong>Auth:</strong> {OAUTH_PROVIDERS.microsoft.authEndpoint}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Redirect URI (readonly) */}
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-200 dark:border-emerald-500/20">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <p className="text-[10px] text-emerald-800 dark:text-emerald-200">
+                  <strong>Redirect URI:</strong> <code className="bg-emerald-100 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded font-mono">{redirectUri}</code>
+                  <span className="text-emerald-600 dark:text-emerald-400 ml-2">— Register this in both provider consoles.</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Save + Status */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveSsoConfig}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Save size={14} /> Save SSO Configuration
+              </button>
+              {ssoSaveMessage && (
+                <span className={`text-xs font-medium ${ssoSaveMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {ssoSaveMessage.text}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between">

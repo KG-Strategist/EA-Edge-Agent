@@ -10,13 +10,15 @@ export const DEFAULT_TINY_MODEL_ID = 'EA-NITI-Alt';
 
 export async function getActiveModelId(type: 'Core' | 'Tiny'): Promise<string> {
   try {
-    const settings = await db.app_settings.toArray();
+    const models = await db.model_registry.toArray();
     if (type === 'Core') {
-      const custom = settings.find(s => s.key === 'customCoreModelId')?.value;
-      return custom || DEFAULT_PRIMARY_MODEL_ID;
+      const primary = models.find(m => m.type === 'PRIMARY' && m.isActive);
+      return primary?.name || DEFAULT_PRIMARY_MODEL_ID;
     } else {
-      const custom = settings.find(s => s.key === 'customTinyModelId')?.value;
-      return custom || DEFAULT_TINY_MODEL_ID;
+      const secondary = models.find(m => m.type === 'SECONDARY' && m.isActive);
+      // Fallback to primary if no secondary is defined, avoiding null breaks
+      const fallback = models.find(m => m.type === 'PRIMARY' && m.isActive);
+      return secondary?.name || fallback?.name || DEFAULT_TINY_MODEL_ID;
     }
   } catch (e) {
     return type === 'Core' ? DEFAULT_PRIMARY_MODEL_ID : DEFAULT_TINY_MODEL_ID;
@@ -24,21 +26,50 @@ export async function getActiveModelId(type: 'Core' | 'Tiny'): Promise<string> {
 }
 
 export async function getDynamicAppConfig(): Promise<AppConfig> {
-  const settings = await db.app_settings.toArray();
-  const cId = settings.find(s => s.key === 'customCoreModelId')?.value || DEFAULT_PRIMARY_MODEL_ID;
-  const cUrl = settings.find(s => s.key === 'customCoreModelUrl')?.value || "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-MLC";
-  const cLib = settings.find(s => s.key === 'customCoreModelLibUrl')?.value || "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm";
-  
-  const tId = settings.find(s => s.key === 'customTinyModelId')?.value || DEFAULT_TINY_MODEL_ID;
-  const tUrl = settings.find(s => s.key === 'customTinyModelUrl')?.value || "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-MLC";
-  const tLib = settings.find(s => s.key === 'customTinyModelLibUrl')?.value || "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-ctx4k_cs1k-webgpu.wasm";
+  const activeModels = await db.model_registry.filter(m => !!m.isActive).toArray();
 
-  return {
-    model_list: [
-      { model_id: cId, model_lib: cLib, model: cUrl },
-      { model_id: tId, model_lib: tLib, model: tUrl }
-    ]
-  };
+  if (activeModels.length === 0) {
+    return {
+      model_list: [
+        {
+          model_id: DEFAULT_PRIMARY_MODEL_ID,
+          model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-ctx4k_cs1k-webgpu.wasm",
+          model: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-MLC"
+        },
+        {
+          model_id: DEFAULT_TINY_MODEL_ID,
+          model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm",
+          model: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-MLC"
+        }
+      ]
+    };
+  }
+
+  const model_list = activeModels.map(m => {
+    // If not provided, we infer a standardized WASM url or leave it to WebLLM defaults
+    let mLib = m.wasmUrl;
+    if (!mLib && !m.isLocalhost) {
+      if (m.modelUrl.includes('Llama-3')) {
+          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Llama-3-8B-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm";
+      } else if (m.modelUrl.includes('SmolLM')) {
+          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm";
+      } else if (m.modelUrl.includes('gemma')) {
+          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-ctx4k_cs1k-webgpu.wasm";
+      } else {
+          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm"; 
+      }
+    }
+    
+    const record: any = {
+      model_id: m.name,
+      model: m.modelUrl
+    };
+    if (mLib) record.model_lib = mLib;
+
+    return record;
+  });
+
+  return { model_list };
 }
 
 export async function getActiveModelUrl(modelId: string): Promise<string> {

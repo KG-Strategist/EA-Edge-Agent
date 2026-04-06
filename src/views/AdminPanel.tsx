@@ -11,6 +11,10 @@ import WorkflowTab from '../components/admin/WorkflowTab';
 import TemplatesTab from '../components/admin/TemplatesTab';
 import SystemTab from '../components/admin/SystemTab';
 import TrainingEventsTable from '../components/admin/TrainingEventsTable';
+import UserAccessTab from '../components/admin/UserAccessTab';
+import AuditWorkspaceTab from '../components/admin/AuditWorkspaceTab';
+import DpdpTab from '../components/admin/DpdpTab';
+import ModelSandboxTab from '../components/admin/ModelSandboxTab';
 
 export default function AdminPanel({ adminSubView, setAdminSubView }: { adminSubView: string, setAdminSubView: (v: string) => void }) {
   const activeTab = adminSubView;
@@ -32,6 +36,10 @@ export default function AdminPanel({ adminSubView, setAdminSubView }: { adminSub
             {activeTab === 'network' && <NetworkIntegrationTab />}
             {activeTab === 'knowledge' && <TrainingEventsTable />}
             {activeTab === 'system' && <SystemTab />}
+            {activeTab === 'users' && <UserAccessTab />}
+            {activeTab === 'audit' && <AuditWorkspaceTab />}
+            {activeTab === 'dpdp' && <DpdpTab />}
+            {activeTab === 'models' && <ModelSandboxTab />}
           </div>
         </div>
       </div>

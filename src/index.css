@@ -1,2 +1,17 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
+
+@layer utilities {
+  .animate-premium-float {
+    animation: premium-float 3.5s ease-in-out infinite;
+  }
+}
+
+@keyframes premium-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}

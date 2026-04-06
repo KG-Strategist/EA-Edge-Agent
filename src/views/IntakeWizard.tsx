@@ -5,7 +5,7 @@ import { generateDDQ } from '../lib/ddqEngine';
 import { db } from '../lib/db';
 import { useMasterData } from '../hooks/useMasterData';
 
-export default function ReviewIntake() {
+export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
   const { activeBianDomains, activeTags } = useStateContext();
   const reviewTypes = useMasterData('Review Type');
   const appTiers = useMasterData('Application Tier');
@@ -139,6 +139,7 @@ export default function ReviewIntake() {
             setVendorDdqFiles([]);
             setArchitectureFiles([]);
             setIsSaved(false);
+            if (onClose) onClose();
           }}
           className="px-6 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
         >

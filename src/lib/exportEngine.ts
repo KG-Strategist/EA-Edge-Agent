@@ -1,201 +1,108 @@
-/**
- * Export Engine — Centralized PDF/Markdown/ADR Generation
- *
- * Pure function module with minimal React dependencies (only html2pdf + mermaid).
- * Consolidates all export logic into reusable functions consumed across views.
- */
+// Utility to handle downloading raw text or markdown as files natively via the browser
+import type { ReviewSession } from './db';
 
-import html2pdf from 'html2pdf.js';
-import mermaid from 'mermaid';
-import { ReviewSession } from './db';
-
-// ─── Types ───────────────────────────────────────────────────
-
-export interface PDFOptions {
-  filename?: string;
-  margin?: number;
-  imageQuality?: number;
-  scale?: number;
-}
-
-export interface ADRContext {
-  session: ReviewSession;
-  reportMarkdown: string;
-  scorecardSummary?: string;
-  threatSummary?: string;
-  mermaidDFD?: string;
-  domainName?: string;
-}
-
-// ─── Markdown Export ─────────────────────────────────────────
-
-/**
- * Creates and downloads a Markdown file.
- * Mermaid diagrams are kept as raw code blocks for GitHub/GitLab rendering.
- */
-export function exportAsMarkdown(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/markdown' });
+export function downloadAsMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename.endsWith('.md') ? filename : `${filename}.md`;
-  a.click();
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  
+  document.body.appendChild(link);
+  link.click();
+  
+  // Cleanup
+  document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
 
-// ─── Mermaid → Base64 Rendering ──────────────────────────────
+// Alias used by ReviewExecution
+export const exportAsMarkdown = downloadAsMarkdown;
 
-/**
- * Renders a Mermaid diagram to SVG, then converts to a Base64 data URI.
- * Used for self-contained PDF embedding where the viewer cannot render Mermaid.
- */
-export async function renderMermaidToBase64(chart: string): Promise<string> {
+// Export a rendered HTML element as a PDF using html2pdf.js if available, otherwise window.print()
+export function exportAsPDF(element: HTMLElement, options?: { filename?: string }) {
+  const filename = options?.filename || 'export.pdf';
   try {
-    const id = `export-mermaid-${Math.random().toString(36).substr(2, 9)}`;
-    const { svg } = await mermaid.render(id, chart);
-    // Convert SVG string to Base64 data URI
-    const encoded = btoa(unescape(encodeURIComponent(svg)));
-    return `data:image/svg+xml;base64,${encoded}`;
-  } catch (error) {
-    console.warn('Mermaid rendering failed for export, using placeholder:', error);
-    return '';
-  }
-}
-
-// ─── PDF Export ──────────────────────────────────────────────
-
-/**
- * Exports an HTML element as a PDF with standardized NITI branding.
- * Mermaid blocks in the element should already be rendered as SVG by React.
- */
-export function exportAsPDF(element: HTMLElement, opts: PDFOptions = {}): void {
-  const config = {
-    margin:       opts.margin ?? 0.75,
-    filename:     opts.filename ?? 'NITI_Export.pdf',
-    image:        { type: 'jpeg' as const, quality: opts.imageQuality ?? 0.98 },
-    html2canvas:  { scale: opts.scale ?? 2 },
-    jsPDF:        { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
-  };
-  html2pdf().set(config).from(element).save();
-}
-
-/**
- * Exports Markdown content as a PDF by creating a temporary rendered element.
- * Useful when no pre-rendered DOM element exists.
- */
-export async function exportMarkdownAsPDF(
-  markdownContent: string,
-  filename: string,
-  mermaidCharts?: string[]
-): Promise<void> {
-  // Create a temporary container
-  const container = document.createElement('div');
-  container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;padding:40px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;color:#1a1a1a;';
-
-  // Render Mermaid charts to Base64 images
-  let processedContent = markdownContent;
-  if (mermaidCharts) {
-    for (const chart of mermaidCharts) {
-      const base64 = await renderMermaidToBase64(chart);
-      if (base64) {
-        processedContent = processedContent.replace(
-          `\`\`\`mermaid\n${chart}\n\`\`\``,
-          `<img src="${base64}" alt="Architecture Diagram" style="max-width:100%;margin:16px 0;" />`
-        );
-      }
+    // Dynamically check for html2pdf
+    const html2pdfLib = (window as any).html2pdf;
+    if (html2pdfLib) {
+      html2pdfLib()
+        .set({
+          margin: 10,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(element)
+        .save();
+    } else {
+      // Fallback: use html2pdf.js ESM import
+      import('html2pdf.js').then((mod: any) => {
+        const h2p = mod.default || mod;
+        (h2p as any)()
+          .set({
+            margin: 10,
+            filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          })
+          .from(element)
+          .save();
+      }).catch(() => {
+        window.print();
+      });
     }
+  } catch {
+    window.print();
   }
-
-  // Basic markdown → HTML conversion for PDF rendering
-  const html = processedContent
-    .replace(/^### (.*$)/gm, '<h3 style="font-size:16px;font-weight:700;margin:24px 0 8px;">$1</h3>')
-    .replace(/^## (.*$)/gm, '<h2 style="font-size:20px;font-weight:700;margin:32px 0 12px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;">$1</h2>')
-    .replace(/^# (.*$)/gm, '<h1 style="font-size:24px;font-weight:800;margin:0 0 16px;color:#111827;">$1</h1>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^- (.*$)/gm, '<li style="margin:4px 0;">$1</li>')
-    .replace(/\n\n/g, '<br/><br/>');
-
-  container.innerHTML = `
-    <div style="border-bottom:3px solid #4f46e5;padding-bottom:16px;margin-bottom:24px;">
-      <h1 style="font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:2px;margin:0;">NITI — Architectural Decision Record</h1>
-    </div>
-    ${html}
-    <div style="margin-top:40px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;">
-      Generated by Project NITI | ${new Date().toISOString()}
-    </div>
-  `;
-
-  document.body.appendChild(container);
-  
-  exportAsPDF(container, { filename });
-  
-  // Cleanup after a delay to ensure PDF generation completes
-  setTimeout(() => {
-    document.body.removeChild(container);
-  }, 3000);
 }
 
-// ─── ADR Generator ───────────────────────────────────────────
+// In the future this can be expanded to hook up with an HTML to PDF library like html2pdf.js
+export function downloadAsPDF(htmlContent: HTMLElement, filename: string) {
+    exportAsPDF(htmlContent, { filename });
+}
 
-/**
- * Generates a comprehensive Architectural Decision Record (ADR) in Markdown.
- * Combines review session data, AI report, scorecard summary, and threat model.
- */
-export function generateADRMarkdown(ctx: ADRContext): string {
-  const { session, reportMarkdown, scorecardSummary, threatSummary, mermaidDFD, domainName } = ctx;
-  const timestamp = new Date().toISOString();
-  const safeName = session.projectName || 'Untitled';
+// Generate a full ADR markdown combining session metadata, report, and scorecard
+export function generateADRMarkdown(opts: {
+  session: ReviewSession;
+  reportMarkdown: string;
+  scorecardSummary?: string;
+  domainName?: string;
+}): string {
+  const { session, reportMarkdown, scorecardSummary, domainName } = opts;
+  const now = new Date().toISOString().split('T')[0];
 
-  let adr = `# Architectural Decision Record: ${safeName}\n\n`;
+  let adr = `# Architecture Decision Record (ADR)\n\n`;
   adr += `| Field | Value |\n|-------|-------|\n`;
-  adr += `| **Project** | ${safeName} |\n`;
-  adr += `| **Review Type** | ${session.type || 'N/A'} |\n`;
+  adr += `| **Project** | ${session.projectName} |\n`;
+  adr += `| **Review Type** | ${session.type} |\n`;
   adr += `| **BIAN Domain** | ${domainName || 'N/A'} |\n`;
-  adr += `| **Application Tier** | ${session.appTier || 'N/A'} |\n`;
+  adr += `| **App Tier** | ${session.appTier || 'N/A'} |\n`;
   adr += `| **Hosting Model** | ${session.hostingModel || 'N/A'} |\n`;
+  adr += `| **Data Classification** | ${session.dataClassification || 'N/A'} |\n`;
   adr += `| **Status** | ${session.status} |\n`;
-  adr += `| **Generated** | ${timestamp} |\n`;
-  if (session.tags && session.tags.length > 0) {
-    adr += `| **Tags** | ${session.tags.join(', ')} |\n`;
-  }
-  adr += '\n---\n\n';
+  adr += `| **Date** | ${now} |\n\n`;
 
-  // DDQ Scorecard Section
-  if (scorecardSummary) {
-    adr += `## DDQ Scorecard Summary\n\n${scorecardSummary}\n\n---\n\n`;
+  if (session.businessJustification) {
+    adr += `## Business Justification\n\n${session.businessJustification}\n\n`;
   }
 
-  // Vendor Override
   if (session.humanOverrides?.winningVendorOverride) {
     adr += `## Architecture Board Decision\n\n`;
-    adr += `**Selected Vendor:** ${session.humanOverrides.winningVendorOverride}\n\n`;
-    if (session.humanOverrides.justification) {
-      adr += `**Override Justification:** ${session.humanOverrides.justification}\n\n`;
-    }
-    if (session.humanOverrides.overrideTimestamp) {
-      adr += `*Decision recorded: ${session.humanOverrides.overrideTimestamp}*\n\n`;
-    }
-    adr += `---\n\n`;
+    adr += `- **Selected Vendor:** ${session.humanOverrides.winningVendorOverride}\n`;
+    adr += `- **Justification:** ${session.humanOverrides.justification || 'N/A'}\n`;
+    adr += `- **Override Timestamp:** ${session.humanOverrides.overrideTimestamp || 'N/A'}\n\n`;
   }
 
-  // AI Review Report
-  adr += `## AI Review Report\n\n${reportMarkdown}\n\n`;
-
-  // Threat Model Section
-  if (threatSummary) {
-    adr += `---\n\n## STRIDE Threat Analysis\n\n${threatSummary}\n\n`;
+  if (scorecardSummary) {
+    adr += `## BDAT Scorecard Summary\n\n${scorecardSummary}\n\n`;
   }
 
-  // DFD Diagram
-  if (mermaidDFD) {
-    adr += `---\n\n## Data Flow Diagram\n\n\`\`\`mermaid\n${mermaidDFD}\n\`\`\`\n\n`;
-  }
-
-  // Footer
-  adr += `---\n\n`;
-  adr += `*This ADR was generated by Project NITI — an air-gapped, browser-native Enterprise Architecture co-pilot.*\n`;
-  adr += `*Session ID: ${session.id || 'N/A'} | Generated: ${timestamp}*\n`;
+  adr += `## AI-Generated Review\n\n${reportMarkdown}\n\n`;
+  adr += `---\n*Generated by EA-NITI Edge Agent on ${now}*\n`;
 
   return adr;
 }

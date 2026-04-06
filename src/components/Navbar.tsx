@@ -12,6 +12,7 @@ interface NavbarProps {
 
 const adminGroups = [
   {
+    parentNavId: 'expert-config',
     id: 'arch-setup',
     label: 'Architecture Setup',
     icon: Layers,
@@ -22,6 +23,7 @@ const adminGroups = [
     ],
   },
   {
+    parentNavId: 'expert-config',
     id: 'taxonomy',
     label: 'Taxonomy & Metadata',
     icon: Database,
@@ -32,6 +34,7 @@ const adminGroups = [
     ],
   },
   {
+    parentNavId: 'agent-config',
     id: 'agent',
     label: 'Agent Behaviors',
     icon: Brain,
@@ -42,13 +45,26 @@ const adminGroups = [
     ],
   },
   {
+    parentNavId: 'system-config',
     id: 'system',
     label: 'System Preferences',
     icon: Settings,
     tabs: [
       { id: 'network', label: 'Network & Privacy', icon: Network },
       { id: 'knowledge', label: 'Enterprise Knowledge', icon: BookOpen },
+      { id: 'models', label: 'Model Sandbox', icon: Database },
       { id: 'system', label: 'System & Portability', icon: Settings },
+    ],
+  },
+  {
+    parentNavId: 'system-config',
+    id: 'security',
+    label: 'Security & Access',
+    icon: Shield,
+    tabs: [
+      { id: 'users', label: 'User Access Management', icon: Shield },
+      { id: 'audit', label: 'Audit Workspace', icon: FileText },
+      { id: 'dpdp', label: 'DPDP / Privacy', icon: Shield },
     ],
   },
 ];
@@ -61,7 +77,7 @@ function findGroupForTab(tabId: string): string | null {
 }
 
 export default function Navbar({ currentView, setCurrentView, adminSubView, setAdminSubView }: NavbarProps) {
-  const { theme, toggleTheme } = useStateContext();
+  const { theme, toggleTheme, identity } = useStateContext();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
@@ -72,7 +88,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
 
   // Auto-expand the group containing the active sub-tab
   useEffect(() => {
-    if (currentView === 'admin') {
+    if (['expert-config', 'agent-config', 'system-config', 'admin'].includes(currentView)) {
       const activeGroup = findGroupForTab(adminSubView);
       if (activeGroup && !expandedGroups.has(activeGroup)) {
         setExpandedGroups(prev => new Set([...prev, activeGroup]));
@@ -95,14 +111,18 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'intake', label: 'Review Intake', icon: FileText },
+    { id: 'reviews', label: 'Architecture Reviews', icon: FileText },
     { id: 'threat', label: 'Threat Modeling', icon: Shield },
-    { id: 'admin', label: 'Control Panel', icon: Settings, hasSubmenu: true },
+    ...(identity?.role === 'Lead EA' ? [
+      { id: 'expert-config', label: 'Expert Setup', icon: Layers, hasSubmenu: true },
+      { id: 'agent-config', label: 'Agent Center', icon: Brain, hasSubmenu: true },
+      { id: 'system-config', label: 'System Admin', icon: Settings, hasSubmenu: true }
+    ] : [])
   ];
 
-  const renderAdminGroups = (isMobile: boolean) => (
+  const renderAdminGroups = (isMobile: boolean, parentNavId: string) => (
     <div className={`${isMobile ? 'ml-2 pl-2' : 'ml-2 pl-2'} border-l border-gray-200 dark:border-gray-700 mt-1 flex flex-col gap-1`}>
-      {adminGroups.map(group => {
+      {adminGroups.filter(g => g.parentNavId === parentNavId).map(group => {
         const GroupIcon = group.icon;
         const isGroupOpen = expandedGroups.has(group.id);
         const hasActiveChild = group.tabs.some(t => t.id === adminSubView);
@@ -176,7 +196,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
         <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setIsMobileMenuOpen(false)}>
           <div className="fixed left-0 top-16 bottom-0 w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
-              <Logo className="w-12 h-12 shrink-0" />
+              <Logo className="w-12 h-12 shrink-0" animated={false} />
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight leading-tight">EA NITI</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Triage & Inference</p>
@@ -207,7 +227,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
                       <Icon size={18} className="shrink-0" />
                       <span>{item.label}</span>
                     </button>
-                    {item.hasSubmenu && isActive && isAdminSubmenuVisible && renderAdminGroups(true)}
+                    {item.hasSubmenu && isActive && isAdminSubmenuVisible && renderAdminGroups(true, item.id)}
                   </div>
                 );
               })}
@@ -230,14 +250,14 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
         <div className={`p-5 border-b border-gray-200 dark:border-gray-800 flex ${isCollapsed ? 'justify-center' : 'justify-between'} items-center h-[73px]`}>
           {!isCollapsed && (
             <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-              <Logo className="w-12 h-12 shrink-0" />
+              <Logo className="w-12 h-12 shrink-0" animated={false} />
               <div>
                 <h1 className="text-[17px] font-bold text-gray-900 dark:text-white tracking-tight leading-tight">EA NITI</h1>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Triage & Inference</p>
               </div>
             </div>
           )}
-          {isCollapsed && <Logo className="w-10 h-10 shrink-0" />}
+          {isCollapsed && <Logo className="w-10 h-10 shrink-0" animated={false} />}
           <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0">
             {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           </button>
@@ -270,7 +290,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
                   <Icon size={18} className="shrink-0" />
                   {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
                 </button>
-                {item.hasSubmenu && isActive && !isCollapsed && isAdminSubmenuVisible && renderAdminGroups(false)}
+                {item.hasSubmenu && isActive && !isCollapsed && isAdminSubmenuVisible && renderAdminGroups(false, item.id)}
               </div>
             );
           })}

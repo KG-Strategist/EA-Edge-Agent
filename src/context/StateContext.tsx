@@ -2,6 +2,13 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, BianDomain, BespokeTag } from '../lib/db';
 
+export interface UserIdentity {
+  mode: 'Hybrid' | 'AirGapped';
+  provider?: string;
+  username: string;
+  role: 'Lead EA' | 'Architect' | 'Viewer';
+}
+
 interface StateContextType {
   pendingReviews: number;
   setPendingReviews: (count: number) => void;
@@ -17,11 +24,13 @@ interface StateContextType {
   activeTags: BespokeTag[];
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  identity: UserIdentity | null;
 }
 
 const StateContext = createContext<StateContextType | undefined>(undefined);
 
-export function StateProvider({ children }: { children: ReactNode }) {
+export function StateProvider({ children, initialIdentity = null }: { children: ReactNode, initialIdentity?: UserIdentity | null }) {
+  const [identity] = useState<UserIdentity | null>(initialIdentity);
   const [pendingReviews, setPendingReviews] = useState(0);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [systemHealth, setSystemHealth] = useState({
@@ -71,6 +80,7 @@ export function StateProvider({ children }: { children: ReactNode }) {
         activeTags,
         theme,
         toggleTheme,
+        identity,
       }}
     >
       {children}

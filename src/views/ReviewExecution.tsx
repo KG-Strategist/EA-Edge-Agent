@@ -4,12 +4,13 @@ import { runOCR } from '../lib/ocrEngine';
 import { initAIEngine, generateReview } from '../lib/aiEngine';
 import { buildPrompt } from '../lib/promptBuilder';
 import { storeReviewEmbeddings, findSimilarReviews } from '../lib/ragEngine';
+import { analyzeComponentsForThreats, buildMermaidDFD, DataFlowComponent, generateComponentId, StrideThreat } from '../lib/threatEngine';
 import { parseDDQResponse } from '../lib/ddqEngine';
 import { DDQScorecard } from '../lib/ddqRules';
 import { computeWeightedScorecard, getDefaultWeightsForReviewType, BDAT_WEIGHT_PRESETS, BDATWeights, WeightedVendorResult, getPrinciplesByAxis } from '../lib/scorecardEngine';
 import * as XLSX from 'xlsx';
 import { useStateContext } from '../context/StateContext';
-import { Loader2, Play, CheckCircle2, ArrowLeft, BrainCircuit, FileText, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Play, CheckCircle2, ArrowLeft, BrainCircuit, FileText, Download, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import SafeMermaid from '../components/ui/SafeMermaid';
 import BDATRadar from '../components/ui/BDATRadar';
@@ -40,6 +41,10 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
   const [step, setStep] = useState(1);
   const [ocrText, setOcrText] = useState('');
   const [isOcrRunning, setIsOcrRunning] = useState(false);
+  
+  const [threats, setThreats] = useState<StrideThreat[]>([]);
+  const [threatMermaid, setThreatMermaid] = useState('');
+  const [isThreatModeling, setIsThreatModeling] = useState(false);
   
   const [aiProgress, setAiProgress] = useState(0);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -154,6 +159,29 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
     }
   };
 
+  const handleRunThreatModel = () => {
+    setIsThreatModeling(true);
+    // Determine naive components based on OCR text keywords
+    const ocrL = ocrText.toLowerCase();
+    const comps: DataFlowComponent[] = [];
+    const ee = { id: generateComponentId('External Entity'), name: ocrL.includes('mobile') ? 'Mobile Client' : 'Web UI', type: 'External Entity' as any, description: 'User interface', connectsTo: [] as string[] };
+    const api = { id: generateComponentId('Process'), name: 'API Gateway', type: 'Process' as any, description: 'Backend routing', connectsTo: [] as string[] };
+    const ds = { id: generateComponentId('Data Store'), name: ocrL.includes('mongo') ? 'MongoDB' : 'SQL Database', type: 'Data Store' as any, description: 'Storage', connectsTo: [] as string[] };
+    
+    ee.connectsTo.push(api.id);
+    api.connectsTo.push(ds.id);
+    comps.push(ee, api, ds);
+
+    const generatedThreats = analyzeComponentsForThreats(comps);
+    setThreats(generatedThreats);
+    setThreatMermaid(buildMermaidDFD(comps));
+    
+    setTimeout(() => {
+      setIsThreatModeling(false);
+      setStep(4);
+    }, 1500);
+  };
+
   const handleGenerateReview = async () => {
     if (!session) return;
     setIsGenerating(true);
@@ -210,6 +238,7 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
      
      const updated = await db.review_sessions.get(sessionId);
      if (updated) setSession(updated);
+     setStep(5);
   };
 
   const handleSaveReport = async () => {
@@ -339,15 +368,38 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
             )}
           </div>
 
-          {/* Step 3: Architecture Board Review (Human Gate Override) */}
-          <div className={`p-5 rounded-xl border ${step >= 3 ? 'bg-white dark:bg-gray-800 border-indigo-200 dark:border-indigo-700/50 shadow-sm dark:shadow-none' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 opacity-50'}`}>
+          {/* Step 3: Threat Modeling */}
+          <div className={`p-5 rounded-xl border ${step >= 3 ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-none' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 opacity-50'}`}>
             <div className="flex items-center gap-3 mb-4">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step > 3 ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : step === 3 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step > 3 ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : step === 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
                 {step > 3 ? <CheckCircle2 size={16} /> : '3'}
+              </div>
+              <h3 className="font-medium text-gray-900 dark:text-white">STRIDE Threat Modeling</h3>
+            </div>
+            {step === 3 && (
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Analyze the OCR Data Flow Diagram for STRIDE vulnerabilities.</p>
+                <button 
+                  onClick={handleRunThreatModel}
+                  disabled={isThreatModeling}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+                >
+                  {isThreatModeling ? <Loader2 size={18} className="animate-spin" /> : <Shield size={18} />}
+                  {isThreatModeling ? 'Analyzing Targets...' : 'Run STRIDE Analysis'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Step 4: Human Approval Gate */}
+          <div className={`p-5 rounded-xl border ${step >= 4 ? 'bg-white dark:bg-gray-800 border-indigo-200 dark:border-indigo-700/50 shadow-sm dark:shadow-none' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 opacity-50'}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step > 4 ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : step === 4 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
+                {step > 4 ? <CheckCircle2 size={16} /> : '4'}
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white">Architecture Board Review</h3>
             </div>
-            {step === 3 && (
+            {step === 4 && (
               <div className="animate-in fade-in zoom-in-95 duration-300 text-sm">
                 <p className="text-gray-600 dark:text-gray-400 mb-4 font-medium px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800/30">
                    <strong>Pipeline Paused: HUMAN GATE.</strong> Review the BDAT Scorecard and approve vendor selection.
@@ -389,7 +441,6 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
                        <button 
                           onClick={() => {
                              handleApproveGate();
-                             setStep(4);
                           }}
                           className="w-full mt-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-md transition-colors text-sm"
                        >
@@ -401,15 +452,15 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
             )}
           </div>
 
-          {/* Step 4: Final Generation */}
-          <div className={`p-5 rounded-xl border ${step >= 4 ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-none' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 opacity-50'}`}>
+          {/* Step 5: Final Generation */}
+          <div className={`p-5 rounded-xl border ${step >= 5 ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-none' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 opacity-50'}`}>
             <div className="flex items-center gap-3 mb-4">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step > 4 ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : step === 4 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
-                {step > 4 ? <CheckCircle2 size={16} /> : '4'}
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step > 5 ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : step === 5 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
+                {step > 5 ? <CheckCircle2 size={16} /> : '5'}
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white">AIA Report Generation</h3>
             </div>
-            {step === 4 && (
+            {step === 5 && (
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Generate the templated output record with context binding.</p>
                 <button 
@@ -436,8 +487,30 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
             </div>
           )}
 
+          {/* Threat Model Panel */}
+          {step >= 4 && threats.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-900/30 p-6 shadow-sm dark:shadow-none">
+              <h3 className="text-sm font-medium text-red-500 dark:text-red-400 uppercase tracking-wider mb-4">Detected STRIDE Threats</h3>
+              <div className="mb-6 h-64 overflow-hidden rounded-lg border border-red-100 dark:border-red-900/50 bg-red-50/50 dark:bg-gray-900 flex justify-center items-center">
+                 <SafeMermaid chart={threatMermaid} />
+              </div>
+              <div className="space-y-3">
+                {threats.map(t => (
+                  <div key={t.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3">
+                    <div className="flex justify-between items-center mb-1">
+                       <span className="font-bold text-sm text-gray-900 dark:text-gray-100">{t.id}: {t.componentName}</span>
+                       <span className={`text-xs px-2 py-0.5 rounded-full ${t.severity === 'Critical' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{t.severity}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{t.description}</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2"><strong>Mitigation:</strong> {t.mitigation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* BDAT Scorecard Panel */}
-          {step >= 3 && vendorScorecards.length > 0 && (
+          {step >= 4 && vendorScorecards.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm dark:shadow-none">
               <div className="flex justify-between items-start mb-6">
                 <div>
@@ -478,29 +551,29 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
               </div>
 
               {/* Weight Sliders */}
-              <div className="grid grid-cols-4 gap-3 mb-6 px-2">
-                {(['B', 'D', 'A', 'T'] as const).map(axis => (
-                  <div key={axis} className="text-center">
-                    <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">
-                      {{ B: 'Business', D: 'Data', A: 'Application', T: 'Technology' }[axis]}
-                    </label>
-                    <input
-                      type="range" min={0} max={100} value={bdatWeights[axis]}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                {Object.entries(bdatWeights).map(([k, v]) => (
+                  <div key={k} className="flex flex-col items-center">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">Axis {k}</label>
+                    <input 
+                      type="range" 
+                      min="0" max="100" 
+                      value={v}
                       onChange={(e) => {
-                        const newW = { ...bdatWeights, [axis]: parseInt(e.target.value) };
-                        setBdatWeights(newW);
                         setSelectedPreset('Custom');
+                        const newW = { ...bdatWeights, [k]: parseInt(e.target.value) };
+                        setBdatWeights(newW);
                         setWeightedResults(computeWeightedScorecard(vendorScorecards, newW));
                       }}
-                      className="w-full accent-indigo-600 h-1.5"
+                      className="w-full accent-indigo-600"
                     />
-                    <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{bdatWeights[axis]}%</span>
+                    <span className="text-xs text-gray-900 dark:text-gray-100 font-medium mt-1">{v}%</span>
                   </div>
                 ))}
               </div>
 
               {/* Principle Breakdown Table */}
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mt-6">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-gray-900">
                     <tr>

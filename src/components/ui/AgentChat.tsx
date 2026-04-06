@@ -117,7 +117,7 @@ export default function AgentChat() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 flex items-center justify-center">
-              <Logo className="w-8 h-8 shrink-0" />
+              <Logo className="w-8 h-8 shrink-0" animated={false} />
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -152,7 +152,7 @@ export default function AgentChat() {
           {messages.filter(m => m.role !== 'system').map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div className={`w-8 h-8 flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : ''}`}>
-                {msg.role === 'user' ? <User size={14} /> : <Logo className="w-8 h-8 drop-shadow-sm" />}
+                {msg.role === 'user' ? <User size={14} /> : <Logo className="w-8 h-8 drop-shadow-sm" animated={false} />}
               </div>
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${msg.role === 'user' ? 'bg-gray-900 dark:bg-purple-600 text-white rounded-tr-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-200 dark:border-gray-700'}`}>
                 {msg.role === 'assistant' ? (

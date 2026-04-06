@@ -177,6 +177,47 @@ export interface AppSetting {
   value: any;
 }
 
+export interface LocalUser {
+  id?: number;
+  pseudokey: string; // Tokenized non-PII username
+  passwordHash: string;
+  pinHash: string;
+  salt: string;
+  providerId?: string; // For Hybrid mode SSO linkage
+  authMode: 'Air-Gapped' | 'Hybrid';
+  createdAt: Date;
+}
+
+export interface AuditLog {
+  id?: number;
+  timestamp: Date;
+  pseudokey: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN';
+  tableName: string;
+  recordId?: string | number;
+  details?: string;
+}
+
+export interface DashboardState {
+  id?: number;
+  name: string;
+  isDefault: boolean;
+  layoutConfig: any; // Array of widget configurations
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AIModelRecord {
+  id?: number;
+  name: string; // e.g., 'EA-NITI Core' or 'Llama-3-BYOM'
+  type: 'PRIMARY' | 'SECONDARY';
+  modelUrl: string; // Points to WebLLM config root
+  wasmUrl?: string; // Optional custom WASM binder
+  isLocalhost: boolean; // Resolves against window.location.origin
+  isActive: boolean;
+  allowDistillation?: boolean; // For Secondary models
+}
+
 export interface NetworkIntegration {
   id?: number;
   providerType: 'WebSearchAPI' | 'CloudLLMAPI' | 'CustomEnterprise';
@@ -185,6 +226,18 @@ export interface NetworkIntegration {
   apiKey: string;
   isDefault: boolean;
   createdAt: Date;
+}
+
+export interface GlobalSetting {
+  id: string; // e.g. 'SSO_CONFIG'
+  connection_mode: 'HYBRID' | 'AIR_GAPPED' | null;
+  local_enterprise_sso?: {
+    providerName: string;
+    authUrl: string;
+    clientId: string;
+    tokenUrl?: string;
+  };
+  public_sso_enabled: boolean;
 }
 
 export interface PromptTemplate {
@@ -217,6 +270,11 @@ export class EADatabase extends Dexie {
   threat_models!: Table<ThreatModelRecord>;
   enterprise_knowledge!: Table<EnterpriseEmbedding>;
   training_jobs!: Table<TrainingJob>;
+  users!: Table<LocalUser>;
+  audit_logs!: Table<AuditLog>;
+  dashboard_states!: Table<DashboardState>;
+  model_registry!: Table<AIModelRecord>;
+  global_settings!: Table<GlobalSetting>;
 
   constructor() {
     super('EADatabase');
@@ -503,7 +561,162 @@ export class EADatabase extends Dexie {
       await upg('review_workflows');
       await upg('report_templates');
     });
+    // v20: Phase 9 - Zero-PII Auth, Audit Engine, & Dashboards
+    this.version(20).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault'
+    });
+    // v21: DPDP Local Auth Hybrid properties
+    this.version(21).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault'
+    });
+    // v22: Dual-Engine BYOM Model Registry
+    this.version(22).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive'
+    }).upgrade(async tx => {
+      // Seed default Core Model on upgrade
+      if ((await tx.table('model_registry').count()) === 0) {
+        await tx.table('model_registry').add({
+          name: 'EA-NITI Core (Llama-3-8B-Instruct-q4f16_1-MLC)',
+          type: 'PRIMARY',
+          modelUrl: 'https://huggingface.co/mlc-ai/Llama-3-8B-Instruct-q4f16_1-MLC',
+          isLocalhost: false,
+          isActive: true
+        });
+      }
+    });
+    // v23: DPDP Global Settings
+    this.version(23).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id'
+    });
   }
 }
 
 export const db = new EADatabase();
+
+// Setup Audit Hooks globally across all tables (excluding audit_logs itself)
+db.on('ready', () => {
+  db.tables.forEach(table => {
+    if (table.name === 'audit_logs' || table.name === 'users') return; // Don't audit the audit or identity table loops
+
+    table.hook('creating', function (primKey, obj, transaction) {
+      const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
+      // Create separate async transaction to avoid blocking main CRUD
+      Dexie.ignoreTransaction(() => {
+        db.audit_logs.add({
+          timestamp: new Date(),
+          pseudokey,
+          action: 'CREATE',
+          tableName: table.name,
+          details: `Created record in ${table.name}`
+        });
+      });
+    });
+
+    table.hook('updating', function (modifications, primKey, obj, transaction) {
+      const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
+      Dexie.ignoreTransaction(() => {
+        db.audit_logs.add({
+          timestamp: new Date(),
+          pseudokey,
+          action: 'UPDATE',
+          tableName: table.name,
+          recordId: String(primKey),
+          details: `Updated record in ${table.name}`
+        });
+      });
+    });
+
+    table.hook('deleting', function (primKey, obj, transaction) {
+      const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
+      Dexie.ignoreTransaction(() => {
+        db.audit_logs.add({
+          timestamp: new Date(),
+          pseudokey,
+          action: 'DELETE',
+          tableName: table.name,
+          recordId: String(primKey),
+          details: `Deleted record from ${table.name}`
+        });
+      });
+    });
+  });
+});
