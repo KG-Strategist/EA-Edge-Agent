@@ -30,8 +30,13 @@ coverage/
 
 # Logs
 *.log
+ts*errors*
 npm-debug.log*
 yarn-debug.log*
+
+# Local AI Agent files
+.agents/
+brain_files*
 
 # PWA / Service Worker caches
 sw-precache-*
@@ -41,6 +46,10 @@ models/
 *.onnx
 *.bin
 *.safetensors
+
+# Local agent metadata
+.agents/
+_agents/
 
 # Temporary files
 tmp/

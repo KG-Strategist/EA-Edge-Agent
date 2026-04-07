@@ -393,7 +393,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       <MouseSparkles />
       
       {/* Inner Content Wrapper Safe-Area Layout (my-auto provides safe centering without top-clipping) */}
-      <div className="flex flex-col items-center w-full max-w-3xl gap-2 z-10 relative my-auto mt-6 sm:mt-8">
+      <div className="flex flex-col items-center w-full max-w-md gap-3 z-10 relative my-auto mt-6 sm:mt-8">
         
         {/* Logo block shifted to horizontal flex to save massive vertical space (keeps speech bubble bounds safe) */}
         <div className="flex flex-row items-center justify-center gap-3 sm:gap-4 mt-2 w-full shrink-0">
@@ -409,7 +409,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         </div>
 
         {/* The Main Container Card (Uses h-auto & overflow-visible to natively expand instead of squishing inner content) */}
-        <div className="w-full bg-white/80 dark:bg-white/5 backdrop-blur-xl rounded-2xl shadow-[0_0_40px_-10px_rgba(0,0,0,0.1)] dark:shadow-[0_0_60px_-15px_rgba(56,189,248,0.3)] border border-gray-200/80 dark:border-white/10 p-3 sm:p-4 transform transition-all duration-500 relative h-auto overflow-visible">
+        <div className="w-full bg-white/80 dark:bg-white/[0.06] backdrop-blur-2xl rounded-2xl shadow-[0_8px_60px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_80px_-20px_rgba(56,189,248,0.25)] border border-gray-200/70 dark:border-white/[0.08] p-5 sm:p-6 transform transition-all duration-500 relative h-auto overflow-visible">
           {/* Subtle inner top glow */}
           {isDark && <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-400/50 to-transparent" />}
           
@@ -460,8 +460,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
               )}
 
               <form onSubmit={handleLogin} className="space-y-2.5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
+                <div className="space-y-2.5">
+                  <div>
                     <label className="block text-[11px] sm:text-xs font-bold text-gray-700 dark:text-blue-100/90 mb-1">Agent ID (Pseudonym)</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -470,22 +470,24 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="pl-10 w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 text-xs outline-none focus:border-blue-500 dark:focus:border-blue-500/50 focus:bg-gray-50 dark:focus:bg-white/5 transition-all shadow-sm dark:shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="e.g. Cyber-Node-42" />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] sm:text-xs font-bold text-gray-700 dark:text-blue-100/90 mb-1">Passphrase</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <KeyRound className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] sm:text-xs font-bold text-gray-700 dark:text-blue-100/90 mb-1">Passphrase</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <KeyRound className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                        </div>
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="pl-10 w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 text-xs outline-none focus:border-blue-500 dark:focus:border-blue-500/50 focus:bg-gray-50 dark:focus:bg-white/5 transition-all shadow-sm dark:shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Passphrase" />
                       </div>
-                      <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="pl-10 w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 text-xs outline-none focus:border-blue-500 dark:focus:border-blue-500/50 focus:bg-gray-50 dark:focus:bg-white/5 transition-all shadow-sm dark:shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Passphrase" />
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] sm:text-xs font-bold text-gray-700 dark:text-blue-100/90 mb-1">PIN</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Lock className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                    <div>
+                      <label className="block text-[11px] sm:text-xs font-bold text-gray-700 dark:text-blue-100/90 mb-1">PIN</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <Lock className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                        </div>
+                        <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="pl-10 w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 text-xs outline-none focus:border-blue-500 dark:focus:border-blue-500/50 focus:bg-gray-50 dark:focus:bg-white/5 transition-all shadow-sm dark:shadow-inner tracking-widest placeholder-gray-400 dark:placeholder-white/20" placeholder="4-6 Digits" />
                       </div>
-                      <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="pl-10 w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 text-xs outline-none focus:border-blue-500 dark:focus:border-blue-500/50 focus:bg-gray-50 dark:focus:bg-white/5 transition-all shadow-sm dark:shadow-inner tracking-widest placeholder-gray-400 dark:placeholder-white/20" placeholder="4-6 Digits" />
                     </div>
                   </div>
                 </div>
@@ -506,7 +508,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <p className="text-[9px] sm:text-[11px] text-gray-500 dark:text-blue-200/60 mt-0.5">Define your enterprise threat boundary</p>
                </div>
 
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+               <div className="grid grid-cols-1 gap-2.5">
                  <button onClick={() => setView('CONFIG_HYBRID')} className="flex flex-row items-center text-left gap-3 p-3 sm:p-3.5 border border-gray-200 dark:border-white/10 hover:border-blue-400 dark:hover:border-blue-400/50 bg-gray-50 dark:bg-white/5 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transform transition-all duration-300 sm:hover:-translate-y-1 shadow-sm dark:hover:shadow-[0_10px_40px_-10px_rgba(59,130,246,0.3)] group relative overflow-hidden">
                     {isDark && <div className="absolute -inset-24 bg-blue-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
                     
@@ -573,7 +575,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <p className="text-[9px] sm:text-[11px] text-gray-500 dark:text-purple-200/60 mt-0">Choose how to establish your local zero-PII identity</p>
                </div>
 
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+               <div className="grid grid-cols-1 gap-2.5">
                  {/* Option 1: Standalone Local 2FA */}
                  <button onClick={handleStandaloneSetup} className="flex flex-col text-left gap-2 p-3 border border-gray-200 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-400/50 bg-gray-50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all duration-300 shadow-sm group relative overflow-hidden items-start">
                     {isDark && <div className="absolute -inset-24 bg-emerald-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
@@ -632,8 +634,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <h3 className="text-base sm:text-lg font-bold text-center text-gray-900 dark:text-white">Enterprise SSO Configuration</h3>
                  <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-purple-200/60 text-center -mt-1.5">OIDC / SAML identity provider</p>
                  
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   <div className="sm:col-span-2">
+                 <div className="space-y-2.5">
+                   <div>
                       <label className="block text-xs sm:text-[13px] font-semibold text-gray-600 dark:text-purple-200/80 mb-1">Auth URL (Intranet)</label>
                       <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="https://sso.internal.corp" />
                    </div>
@@ -664,7 +666,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <h3 className="text-base sm:text-lg font-bold text-center text-gray-900 dark:text-white">LDAP / Active Directory</h3>
                  <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-amber-200/60 text-center -mt-1.5">Bind against corporate directory service</p>
                  
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                 <div className="space-y-2.5">
                    <div>
                       <label className="block text-xs sm:text-[13px] font-semibold text-gray-600 dark:text-amber-200/80 mb-1">LDAP URL</label>
                       <input type="text" value={entLdapUrl} onChange={e => setEntLdapUrl(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1.5 px-2.5 outline-none focus:border-amber-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="ldap://dc.corp.local:389" />
@@ -756,24 +758,26 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                    )}
                  </div>
 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                   <div className="sm:col-span-2">
-                     <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Pseudonym</label>
-                     <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="w-full rounded border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-1 px-2 outline-none font-bold tracking-wide shadow-inner" />
-                   </div>
-                   <div>
-                     <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Create 2FA PIN</label>
-                     <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="4-6 Digits" />
-                   </div>
-                   <div>
-                     <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Confirm PIN</label>
-                     <input type="password" value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Verify PIN" />
-                   </div>
-                   <div className="sm:col-span-2">
-                     <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Local Passphrase</label>
-                     <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Minimum 8 characters" />
-                   </div>
-                 </div>
+                 <div className="space-y-2">
+                    <div>
+                      <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Pseudonym</label>
+                      <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="w-full rounded border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-1 px-2 outline-none font-bold tracking-wide shadow-inner" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Local Passphrase</label>
+                      <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Minimum 8 characters" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Create 2FA PIN</label>
+                        <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="4-6 Digits" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-blue-100/90 mb-0.5">Confirm PIN</label>
+                        <input type="password" value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full rounded border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-1 px-2 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20" placeholder="Verify PIN" />
+                      </div>
+                    </div>
+                  </div>
                  
                  {error && <p className="text-red-500 dark:text-red-400 text-[9px] font-bold text-center bg-red-50 dark:bg-red-500/10 py-1 rounded border border-red-200 dark:border-red-500/20">{error}</p>}
                  
