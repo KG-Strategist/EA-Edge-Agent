@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StateProvider, useStateContext } from './context/StateContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogOut } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Dashboard from './views/Dashboard';
@@ -163,8 +164,10 @@ export default function App() {
   }
 
   return (
-    <StateProvider initialIdentity={sessionIdentity}>
-      <AppContent />
-    </StateProvider>
+    <ErrorBoundary>
+      <StateProvider initialIdentity={sessionIdentity}>
+        <AppContent />
+      </StateProvider>
+    </ErrorBoundary>
   );
 }

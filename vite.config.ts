@@ -21,9 +21,21 @@ export default defineConfig(({mode}) => {
               // WebLLM manages its own OPFS/CacheStorage. Swallowing these crashes the quota.
               urlPattern: /.*(?:huggingface\.co|githubusercontent\.com|webllm|raw\.githubusercontent\.com).*\.(?:bin|wasm|json|safetensors|txt)/i,
               handler: 'NetworkOnly'
+            },
+            {
+              // Runtime cache for lazy-loaded diagram and export libraries (non-critical paths)
+              urlPattern: /mermaid|html2pdf|cytoscape/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'ea-niti-libraries',
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+                }
+              }
             }
           ],
-          maximumFileSizeToCacheInBytes: 5000000 // Increase max file size to 5MB for the larger local js bundles
+          maximumFileSizeToCacheInBytes: 20000000 // Increased to 20 MB to accommodate main + worker bundles
         },
         manifest: {
           name: 'EA-NITI Edge Agent',
@@ -51,6 +63,23 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      // Increase chunk size warning limit since we'll optimize later
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          // Code splitting: separate large libraries into their own chunks for lazy loading
+          manualChunks: {
+            // Diagram library: lazy-loaded on-demand
+            'mermaid-bundle': ['mermaid'],
+            // Export libraries: loaded only when user triggers export
+            'export-bundle': ['html2pdf.js', 'xlsx'],
+            // Graph visualization: lazy-loaded for threat modeling
+            'graph-bundle': ['cytoscape']
+          }
+        }
+      }
     },
     server: {
       headers: {

@@ -371,7 +371,7 @@ export default function Logo({ className = "w-10 h-10", animated = true }: { cla
       </svg>
       
       {typedMsg && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-[80vw] max-w-[16rem] sm:max-w-[20rem] bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-[10px] sm:text-xs px-3.5 py-2.5 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 font-bold tracking-wide transition-opacity duration-300 z-50 whitespace-normal text-center leading-relaxed">
+        <div className="absolute top-1/2 left-1/2 sm:left-[-14rem] -translate-x-1/2 sm:-translate-x-full -translate-y-1/2 w-[80vw] max-w-[16rem] sm:w-[18rem] sm:max-w-[18rem] bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-[10px] sm:text-xs px-3.5 py-2.5 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 font-bold tracking-wide transition-opacity duration-300 z-50 whitespace-normal text-center leading-relaxed">
           {typedMsg}
         </div>
       )}
