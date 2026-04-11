@@ -3,13 +3,16 @@ import { UploadCloud, ChevronRight, ChevronLeft, Download, FileSpreadsheet, File
 import { useStateContext } from '../context/StateContext';
 import { generateDDQ } from '../lib/ddqEngine';
 import { db } from '../lib/db';
+import { encryptBlob } from '../lib/cryptoVault';
 import { useMasterData } from '../hooks/useMasterData';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
   const { activeBianDomains, activeTags } = useStateContext();
   const reviewTypes = useMasterData('Review Type');
   const appTiers = useMasterData('Application Tier');
   const hostingModels = useMasterData('Hosting Model');
+  const reportTemplates = useLiveQuery(() => db.report_templates.where('status').equals('Active').toArray(), []) || [];
   
   const [step, setStep] = useState(1);
   
@@ -20,6 +23,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
     hostingModel: '',
     bianDomainId: '',
     tags: [] as string[],
+    humanThoughts: '',
+    reportTemplateId: '',
   });
   
   const [vendorDdqFiles, setVendorDdqFiles] = useState<File[]>([]);
@@ -105,6 +110,14 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         .filter(wf => wf.triggerReviewType === formData.type && wf.status === 'Active')
         .first();
 
+      const encryptedDdqBlobs = await Promise.all(
+        vendorDdqFiles.map(async f => ({ name: f.name, type: f.type, blob: await encryptBlob(f) }))
+      );
+      
+      const encryptedArchitectureBlobs = await Promise.all(
+        architectureFiles.map(async f => ({ name: f.name, type: f.type, blob: await encryptBlob(f) }))
+      );
+
       await db.review_sessions.add({
         projectName: formData.projectName || 'Untitled Project',
         type: formData.type,
@@ -113,8 +126,10 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         bianDomainId: formData.bianDomainId ? parseInt(formData.bianDomainId) : null,
         tags: formData.tags,
         status: 'Draft',
-        ddqBlobs: vendorDdqFiles.map(f => ({ name: f.name, type: f.type, blob: f })),
-        architectureBlobs: architectureFiles.map(f => ({ name: f.name, type: f.type, blob: f })),
+        ddqBlobs: encryptedDdqBlobs,
+        architectureBlobs: encryptedArchitectureBlobs,
+        humanThoughts: formData.humanThoughts,
+        reportTemplateId: formData.reportTemplateId ? parseInt(formData.reportTemplateId) : undefined,
         createdAt: new Date()
       });
       setIsSaved(true);
@@ -135,7 +150,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         <button 
           onClick={() => {
             setStep(1);
-            setFormData({ projectName: '', type: '', appTier: '', hostingModel: '', bianDomainId: '', tags: [] });
+            setFormData({ projectName: '', type: '', appTier: '', hostingModel: '', bianDomainId: '', tags: [], humanThoughts: '', reportTemplateId: '' });
             setVendorDdqFiles([]);
             setArchitectureFiles([]);
             setIsSaved(false);
@@ -238,6 +253,30 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Report Template</label>
+              <select 
+                value={formData.reportTemplateId}
+                onChange={e => setFormData({...formData, reportTemplateId: e.target.value})}
+                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">Select Report Template...</option>
+                {reportTemplates.map(template => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Human Thoughts / Additional Knowledge</label>
+              <textarea 
+                value={formData.humanThoughts}
+                onChange={e => setFormData({...formData, humanThoughts: e.target.value})}
+                placeholder="Enter any additional context, constraints, or thoughts for the AI..."
+                className="w-full h-24 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+              />
             </div>
 
             <div>

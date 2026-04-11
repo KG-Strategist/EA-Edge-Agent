@@ -1,50 +1,53 @@
-# 🛡️ Project NITI
+# 🛡️ EA-NITI: 100% Air-Gapped Enterprise Architecture AI
 
 <div align="center">
-  <h2>Reduce EA Review Cycles from Weeks to Hours with Absolute Data Privacy</h2>
-  <p><em>An open-source, air-gapped Enterprise Architecture co-pilot powered by WebGPU and local AI.</em></p>
+  <h2>Zero-Backend, In-Browser Edge AI for Enterprise Architecture</h2>
+  <p><em>Reduce EA Review Cycles from Weeks to Hours with Absolute Data Privacy.</em></p>
 
   ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-  ![React](https://img.shields.io/badge/React-18-blue)
+  ![React](https://img.shields.io/badge/React-19-blue)
   ![WebGPU](https://img.shields.io/badge/WebGPU-Enabled-green)
-  ![Local AI](https://img.shields.io/badge/AI-Local_Phi--3-orange)
+  ![Local AI](https://img.shields.io/badge/AI-Local_MoE-orange)
 </div>
 
 ---
 
-## 🚀 What is NITI?
+## 🚀 What is EA-NITI?
 
-NITI (**N**etwork-isolated, **I**n-browser, **T**riage & **I**nference) is a groundbreaking Progressive Web App (PWA) designed as an assistive tool for lean Enterprise Architecture teams. Traditionally, EA reviews (NSI, ER) take weeks of manual analysis and documentation. Our solution reduces this to hours by leveraging cutting-edge browser technologies.
+**EA-NITI** (**N**etwork-isolated, **I**n-browser, **T**riage & **I**nference) is a groundbreaking Progressive Web App (PWA) designed as an assistive tool for lean Enterprise Architecture teams. Traditionally, EA reviews (NSI, ER) take weeks of manual analysis and documentation. Our solution reduces this to hours by leveraging cutting-edge browser technologies.
 
-💡 **Project Scope & InfoSec Reality:** This tool is designed to be a frictionless, single-user local utility. It intentionally does **not** include heavyweight enterprise identity integrations (like UAM, PAM, or SSO). Because the app runs 100% locally in your browser and stores data via IndexedDB, it bypasses the need for complex access management while guaranteeing zero data leakage.
+💡 **Project Scope & InfoSec Reality:** This tool is designed to be a frictionless, highly secure local utility. Because the app runs **100% locally in your browser** with **zero backend**, it bypasses the need for complex access management while guaranteeing zero data leakage.
 
-## ✨ Core Features
+## ✨ Current Active Capabilities (MVP v1.0)
 
-| Feature | Description | Technology |
-|---------|-------------|------------|
-| **Dynamic Content Metamodel** | Flexible EA frameworks with customizable layers, principles, and artifacts. | Dexie.js (IndexedDB) |
-| **Intelligent DDQ Generator** | Automated Excel-based Due Diligence Questionnaires based on intake context. | xlsx (SheetJS) |
-| **Air-Gapped OCR** | Local optical character recognition to read architecture diagrams offline. | tesseract.js (Web Worker) |
-| **WebGPU LLM Evaluation** | Browser-native AI to analyze systems against your specific EA principles. | @mlc-ai/web-llm (Phi-3-mini) |
-| **Local RAG Pipeline** | Vector-based retrieval of past architectural decisions to prevent collisions. | @xenova/transformers |
-| **Agnostic BYOE Gateway** | Opt-in "Bring Your Own Endpoint" to fetch market trends securely. | Custom Gateway |
-| **Architecture-as-Code** | Auto-generates Mermaid.js visual diagrams for final ADR exports. | mermaid.js |
+| Feature | Description |
+|---------|-------------|
+| **Dual-Engine Support (Local API + Browser Cache)** | Dual-Engine Support (Local API + Browser Cache) with WebGPU LLM inference and MoE model routing. |
+| **Enterprise RAG Pipeline** | Local RAG semantic search over historical decisions + ingested enterprise knowledge. |
+| **Zero-PII Authentication** | PBKDF2-hashed local auth with pseudonymous identities. |
+| **Bring Your Own Model (BYOM)** | Connect to custom local/intranet network endpoints (e.g., Ollama) for zero-egress telemetry processing. |
+| **USB Sideloading (Sneakernet)** | Offline sideloading of WebLLM models via folder upload directly to browser cache. |
+| **Dynamic Content Metamodel** | TOGAF-aligned, fully customizable EA frameworks. |
+| **STRIDE Threat Modeling** | Interactive DFD builder with rule-based threat analysis. |
+| **Governance Workflows** | Configurable multi-stage review pipelines. |
+| **Customizable DPDP/GDPR Guardrails** | Admin-managed privacy rules dynamically injected into the AI system prompt before every inference call. |
+| **Immutable Audit Logging with Offline CSV Export** | Every data mutation is logged with text search, date-range filtering, and air-gapped CSV download via Browser Blob API. |
+| **Failsafe JSON Knowledge Base Import/Export** | Portability feature with strict schema validation and full event logging. |
 
 ## 🛡️ Security Architecture: Zero Data Leakage
 
 The biggest hurdle to using AI in Enterprise Architecture is data privacy. You cannot upload proprietary network diagrams to public cloud LLMs. This tool solves that by running the AI on your hardware.
 
-1. **Air-Gapped Design:** All AI inference, embeddings, and OCR processing run in isolated Web Workers. There is no cloud database.
-2. **Double Opt-In BYOE Gateway:** Network integrations are disabled by default. If an admin chooses to fetch external market trends, they must explicitly consent. **Zero local architecture data (principles, tags, project names) is ever transmitted.**
-3. **Local Storage:** Everything is stored inside your browser's persistent cache via Dexie.js.
+1. **100% Air-Gapped Design:** All AI inference, embeddings, and database operations run in isolated Web Workers and local storage. There is no cloud database.
+2. **Zero-Backend:** The application is served as static files and executes entirely within the client's browser.
+3. **Local Storage:** Everything is stored inside your browser's persistent cache.
 
 ## 🛠️ Tech Stack
 
-* **Frontend:** React 19, Tailwind CSS, Lucide React
-* **AI & Machine Learning (Browser-Native):** `@mlc-ai/web-llm` (Phi-3), `@xenova/transformers` (Embeddings)
-* **Document Engine:** `tesseract.js` (OCR), `xlsx` (Excel), `html2pdf.js`, `mermaid` (Diagrams)
-* **Storage:** `Dexie.js` (IndexedDB wrapper)
-* **Build:** Vite, TypeScript
+* **Frontend:** React 19, Tailwind CSS v4, Lucide React
+* **AI & Machine Learning (Browser-Native):** `@mlc-ai/web-llm` (Gemma 4 / SmolLM), `voy-search` (Embeddings)
+* **Storage:** IndexedDB, WASM PostgreSQL
+* **Build:** Vite 6.x, TypeScript 5.8
 
 ## 🚀 Developer Setup
 
@@ -72,16 +75,19 @@ npm run dev
 
 ### 🔒 Preparing the Offline Edge AI (Cache Initialization)
 
-Due to out strict air-gapped security policy, the internal AI engine cannot automatically download inference weights from the public internet. You must explicitly consent via the **UI Control Flow** on first launch.
+Due to our strict air-gapped security policy, the internal AI engine cannot automatically download inference weights from the public internet. You have two options:
 
-**Steps to securely cache the AI Engine:**
+**Option A: Offline Sideloading (Sneakernet)**
+1. Obtain the raw model weights on a USB drive or local folder.
+2. Navigate to **Control Panel** > **Model Sandbox**.
+3. Use the **Offline Sideload (Folder Upload)** tool to select the folder. The weights will be written directly to the browser cache.
+
+**Option B: One-Time Network Consent**
 1. Navigate to the **Control Panel** > **Network & Privacy**.
 2. **Enable "External Network Features"** (This temporarily allows your browser to fetch the WebLLM models).
-3. Try triggering an AI feature (e.g., go to `Master Categories` > click `Auto Generate`).
-4. An Air-Gap Block consent modal will intercept the action. Click **"Consent & Download"**.
-5. Wait for the browser to download and shard the `~1.8GB` weights into IndexedDB.
-6. Once complete, return to **Network & Privacy** and **Disable** external network access.
-7. The application is now fully air-gapped. The AI natively executes from `IndexedDB` forever.
+3. Try triggering an AI feature. An Air-Gap Block consent modal will intercept the action. Click **"Consent & Download"**.
+4. Wait for the browser to download and shard the weights into IndexedDB.
+5. Once complete, return to **Network & Privacy** and **Disable** external network access.
 
 🤝 Contributing
 We welcome contributions from the open-source community and Enterprise Architects alike!

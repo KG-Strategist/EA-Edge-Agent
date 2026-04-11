@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+// React auto-injected by JSX transform
 import PrinciplesTab from '../components/admin/PrinciplesTab';
 import LayersTab from '../components/admin/LayersTab';
 import CategoriesTab from '../components/admin/CategoriesTab';
@@ -7,6 +7,7 @@ import BianTab from '../components/admin/BianTab';
 import TagsTab from '../components/admin/TagsTab';
 import NetworkIntegrationTab from '../components/admin/NetworkIntegrationTab';
 import PromptsTab from '../components/admin/PromptsTab';
+import AgentConfigTab from '../components/admin/AgentConfigTab';
 import WorkflowTab from '../components/admin/WorkflowTab';
 import TemplatesTab from '../components/admin/TemplatesTab';
 import SystemTab from '../components/admin/SystemTab';
@@ -16,7 +17,7 @@ import AuditWorkspaceTab from '../components/admin/AuditWorkspaceTab';
 import DpdpTab from '../components/admin/DpdpTab';
 import ModelSandboxTab from '../components/admin/ModelSandboxTab';
 
-export default function AdminPanel({ adminSubView, setAdminSubView }: { adminSubView: string, setAdminSubView: (v: string) => void }) {
+export default function AdminPanel({ adminSubView, setAdminSubView: _setAdminSubView }: { adminSubView: string, setAdminSubView: (v: string) => void }) {
   const activeTab = adminSubView;
 
   return (
@@ -31,6 +32,7 @@ export default function AdminPanel({ adminSubView, setAdminSubView }: { adminSub
             {activeTab === 'bian' && <BianTab />}
             {activeTab === 'tags' && <TagsTab />}
             {activeTab === 'prompts' && <PromptsTab />}
+            {activeTab === 'configs' && <AgentConfigTab />}
             {activeTab === 'workflows' && <WorkflowTab />}
             {activeTab === 'templates' && <TemplatesTab />}
             {activeTab === 'network' && <NetworkIntegrationTab />}

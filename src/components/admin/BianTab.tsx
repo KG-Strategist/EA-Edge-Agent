@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { db, BianDomain } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown, Search, Info, Archive, RotateCcw } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowUpDown, Search, Archive, RotateCcw } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';

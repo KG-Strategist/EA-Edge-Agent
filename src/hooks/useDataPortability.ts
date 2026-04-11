@@ -11,7 +11,8 @@ type TableName =
   | 'prompt_templates'
   | 'review_workflows'
   | 'report_templates'
-  | 'threat_models';
+  | 'threat_models'
+  | 'custom_agents';
 
 interface UseDataPortabilityOptions {
   tableName: TableName;

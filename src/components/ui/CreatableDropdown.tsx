@@ -1,4 +1,4 @@
-import React from 'react';
+
 import CreatableSelect from 'react-select/creatable';
 import { db } from '../../lib/db';
 

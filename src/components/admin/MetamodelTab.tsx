@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ContentMetamodel } from '../../lib/db';
 import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw } from 'lucide-react';
@@ -10,8 +10,7 @@ import { useMasterData } from '../../hooks/useMasterData';
 import { useDataPortability } from '../../hooks/useDataPortability';
 import PageInfoTile from '../ui/PageInfoTile';
 import StatusSelect from '../ui/StatusSelect';
-import CreatableDropdown, { reactSelectClassNames } from '../ui/CreatableDropdown';
-import Select from 'react-select';
+import CreatableDropdown from '../ui/CreatableDropdown';
 
 type SortableColumn = keyof ContentMetamodel;
 
@@ -127,16 +126,7 @@ export default function MetamodelTab() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400';
-      case 'Deprecated':
-        return 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400';
-      default:
-        return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
-    }
-  };
+
 
   const SortHeader = ({ column, label }: { column: SortableColumn; label: string }) => (
     <th className="px-4 py-3 font-medium">

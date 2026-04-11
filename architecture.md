@@ -42,6 +42,7 @@ The system is purpose-built for lean EA teams in regulated industries (BFSI, gov
 | **BDAT Scorecard Engine** | Weighted vendor comparison across Business, Data, Application, Technology axes |
 | **Air-Gapped OCR** | Local Tesseract.js extracts text from architecture diagrams |
 | **Dual-Engine WebGPU LLM** | MoE model routing (Core + SME) via `@mlc-ai/web-llm` |
+| **Offline Sideloading** | USB/Folder upload directly to OPFS CacheStorage (Sneakernet support) |
 | **Enterprise RAG Pipeline** | Semantic search over historical decisions + ingested enterprise knowledge |
 | **STRIDE Threat Modeling** | Rule-based + AI-enriched threat analysis with DFD generation |
 | **Governance Workflows** | Configurable multi-stage review pipelines (AI + Human approval gates) |
@@ -375,6 +376,8 @@ The codebase follows a strict 5-layer architecture. Dependencies flow **downward
 
 ## 8. Data Architecture
 
+> **Development Status: Coded & Active**
+
 ### 8.1 Database: `EADatabase` (Dexie.js / IndexedDB)
 
 **Current Schema Version:** 23  
@@ -442,7 +445,20 @@ db.audit_logs.add({
 });
 ```
 
-### 8.3 Schema Migration Strategy
+### 8.3 Knowledge Sync & Portability
+
+System Portability includes strict JSON schema validation prior to import and maintains a localized 'Knowledge Sync History' ledger to track all ontology state transfers. This prevents malformed data payloads from corrupting the core architectural taxonomies and provides an immutable audit trail of what was imported or exported.
+
+All history and audit tables across the platform strictly enforce UI parity, supporting localized date-range filtering and zero-network Blob CSV exports.
+
+#### Future Roadmap (v1.1+)
+- **Granular Export:** UI to selectively export specific domains/taxonomies rather than the entire NITI Brain.
+- **Visual Diff / Conflict Resolution:** A Git-style merge UI to manually resolve JSON payload conflicts against the local Dexie DB prior to committing imports.
+- **Cryptographic Integrity:** Hashing/signing exported JSON payloads to detect tampering during air-gapped USB transit.
+- **Automated Snapshots & Point-in-Time Rollback:** Automatically capturing a full JSON state backup to Dexie immediately prior to any Knowledge Import, allowing Admins to 1-click "Revert" from the Sync History table.
+- **Global Table Component:** Extract table filtering and CSV export into a global, reusable `<EnterpriseDataTable />` component to enforce strict DRY principles.
+
+### 8.4 Schema Migration Strategy
 
 The database uses Dexie's built-in versioned migration system. Key migrations include:
 
@@ -470,9 +486,21 @@ Review sessions use an extended 5-state machine:
 Draft → Pending → In Progress → Completed / Rejected
 ```
 
+### 8.5 Global Deletion Policy
+
+All destructive actions utilize our centralized delete utility (`useArchive.ts`). Standard entities are Soft Deleted (Archived) by updating their status to `Deprecated`. RAG entities (such as ingested documents) utilize a "Hybrid-Purge" (Hard Delete vectors + Soft Delete metadata) to prevent LLM ghost-data hallucination while preserving the audit trail of the original ingestion jobs.
+
+All data tables implement a strict UI toggle to view Archived/Purged records, ensuring full visibility of the Soft Delete audit trail. Default system templates (Prompts) utilize on-mount deduplicated seeding to initialize the local Dexie DB.
+
 ---
 
 ## 9. AI & Inference Pipeline
+
+> **Development Status: Coded & Active**
+
+EA-NITI utilizes a Multi-Agent Swarm architecture. Core routing agents are strictly linked to the inference engine via immutable DB flags. Custom agents are managed in the 'Mitra Registry', supporting JSON portability and OPA policy scaling.
+
+Agent Configurations allow dynamic WebLLM URL targeting with proactive WebGPU availability checks. All Agent Center views are strictly routed and adhere to the global Soft Delete policy.
 
 ### 9.1 Dual-Engine Model Architecture
 
@@ -505,6 +533,8 @@ if (engine && currentActiveModelId !== targetModelId) {
 ```
 
 ### 9.4 Model Consent Flow
+
+Verified execution path for WebLLM caching: UI Network Check -> Enterprise Consent Modal Render -> Immutable Dexie Audit Log -> Model Download Execution. State hydration and component rendering strictly enforce this sequence.
 
 ```
 User Triggers AI Feature
@@ -549,6 +579,12 @@ Two separate knowledge stores are queried in parallel:
 
 Results are prepended to the prompt as `[PROPRIETARY ENTERPRISE CONTEXT]` and `[ENTERPRISE HISTORICAL CONTEXT]` blocks.
 
+Ingestion history strictly adheres to offline audit standards, featuring zero-network CSV exports and localized date filtering. MVP 1.0 utilizes robust client-side parsing with strict file-type validation (PDF, MD, TXT, CSV, DOCX, Free Text). Legacy binaries are explicitly rejected. The Document Registry supports cascading deletion of semantic chunks for strict data lifecycle management.
+
+#### Future Roadmap (v1.1+)
+1. **Advanced EA Parsers**: Direct Archimate XML and TOGAF ingestion.
+2. **Granular Chunking Config**: UI controls for semantic chunk size/overlap.
+
 ### 9.6 Full Review Execution Pipeline
 
 ```
@@ -573,9 +609,27 @@ Results are prepended to the prompt as `[PROPRIETARY ENTERPRISE CONTEXT]` and `[
    └── Generate & store review_embeddings for future RAG
 ```
 
+### 9.7 Offline Sideloading (Sneakernet)
+
+To support strict air-gapped environments where the browser cannot reach external model hubs, EA-NITI supports **Offline Sideloading**. Users can select a local folder (e.g., from a USB drive) containing raw model weights. The system bypasses all network requests and writes the files directly into the browser's OPFS `CacheStorage` bucket used by WebLLM, registering the model for immediate offline use.
+
+#### Future Roadmap (v1.1+)
+1. **WebGPU LoRA Fine-Tuning**: On-device adapter training using telemetry stored in the Distillation Target bins.
+2. **Native GGUF Parsing**: Support for single-file model sideloading without directory structures.
+
+### 9.8 Infrastructure vs. Persona Separation
+
+The engine strictly separates **Hardware Infrastructure** (the LLM weight layers and inference APIs) from **Agent Personas** (the semantic guardrails, system prompts, and classification logic). 
+
+**Implementation Details:**
+- **Agent Categories (Master Data):** The core routing parameter (e.g. `Tiny Triage`, `MOE`, or `Coding Agent`) defines the cognitive framework, completely abstracted away from whether the model is loaded via WebGPU, Sideload, or Local API.
+- **Scaling via OPA Guardrails for 'Coding Agent':** By decoupling the Persona from the Infrastructure, EA-NITI can safely scale into complex Agentic execution environments. For example, a `Coding Agent` persona could route inference to a Local API (like a large Ollama model), but its execution privileges would be dynamically intercepted by upcoming OPA (Open Policy Agent) guardrails, preventing shell breakout or unauthorized local network polling regardless of the underlying LLM's capabilities.
+
 ---
 
 ## 10. Security Architecture
+
+> **Development Status: Coded & Active**
 
 ### 10.1 Zero Data Leakage Model
 
@@ -623,7 +677,61 @@ Results are prepended to the prompt as `[PROPRIETARY ENTERPRISE CONTEXT]` and `[
 | **Query Sanitization** | BYOE gateway strips `<>"'{}\\[]` and truncates to 500 chars |
 | **Cross-Origin Isolation** | Vite serves with `Cross-Origin-Embedder-Policy: require-corp` + `Cross-Origin-Opener-Policy: same-origin` |
 | **Pseudonymous Identities** | Auto-generated tech-themed pseudonyms (e.g., "Quantum-Nexus-42") |
-| **Audit Trail** | Every DB mutation logged with timestamp, pseudokey, action, table |
+| **Audit Trail** | Every DB mutation logged with timestamp, pseudokey, action, table. The Audit Workspace supports text search (action/table/user), date-range filtering, and air-gapped CSV log export via the browser Blob API (`URL.createObjectURL`). Zero network calls. |
+
+### 10.4 Identity & Network Air-Gap Strategy
+
+> **Development Status: Tier 1 Coded & Active (MVP 1.0)**
+
+EA-NITI supports a **3-tier identity model** designed for progressive enterprise adoption:
+
+| Tier | Mode | Technology | Status |
+|---|---|---|---|
+| **Tier 1** | Standalone Air-Gap | Local Pseudonyms via Dexie (PBKDF2 + 2FA PIN) | ✅ Active (v1.0) |
+| **Tier 2** | Intranet Air-Gap | On-Premise AD / LDAP binding | ⏳ Planned (v1.1) |
+| **Tier 3** | Hybrid Cloud | External SSO via OIDC / SAML 2.0 | ⏳ Planned (v1.2) |
+
+**Tier 1 (MVP 1.0)** — Zero-backend deployment. Users create pseudonymous local identities with PBKDF2-hashed passwords and 2FA PIN verification. All credentials are stored exclusively in IndexedDB. No network connectivity is required.
+
+**Tier 2 (v1.1)** — Enterprise intranet deployment. The forthcoming **Edge Proxy** module will run as a lightweight sidecar process that handles LDAP bind operations and translates AD group memberships into local RBAC roles without exposing raw LDAP traffic to the browser. The PWA communicates with the proxy over `localhost` only.
+
+**Tier 3 (v1.2)** — Hybrid cloud deployment. The Edge Proxy module extends to handle OIDC/SAML 2.0 token exchange (Authorization Code + PKCE) with external identity providers. Only the non-PII `sub` claim is extracted and linked to a local pseudonym. The browser PWA never directly contacts the external IdP — all token flows are proxied through the local Edge Proxy to avoid violating browser CORS and air-gap constraints.
+
+### 10.5 Contextual Privacy Guardrails (DPDP/GDPR)
+
+> **Development Status: Coded & Active (v24)**
+
+For MVP 1.0, privacy compliance is enforced at the **inference layer** via dynamic rule injection rather than an external policy engine (e.g., OPA). This keeps the system 100% air-gapped while maintaining configurable compliance.
+
+**Architecture:**
+
+```
+┌──────────────────────────────────────────────────┐
+│  Dexie → privacy_guardrails table                │
+│  ┌────────────────────────────────────────────┐  │
+│  │ id | title                  | isActive     │  │
+│  │  1 │ Strict PII Anonymize  │ ✅            │  │
+│  │  2 │ Data Localization     │ ✅            │  │
+│  │  3 │ (Custom User Policy)  │ ✅ / ❌       │  │
+│  └────────────────────────────────────────────┘  │
+│                    │                              │
+│                    ▼                              │
+│  getSystemPrompt() appends:                      │
+│  [PRIVACY GUARDRAILS — STRICT COMPLIANCE]        │
+│  1. [Strict PII Anonymization]: ...              │
+│  2. [Data Localization (DPDP)]: ...              │
+│  [END PRIVACY GUARDRAILS]                        │
+│                    │                              │
+│                    ▼                              │
+│  WebLLM / BYOM system prompt injection           │
+└──────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+- **Default Guardrails** are seeded during DB initialization and cannot be deleted (only toggled active/inactive).
+- **Custom Guardrails** can be created, toggled, and deleted by Lead EA administrators.
+- The guardrails block is fetched on **every** `getSystemPrompt()` call (both `chatWithAgent` and `generateReview`), ensuring no stale policy state.
+- No external policy engine dependency — rules are simple text constraints that shape the LLM's behavior boundary.
 
 ---
 
@@ -635,8 +743,8 @@ The application uses **state-based routing** via `useState` in `App.tsx` — no 
 
 ```typescript
 const [currentView, setCurrentView] = useState('dashboard');
-//  dashboard | reviews | threat | admin | expert-config |
-//  agent-config | system-config | execution
+//  dashboard | reviews | threat | expert-config |
+//  agent-config | system-pref | knowledge-mgmt
 ```
 
 ### 11.2 View Map
@@ -872,17 +980,77 @@ Admin tables use this critical pattern (do NOT wrap in nested `overflow-x-auto`)
 
 ---
 
-## 17. Future Roadmap
+## 17. Future Roadmap: The Autonomous EA Platform (Post-HOPEX Era)
 
-| Feature | Status | Technology |
-|---|---|---|
-| **Model Fine-Tuning Pipeline** | Scripts ready (`scripts/tiny-model-builder/`) | Python, HuggingFace Transformers |
-| **PDF/Markdown Export** | Partially implemented | html2pdf.js |
-| **Custom Dashboard Widgets** | Widget library defined | React, Dexie |
-| **DPDP Compliance Module** | Placeholder tab (`DpdpTab.tsx`) | — |
-| **Enterprise SSO (SAML/LDAP)** | OAuth 2.0 PKCE implemented; local enterprise SSO config schema ready | oauthConfig.ts |
-| **Offline Model Serving** | `public/models/` directory prepared; `isLocalhost` flag in model registry | Vite static serving |
-| **Knowledge Distillation** | `allowDistillation` flag in AIModelRecord | — |
+Legacy EA platforms (e.g., MEGA HOPEX, ArchiMate, LeanIX) rely on manual data entry, human-drawn diagrams, and static cloud databases to manage Enterprise Architecture. EA-NITI’s strategic roadmap leapfrogs this paradigm by shifting to **Autonomous Architecture Generation** running entirely at the edge. 
+
+We do not manually map the enterprise; we allow the local AI swarm to discover, infer, and generate the enterprise landscape from the ground up based on ingested reviews, DDQs, and code.
+
+### 17.1 Epic 1: "NITI-Pedia" (The Autonomous Enterprise Wiki)
+* **The Legacy Approach:** Static document repositories and manually updated relational catalogs.
+* **The EA-NITI Solution:** Inspired by the LLMWiki concept, the platform autonomously generates and maintains a living, deeply interlinked enterprise wiki stored entirely on the user's local filesystem (via OPFS or the File System Access API).
+  * **Auto-Documentation:** As the WebLLM processes reviews and DDQs, it generates structured Markdown files and Mermaid diagrams for every discovered system, API, and component.
+  * **BMM Tagging & Strategic Alignment:** Every generated artifact is semantically analyzed and automatically tagged to the organization's Business Motivation Model (Vision, Goals, Tactics). The AI auto-generates alignment justifications for all projects.
+  * **Local Render Engine:** A built-in Markdown viewer allows users to endlessly browse the enterprise landscape as a highly structured wiki, completely offline.
+
+### 17.2 Epic 2: Autonomous TIME Rationalization (The "Box-in-Box" Killer)
+* **The Legacy Approach:** Humans manually drag applications into Business Capability Maps and manually assign TIME (Tolerate, Invest, Migrate, Eliminate) scores via surveys.
+* **The EA-NITI Solution:** * **Generative APM:** The WebLLM continuously analyzes ingested DDQs, OCR'd diagrams, and BDAT scorecards to autonomously tag applications to the BIAN/TOGAF capability models.
+  * **Algorithmic TIME Scoring:** Based on threat models, architectural debt, and strategic BMM alignment, EA-NITI automatically flags components for Tolerate, Invest, Migrate, or Eliminate.
+  * **Local D3.js Visualization:** Implement an interactive, auto-generated "Box-in-Box" React component (via D3.js or Treemap layouts) that visualizes the enterprise portfolio and highlights overlapping capabilities without human intervention.
+
+### 17.3 Epic 3: Semantic Dependency Graphing (The App Flow Killer)
+* **The Gap:** Visualizing "what breaks if this application goes down" requires manual linking of component contracts.
+* **The EA-NITI Solution:** * **Inferred Architecture Graph:** As the RAG engine ingests new architecture reviews and OCRs data flow diagrams (DFDs), a background Web Worker uses Named Entity Recognition (NER) to extract implicit dependencies (System A calls System B via API X).
+  * **Interactive WebGL Graph:** Deploy a lightweight, local WebGL force-directed graph (`react-force-graph`). Users click an application node to instantly see its upstream processes and downstream dependencies derived entirely from semantic memory.
+
+### 17.4 Epic 4: 4D Temporal Architecture (The Lifecycle Killer)
+* **The Gap:** Legacy tools use complex, heavy database cloning to show "As-Is" vs "To-Be" states.
+* **The EA-NITI Solution:** * **Event-Sourced Timelines:** Enhance the `EADatabase` audit logs to act as an immutable event-sourced ledger.
+  * **Transition State Simulator:** Build a UI "Time-Slider." Because all data is local, the browser can instantly re-compute the state of the architecture landscape, threat models, and capability maps at any historical date, or simulate a projected future date based on approved project workflows.
+
+### 17.5 Epic 5: Multi-Agent Governance Swarm
+* **The Gap:** Traditional governance is linear and bottlenecked by human review boards.
+* **The EA-NITI Solution:** Evolve the Mixture of Experts (MoE) into an autonomous swarm. When a review is submitted, EA-NITI spins up background Web Workers representing specific personas (Security Agent, Data Privacy Agent, FinOps Agent). These local agents "debate" the architecture against the `architecture_principles` table simultaneously, highlighting STRIDE threats, DPDP compliance gaps, and BDAT violations in seconds.
+
+### 17.6 Epic 6: Deep Edge Observability (MELT Engine)
+* **The Gap:** Standard web apps lack deep introspection into local performance and agent reasoning.
+* **The EA-NITI Solution:** Integrate an **OpenTelemetry (OTEL) Collector powered by a Rust Engine** compiled to WebAssembly (WASM). This provides ultra-fast, air-gapped processing of MELT data (Metrics, Events, Logs, Traces) directly in the browser, tracking AI inference times, Web Worker memory usage, and RAG retrieval latency without reporting to the cloud. *(Note: MVP v1.0 currently implements a JavaScript Web Worker fallback that flushes to local IndexedDB instead of the Rust/Wasm engine).*
+
+### 17.7 Epic 7: Dynamic Experience & Edge Tuning
+* **Dynamic Dashboard Builder:** Move away from static widget layouts. Implement a drag-and-drop, grid-based dashboard builder allowing users to create highly customized, role-specific views (e.g., CISO view vs. Lead Architect view) persisted in IndexedDB.
+* **Train via Web:** Expand the `tiny-model-builder` scripts into a browser-accessible UI. Allow advanced users to initiate local LoRA (Low-Rank Adaptation) fine-tuning of the WebLLM using their local `EADatabase` as the training corpus, executing directly on their hardware.
+
+### 17.8 Epic 8: Cloud-Connected Ecosystem (Strictly Internet / Double Opt-In)
+While EA-NITI is strictly air-gapped by default, enabling the "Network Integrations" gateway unlocks powerful community features:
+* **Global Agent Chat:** An internet-connected master agent that queries live technology standards, CVE databases, and global EA frameworks to augment the local SME models.
+* **EA Marketplace:** A centralized, web-based repository where users can download, share, and rate custom prompt templates, governance workflows, DDQ rule sets, and BIAN metamodels.
+* **Open-EA-Model Community Build:** An opt-in telemetry and federated learning pipeline where users can anonymously contribute sanitized architectural patterns and mapping rules to collaboratively train the ultimate open-source "Open-EA" foundational model.
+
+### 17.9 Epic 9: Advanced Audit Logging (v1.1)
+
+> **Strategy:** MVP 1.0 ships a clean, scannable audit table with text search, date filtering, and CSV export. The features below were deliberately deferred to avoid UI clutter in the initial release.
+
+* **Raw JSON Payload Storage:** Extend the existing `audit_logs.details` column (already a `string` field in the Dexie schema) to store the **full JSON diff** of every CRUD operation — the before/after state of the modified record. The main table UI remains unchanged; the raw payload is exposed only via CSV exports and the drill-down modal below.
+* **Row Drill-Down Modal:** Clicking any row in the Audit Workspace opens a slide-over panel showing the full mutation context: timestamp, user alias, table, action, affected record ID, and a syntax-highlighted JSON viewer displaying the raw `details` payload. This enables compliance officers to inspect exactly what changed without leaving the browser.
+* **Dynamic Column Configuration:** Allow administrators to toggle which columns are visible in the audit table (e.g., show/hide `Record ID`, `Details Preview`, `IP Hash`). Column preferences are persisted in `app_settings` under a `AUDIT_TABLE_COLUMNS` key.
+
+---
+
+### Feature Implementation Matrix
+
+| Epic / Feature | Replaces Legacy Concept | Edge-Native Technology | Status |
+|---|---|---|---|
+| **Semantic Dependency Graph** | App Flows / Contracts | WebGL / Force-Graph / Local NER | Planned |
+| **Generative Capability Maps** | Box-in-Box / TIME scoring | D3.js / WebLLM Inference | Planned |
+| **4D Temporal State Simulator** | As-Is/To-Be Lifecycles | Dexie Event Sourcing / React Motion | Planned |
+| **NITI-Pedia (Auto-Wiki)** | Static Doc Repositories | OPFS / React Markdown / Local RAG | Planned |
+| **Multi-Agent Governance** | Linear Architecture Boards | Web Worker Swarm / Prompt Builder | In Progress |
+| **OTEL MELT Rust Engine** | Cloud Application Monitoring | Rust / WebAssembly (WASM) | Planned |
+| **Dynamic Dashboard Builder** | Hardcoded UI Views | React Grid Layout / Dexie | Planned |
+| **Train via Web** | Cloud LLM Fine-tuning | WebGPU / Client-side LoRA | Planned |
+| **Marketplace & Global Chat** | Proprietary Vendor Lock-in | REST APIs / WebSockets (Opt-In) | Planned |
+| **Model Fine-Tuning Pipeline** | Cloud LLM Dependency | Python / HuggingFace Local Scripts | Ready |
 
 ---
 

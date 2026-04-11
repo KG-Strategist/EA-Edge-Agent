@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
-import { PlusCircle, Search, Trash2, Edit, FileText, Download } from 'lucide-react';
+import { PlusCircle, Search, Trash2, FileText, Download } from 'lucide-react';
 import IntakeWizard from './IntakeWizard';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import { downloadAsMarkdown } from '../lib/exportEngine';
 
-export default function ArchitectureReviews({ setCurrentView }: { setCurrentView: (v: string) => void }) {
+export default function ArchitectureReviews({ setCurrentView: _setCurrentView, setCurrentSessionId: _setCurrentSessionId }: { setCurrentView: (v: string) => void, setCurrentSessionId: (id: number) => void }) {
   const [showWizard, setShowWizard] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 

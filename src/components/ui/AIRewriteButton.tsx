@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { initAIEngine, generateReview } from '../../lib/aiEngine';
 

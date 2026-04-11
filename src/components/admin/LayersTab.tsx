@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ArchitectureLayer } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown, Info, Archive, RotateCcw } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';

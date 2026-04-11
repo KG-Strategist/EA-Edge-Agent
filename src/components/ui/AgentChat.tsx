@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Bot, User, Loader2, Sparkles, AlertTriangle, Paperclip, Minus } from 'lucide-react';
+import { MessageSquare, X, Send, User, Loader2, Sparkles, AlertTriangle, Paperclip, Minus } from 'lucide-react';
 import { chatWithAgent, isModelCached, DEFAULT_TINY_MODEL_ID } from '../../lib/aiEngine';
+import { pruneOldChats } from '../../lib/db';
+import { Logger } from '../../lib/logger';
 import { runOCR } from '../../lib/ocrEngine';
 import ReactMarkdown from 'react-markdown';
 import Logo from './Logo';
+import MessageBubble from './MessageBubble';
 
 export default function AgentChat() {
   const initialMessages: {role: 'user'|'assistant'|'system', content: string}[] = [
@@ -16,25 +19,49 @@ export default function AgentChat() {
   const [messages, setMessages] = useState<{role: 'user'|'assistant'|'system', content: string}[]>(initialMessages);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [selectedTarget, setSelectedTarget] = useState<'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid'>('Domain SME Model');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<'Primary EA Agent' | 'Tiny Triage Agent' | 'Auto-Route (MoE)'>('Tiny Triage Agent');
   const [isUploading, setIsUploading] = useState(false);
-  
+  const [loadProgress, setLoadProgress] = useState({ text: '', percent: 0 });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bufferRef = useRef<string>('');
+  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Scroll to bottom whenever messages change
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  }, [messages, isTyping, isGenerating]);
+
+  useEffect(() => {
+    const handleProgress = (e: any) => {
+      setLoadProgress({ text: e.detail.text, percent: e.detail.progress * 100 });
+    };
+    window.addEventListener('EA_AI_PROGRESS', handleProgress);
+    return () => window.removeEventListener('EA_AI_PROGRESS', handleProgress);
+  }, []);
 
   useEffect(() => {
     const checkModels = async () => {
-      // Optimistically default to EA Core if it's explicitly cached.
+      // Optimistically default to Primary EA Agent if it's explicitly cached.
       const isCoreCached = await isModelCached(DEFAULT_TINY_MODEL_ID);
-      if (isCoreCached) setSelectedTarget('EA Core Model');
+      if (isCoreCached) setSelectedTarget('Primary EA Agent');
     };
     checkModels();
   }, [isOpen]);
+
+  useEffect(() => {
+    // Cleanup timer on unmount
+    return () => {
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Prune old chat threads on component mount
+    pruneOldChats().catch(e => Logger.warn('Chat history pruning failed:', e));
+  }, []);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -59,43 +86,75 @@ export default function AgentChat() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
-    
+    if (!input.trim() || isTyping || isGenerating) return;
+
     const userMsg = input.trim();
     setInput('');
-    
+
     const newMessages = [...messages, { role: 'user' as const, content: userMsg }];
     setMessages(newMessages);
     setIsTyping(true);
-    
+    setIsGenerating(true);
+
     // Add temporary assistant message
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: '🧠 Analyzing architecture...' }]);
+
+    // Reset buffer and timer
+    bufferRef.current = '';
+    if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
 
     try {
-      await chatWithAgent(newMessages, (text) => {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1].content = text;
-          return updated;
-        });
-      }, selectedTarget);
+      // Throttled stream buffering callback
+      const onUpdate = (text: string) => {
+        bufferRef.current = text;
+
+        // Clear existing timer
+        if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+
+        // Schedule state update every 500ms
+        updateTimerRef.current = setTimeout(() => {
+          setMessages(prev => {
+            const updated = [...prev];
+            if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+              updated[updated.length - 1].content = bufferRef.current;
+            }
+            return updated;
+          });
+        }, 500);
+      };
+
+      // Truncate message history to last 6 + system
+      const truncatedMessages = [
+        ...newMessages.filter(m => m.role === 'system'),
+        ...newMessages.filter(m => m.role !== 'system').slice(-6)
+      ];
+
+      await chatWithAgent(truncatedMessages, onUpdate, selectedTarget);
+
+      // Final update with complete buffer
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+          updated[updated.length - 1].content = bufferRef.current;
+        }
+        return updated;
+      });
     } catch (error: any) {
-      console.error(error);
-      if (error.message?.includes('CONSENT_REQUIRED')) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1].content = "_Action completely blocked. Please Consent to download the model from the System Health dashboard first._";
-          return updated;
-        });
-      } else {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1].content = "_Error generating response. Ensure WebGPU is enabled and model is cached._";
-          return updated;
-        });
-      }
+      Logger.error('[AgentChat] chatWithAgent error:', error);
+      const errorDisplay =
+        error?.message?.includes('CONSENT_REQUIRED')
+          ? '_A model download is required. Please approve the consent dialog or sideload weights offline._'
+          : '_An unexpected error occurred. Please check System Health for diagnostics._';
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1].content = errorDisplay;
+        return updated;
+      });
     } finally {
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
       setIsTyping(false);
+      setIsGenerating(false);
     }
   };
 
@@ -105,6 +164,8 @@ export default function AgentChat() {
       <button
         onClick={() => { setIsOpen(true); setIsMinimized(false); }}
         className={`${isOpen && !isMinimized ? 'scale-0' : 'scale-100'} transition-transform duration-300 fixed bottom-6 right-6 w-14 h-14 bg-gray-900 dark:bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-purple-700 z-40 ring-4 ring-white dark:ring-gray-900 border border-gray-700/50 dark:border-purple-500`}
+        aria-label="Open Chat"
+        title="Open Chat"
       >
         <MessageSquare size={24} />
         <div className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900 dark:border-purple-600"></div>
@@ -116,13 +177,13 @@ export default function AgentChat() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 rounded-t-2xl">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center">
-              <Logo className="w-8 h-8 shrink-0" animated={false} />
+            <div className="w-10 h-10 flex items-center justify-center">
+              <Logo className="w-7 h-7 shrink-0" animated={false} />
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 EA NITI
-                {selectedTarget === 'EA Core Model' && <Sparkles size={12} className="text-purple-600 dark:text-purple-400" />}
+                {selectedTarget === 'Primary EA Agent' && <Sparkles size={12} className="text-purple-600 dark:text-purple-400" />}
               </h3>
               <p className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
                 Offline AI Engine Active
@@ -134,6 +195,7 @@ export default function AgentChat() {
                onClick={() => setIsMinimized(true)}
                className="p-1.5 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                title="Minimize without resetting chat"
+               aria-label="Minimize Chat"
              >
                <Minus size={18} />
              </button>
@@ -141,6 +203,7 @@ export default function AgentChat() {
                onClick={handleClose}
                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                title="Close and Clear chat block"
+               aria-label="Close Chat"
              >
                <X size={18} />
              </button>
@@ -149,36 +212,46 @@ export default function AgentChat() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.filter(m => m.role !== 'system').map((msg, i) => (
-            <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`w-8 h-8 flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : ''}`}>
-                {msg.role === 'user' ? <User size={14} /> : <Logo className="w-8 h-8 drop-shadow-sm" animated={false} />}
-              </div>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${msg.role === 'user' ? 'bg-gray-900 dark:bg-purple-600 text-white rounded-tr-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm border border-gray-200 dark:border-gray-700'}`}>
-                {msg.role === 'assistant' ? (
-                   <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed">
-                     <ReactMarkdown>{msg.content || (isTyping && i === messages.length - 1 ? '...' : '')}</ReactMarkdown>
-                   </div>
-                ) : (
-                  msg.content
-                )}
-              </div>
-            </div>
+          {messages.filter(m => m.role !== 'system').map((msg, i, filtered) => (
+            <MessageBubble
+              key={i}
+              role={msg.role}
+              content={msg.content}
+              isTyping={isTyping || isGenerating}
+              isLastMessage={i === filtered.length - 1}
+            />
           ))}
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
         <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-b-2xl">
+          {loadProgress.percent > 0 && loadProgress.percent < 100 && (
+            <div className="mb-3">
+              <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                <span className="truncate max-w-[80%]">{loadProgress.text}</span>
+                <span>{Math.round(loadProgress.percent)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                <div 
+                  className="bg-purple-500 h-1.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${loadProgress.percent}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
           <div className="mb-2">
-            <select 
+            <select
                value={selectedTarget}
                onChange={(e) => setSelectedTarget(e.target.value as any)}
                className="w-full text-[11px] font-medium bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded px-2 py-1 outline-none"
+               disabled={loadProgress.percent > 0 && loadProgress.percent < 100}
+               aria-label="Agent Router Target"
+               title="Agent Router Target"
             >
-               <option value="Auto-Route Hybrid">⚡ Auto-Route Hybrid</option>
-               <option value="Domain SME Model">🧠 Domain SME Model (Primary)</option>
-               <option value="EA Core Model">🏎️ Constraints Model (Tiny)</option>
+               <option value="Auto-Route (MoE)">⚡ Auto-Route (MoE)</option>
+               <option value="Tiny Triage Agent">🧠 Tiny Triage Agent</option>
+               <option value="Primary EA Agent">🏎️ Primary EA Agent</option>
             </select>
           </div>
           <form 
@@ -191,12 +264,16 @@ export default function AgentChat() {
                className="hidden" 
                ref={fileInputRef}
                onChange={handleFileUpload}
+               aria-label="Upload File"
+               title="Upload File"
             />
             <button
                type="button"
                onClick={() => fileInputRef.current?.click()}
                className="p-1.5 text-gray-400 hover:text-purple-500 rounded-lg transition-colors"
-               disabled={isUploading}
+               disabled={isUploading || isGenerating || (loadProgress.percent > 0 && loadProgress.percent < 100)}
+               aria-label="Attach File"
+               title="Attach File"
             >
                {isUploading ? <Loader2 size={16} className="animate-spin text-purple-500" /> : <Paperclip size={16} />}
             </button>
@@ -205,15 +282,19 @@ export default function AgentChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask EA NITI purely..."
-              className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-900 dark:text-white px-3 py-2 outline-none"
-              disabled={isTyping}
+              className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-900 dark:text-white px-3 py-2 outline-none disabled:opacity-50"
+              disabled={isTyping || isGenerating || (loadProgress.percent > 0 && loadProgress.percent < 100)}
+              aria-label="Chat input"
+              title="Chat input"
             />
             <button
               type="submit"
-              disabled={!input.trim() || isTyping || isUploading}
+              disabled={!input.trim() || isTyping || isGenerating || isUploading || (loadProgress.percent > 0 && loadProgress.percent < 100)}
               className="w-8 h-8 rounded-lg bg-gray-900 dark:bg-purple-600 text-white flex items-center justify-center disabled:opacity-50 shrink-0 transition-opacity"
+              aria-label="Send Message"
+              title="Send Message"
             >
-              {isTyping ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} className="ml-0.5" />}
+              {isTyping || isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} className="ml-0.5" />}
             </button>
           </form>
           <div className="mt-2 text-center">

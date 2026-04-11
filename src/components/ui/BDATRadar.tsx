@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 /**
  * BDATRadar — Reusable SVG radar chart for BDAT axis comparison.

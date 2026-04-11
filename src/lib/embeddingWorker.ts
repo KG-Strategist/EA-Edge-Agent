@@ -92,6 +92,11 @@ self.onmessage = async (e: MessageEvent) => {
       
       self.postMessage({ id, success: true, top3 });
     }
+    else if (type === 'GENERATE_EMBEDDING') {
+      const { text } = payload;
+      const output = await extract(text, { pooling: 'mean', normalize: true });
+      self.postMessage({ id, success: true, embedding: Array.from(output.data) });
+    }
   } catch (error: any) {
     self.postMessage({ id, success: false, error: error.message });
   }

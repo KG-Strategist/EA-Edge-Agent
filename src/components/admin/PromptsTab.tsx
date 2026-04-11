@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PromptTemplate } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown, Sparkles, Copy, ToggleLeft, ToggleRight, Archive, RotateCcw } from 'lucide-react';
-import ConfirmModal from '../ui/ConfirmModal';
+import { Plus, Edit, ArrowUpDown, Sparkles, Copy, Archive, RotateCcw } from 'lucide-react';
 import StatusToggle from '../ui/StatusToggle';
 import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import CreatableDropdown from '../ui/CreatableDropdown';
@@ -12,11 +11,43 @@ import { useDataPortability } from '../../hooks/useDataPortability';
 export default function PromptsTab() {
   const prompts = useLiveQuery(() => db.prompt_templates.toArray()) || [];
   const promptCategories = useMasterData('Prompt Category');
+
+  useEffect(() => {
+    const seedPrompts = async () => {
+      const count = await db.prompt_templates.count();
+      if (count === 0) {
+        const now = new Date();
+        const defaultPrompts: Omit<PromptTemplate, 'id'>[] = [
+          {
+            name: "DDQ Evidence Verification",
+            category: "Architecture Review",
+            executionTarget: "EA Core Model",
+            promptText: "You are an Enterprise Architecture auditor. Review the following architecture documentation:\n{{documentText}}\nDoes the documentation support the vendor's self-assessment? Identify any discrepancies.",
+            version: "1.0.0",
+            status: "Active",
+            createdAt: now,
+            updatedAt: now
+          },
+          {
+            name: "Threat Model Generator (STRIDE)",
+            category: "Security & Risk",
+            executionTarget: "Auto-Route Hybrid",
+            promptText: "Based on the provided system architecture:\n{{systemArchitecture}}\n\nGenerate a comprehensive threat model using the STRIDE methodology.",
+            version: "1.0.0",
+            status: "Active",
+            createdAt: now,
+            updatedAt: now
+          }
+        ];
+        await db.prompt_templates.bulkAdd(defaultPrompts);
+      }
+    };
+    seedPrompts();
+  }, []);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PromptTemplate | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -60,13 +91,6 @@ export default function PromptsTab() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteConfirm = async () => {
-    if (itemToDelete) {
-      await db.prompt_templates.delete(itemToDelete);
-      setItemToDelete(null);
-    }
-  };
-
   const handleStatusChange = async (item: PromptTemplate, newStatus: string) => {
     if (item.id) {
       await db.prompt_templates.update(item.id, {
@@ -95,7 +119,7 @@ export default function PromptsTab() {
     const formData = new FormData(e.currentTarget);
     const name = (formData.get('name') as string).trim();
     const promptText = (formData.get('promptText') as string).trim();
-    const executionTarget = formData.get('executionTarget') as 'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid';
+    const executionTarget = formData.get('executionTarget') as 'Primary EA Agent' | 'Tiny Triage Agent' | 'Auto-Route (MoE)';
 
     if (!name || !promptText) {
       setError('Name and prompt text are required.');
@@ -117,7 +141,7 @@ export default function PromptsTab() {
     const item: Omit<PromptTemplate, 'id'> = {
       name,
       category: selectedCategory,
-      executionTarget: executionTarget || 'Domain SME Model',
+      executionTarget: executionTarget || 'Tiny Triage Agent',
       promptText,
       version: (formData.get('version') as string).trim() || '1.0.0',
       status: (formData.get('status') as any) || 'Active',
@@ -156,6 +180,8 @@ export default function PromptsTab() {
             value={filterCategory}
             onChange={e => setFilterCategory(e.target.value)}
             className="text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white outline-none focus:border-blue-500"
+            aria-label="Filter Category"
+            title="Filter Category"
           >
             <option value="">All Categories</option>
             {promptCategories.map(c => (
@@ -251,7 +277,6 @@ export default function PromptsTab() {
                   {showArchived ? (
                     <>
                       <button onClick={() => handleRestore(p)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                      <button onClick={() => setItemToDelete(p.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
                     </>
                   ) : (
                     <>
@@ -263,7 +288,7 @@ export default function PromptsTab() {
                         <Copy size={16} />
                       </button>
                       {copiedId === p.id && <span className="text-xs text-green-500 mr-1">Copied!</span>}
-                      <button onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
+                      <button onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" aria-label="Edit Prompt" title="Edit Prompt"><Edit size={16} /></button>
                       <button onClick={() => handleArchive(p)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
                     </>
                   )}
@@ -319,12 +344,14 @@ export default function PromptsTab() {
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Execution Target</label>
                 <select
                   name="executionTarget"
-                  defaultValue={editingItem?.executionTarget || 'Domain SME Model'}
+                  defaultValue={editingItem?.executionTarget || 'Tiny Triage Agent'}
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500"
+                  aria-label="Execution Target"
+                  title="Execution Target"
                 >
-                  <option value="Auto-Route Hybrid">Auto-Route Hybrid (Dynamically swaps based on Prompt Intent)</option>
-                  <option value="EA Core Model">EA Core Model (TinyGPT - Best for strict DDQ/Rule tracking)</option>
-                  <option value="Domain SME Model">Domain SME Model (WebLLM - Best for broad industry/world knowledge)</option>
+                  <option value="Auto-Route (MoE)">Auto-Route (MoE) (Dynamically swaps based on Prompt Intent)</option>
+                  <option value="Primary EA Agent">Primary EA Agent (Best for strict DDQ/Rule tracking)</option>
+                  <option value="Tiny Triage Agent">Tiny Triage Agent (Best for fast categorization/routing)</option>
                 </select>
               </div>
 
@@ -347,7 +374,7 @@ export default function PromptsTab() {
 
               <div>
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Status</label>
-                <select name="status" defaultValue={editingItem?.status || 'Active'} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
+                <select name="status" defaultValue={editingItem?.status || 'Active'} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" aria-label="Status" title="Status">
                   <option value="Draft">Draft</option>
                   <option value="Active">Active</option>
                   <option value="Needs Review">Needs Review</option>
@@ -362,14 +389,7 @@ export default function PromptsTab() {
           </div>
         </div>
       )}
-
-      <ConfirmModal
-        isOpen={!!itemToDelete}
-        title="Delete Prompt"
-        message="Are you sure you want to delete this prompt template? This action cannot be undone."
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setItemToDelete(null)}
-      />
     </div>
   );
 }
+

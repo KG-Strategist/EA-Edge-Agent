@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { PlusCircle, Search, Trash2, Edit, ShieldAlert } from 'lucide-react';
@@ -7,6 +7,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 
 export default function ThreatModeling() {
   const [showEditor, setShowEditor] = useState(false);
+  const [editingId, setEditingId] = useState<number | undefined>();
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const models = useLiveQuery(() => db.threat_models.reverse().toArray());
@@ -22,12 +23,18 @@ export default function ThreatModeling() {
     return (
       <div className="relative">
         <button 
-          onClick={() => setShowEditor(false)}
+          onClick={() => {
+            setShowEditor(false);
+            setEditingId(undefined);
+          }}
           className="absolute -top-12 left-0 text-sm hover:text-blue-600 transition-colors"
         >
           &larr; Back to Threat Models
         </button>
-        <ThreatEditor onClose={() => setShowEditor(false)} />
+        <ThreatEditor onClose={() => {
+          setShowEditor(false);
+          setEditingId(undefined);
+        }} modelId={editingId} />
       </div>
     );
   }
@@ -40,7 +47,10 @@ export default function ThreatModeling() {
           <p className="text-gray-500 dark:text-gray-400 mt-1">Manage and track STRIDE threat models.</p>
         </div>
         <button 
-          onClick={() => setShowEditor(true)}
+          onClick={() => {
+            setEditingId(undefined);
+            setShowEditor(true);
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-sm"
         >
           <PlusCircle size={18} />
@@ -84,14 +94,17 @@ export default function ThreatModeling() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{m.sessionId ? `Session #${m.sessionId}` : 'Standalone'}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-600 dark:text-gray-300">{m.components?.length || 0}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-600 dark:text-gray-300">{m.threats?.length || 0}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-600 dark:text-gray-300">{m.componentCount ?? m.components?.length ?? 0}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-600 dark:text-gray-300">{m.threatCount ?? m.threats?.length ?? 0}</td>
                   <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                     {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                       <button onClick={() => setShowEditor(true)} className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit Model">
+                       <button onClick={() => {
+                         setEditingId(m.id);
+                         setShowEditor(true);
+                       }} className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit Model">
                          <Edit size={18} />
                        </button>
                        <button onClick={() => setDeleteId(m.id!)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">

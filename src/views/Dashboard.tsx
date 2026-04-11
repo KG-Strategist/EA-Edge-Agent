@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import SystemHealth from '../components/SystemHealth';
+import SwarmTerminal from '../components/SwarmTerminal';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { FileText, Edit2, Save, LayoutGrid, CheckCircle } from 'lucide-react';
@@ -13,7 +14,7 @@ interface DashboardProps {
   setCurrentSessionId: (id: number) => void;
 }
 
-export default function Dashboard({ setCurrentView, setCurrentSessionId }: DashboardProps) {
+export default function Dashboard({ setCurrentView: _setCurrentView, setCurrentSessionId: _setCurrentSessionId }: DashboardProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [boardName, setBoardName] = useState('Default View');
   const [activeWidgets, setActiveWidgets] = useState<string[]>(DEFAULT_WIDGETS);
@@ -154,6 +155,9 @@ export default function Dashboard({ setCurrentView, setCurrentSessionId }: Dashb
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <SystemHealth />
+        </div>
+        <div className="lg:col-span-2">
+          <SwarmTerminal />
         </div>
       </div>
     </div>

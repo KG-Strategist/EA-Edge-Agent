@@ -1,4 +1,5 @@
 import { db } from './db';
+import { initializeVault, clearVault } from './cryptoVault';
 import {
   buildAuthorizationUrl,
   hasOAuthCallbackParams,
@@ -22,6 +23,7 @@ export function getCurrentUser() {
 export function logoutUser() {
   sessionStorage.removeItem('ea_niti_session');
   currentSessionPseudokey = null;
+  clearVault();
 }
 
 // Generates a random salt
@@ -65,6 +67,82 @@ export async function hashSecret(secret: string, salt: string): Promise<string> 
   return hashHex;
 }
 
+// Encrypt a string (like password) using a key derived from another string (like PIN)
+export async function encryptWithPin(text: string, pin: string, salt: string): Promise<string> {
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    getMessageEncoding(pin),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  const saltBuffer = getMessageEncoding(salt);
+  const key = await window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: saltBuffer,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    getMessageEncoding(text)
+  );
+  const encryptedArray = Array.from(new Uint8Array(encrypted));
+  const ivArray = Array.from(iv);
+  const encryptedHex = encryptedArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const ivHex = ivArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${ivHex}:${encryptedHex}`;
+}
+
+// Decrypt a string using a key derived from PIN
+export async function decryptWithPin(encryptedData: string, pin: string, salt: string): Promise<string | null> {
+  try {
+    const [ivHex, encryptedHex] = encryptedData.split(':');
+    if (!ivHex || !encryptedHex) return null;
+    
+    const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+    const encrypted = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+    
+    const keyMaterial = await window.crypto.subtle.importKey(
+      "raw",
+      getMessageEncoding(pin),
+      "PBKDF2",
+      false,
+      ["deriveKey"]
+    );
+    const saltBuffer = getMessageEncoding(salt);
+    const key = await window.crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: saltBuffer,
+        iterations: 100000,
+        hash: "SHA-256"
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+    
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encrypted
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    return null;
+  }
+}
+
 // Generates a tech-themed 3 or 4-part pseudonym (e.g. "Cyber-Node-42", "Phantom-Gateway-7", "Neural-Mesh-99")
 export function generatePseudonym(): string {
   const adjs = ['Cyber', 'Phantom', 'Neural', 'Quantum', 'Aero', 'Cryptic', 'Neon', 'Echo', 'Shadow', 'Flux'];
@@ -77,11 +155,28 @@ export function generatePseudonym(): string {
   return `${a}-${n}-${num}`;
 }
 
-export async function registerLocalUser(pseudokey: string, password: string, pin: string): Promise<void> {
+export interface SecurityQuestionInput {
+  questionId: string;
+  answer: string;
+}
+
+export async function registerLocalUser(
+  pseudokey: string, 
+  password: string, 
+  pin: string, 
+  securityQuestions: SecurityQuestionInput[] = [],
+  consentHistory?: any[],
+  demographics?: any
+): Promise<void> {
   const salt = generateSalt();
   
-  const passwordHash = await hashSecret(password, salt);
+  const passwordHash = await encryptWithPin(password, pin, salt); // We encrypt password with PIN so we can recover it
   const pinHash = await hashSecret(pin, salt);
+  
+  const hashedQuestions = await Promise.all(securityQuestions.map(async (sq) => ({
+    questionId: sq.questionId,
+    answerHash: await hashSecret(sq.answer.toLowerCase().trim(), salt)
+  })));
   
   await db.users.add({
     pseudokey,
@@ -89,15 +184,31 @@ export async function registerLocalUser(pseudokey: string, password: string, pin
     pinHash,
     salt,
     authMode: 'Air-Gapped',
-    createdAt: new Date()
+    createdAt: new Date(),
+    securityQuestions: hashedQuestions,
+    consentHistory,
+    demographics
   });
 }
 
-export async function registerHybridUser(providerId: string, pseudokey: string, password: string, pin: string): Promise<void> {
+export async function registerHybridUser(
+  providerId: string, 
+  pseudokey: string, 
+  password: string, 
+  pin: string, 
+  securityQuestions: SecurityQuestionInput[] = [],
+  consentHistory?: any[],
+  demographics?: any
+): Promise<void> {
   const salt = generateSalt();
   
-  const passwordHash = await hashSecret(password, salt);
+  const passwordHash = await encryptWithPin(password, pin, salt);
   const pinHash = await hashSecret(pin, salt);
+  
+  const hashedQuestions = await Promise.all(securityQuestions.map(async (sq) => ({
+    questionId: sq.questionId,
+    answerHash: await hashSecret(sq.answer.toLowerCase().trim(), salt)
+  })));
   
   await db.users.add({
     pseudokey,
@@ -106,28 +217,17 @@ export async function registerHybridUser(providerId: string, pseudokey: string, 
     salt,
     providerId,
     authMode: 'Hybrid',
-    createdAt: new Date()
+    createdAt: new Date(),
+    securityQuestions: hashedQuestions,
+    consentHistory,
+    demographics
   });
+  
+  await initializeVault(pin, salt);
 }
 
-export async function loginWithPassword(pseudokey: string, password: string): Promise<boolean> {
-  const user = await db.users.where('pseudokey').equals(pseudokey).first();
-  if (!user) return false;
-  
-  const hashAttempt = await hashSecret(password, user.salt);
-  if (hashAttempt === user.passwordHash) {
-    sessionStorage.setItem('ea_niti_session', pseudokey);
-    currentSessionPseudokey = pseudokey;
-    
-    // Log audit
-    await db.audit_logs.add({
-       timestamp: new Date(),
-       pseudokey,
-       action: 'LOGIN',
-       tableName: 'users'
-    });
-    return true;
-  }
+export async function loginWithPassword(_pseudokey: string, _password: string): Promise<boolean> {
+  // Not used directly anymore, but keeping for compatibility
   return false;
 }
 
@@ -135,24 +235,59 @@ export async function loginWith2FA(pseudokey: string, password: string, pin: str
   const user = await db.users.where('pseudokey').equals(pseudokey).first();
   if (!user) return false;
   
-  const pwHashAttempt = await hashSecret(password, user.salt);
   const pinHashAttempt = await hashSecret(pin, user.salt);
+  if (pinHashAttempt !== user.pinHash) return false;
   
-  if (pwHashAttempt === user.passwordHash && pinHashAttempt === user.pinHash) {
-    sessionStorage.setItem('ea_niti_session', pseudokey);
-    currentSessionPseudokey = pseudokey;
-    
-    // Log audit
-    await db.audit_logs.add({
-       timestamp: new Date(),
-       pseudokey,
-       action: 'LOGIN',
-       tableName: 'users'
-    });
-    
-    return true;
+  const decryptedPassword = await decryptWithPin(user.passwordHash, pin, user.salt);
+  if (decryptedPassword !== password) return false;
+  
+  sessionStorage.setItem('ea_niti_session', pseudokey);
+  currentSessionPseudokey = pseudokey;
+  
+  await initializeVault(pin, user.salt);
+  
+  // Log audit
+  await db.audit_logs.add({
+     timestamp: new Date(),
+     pseudokey,
+     action: 'LOGIN',
+     tableName: 'users'
+  });
+  
+  return true;
+}
+
+export async function verifyRecovery(pseudokey: string, pin: string, answers: SecurityQuestionInput[]): Promise<string | null> {
+  const user = await db.users.where('pseudokey').equals(pseudokey).first();
+  if (!user || !user.securityQuestions) return null;
+  
+  const pinHashAttempt = await hashSecret(pin, user.salt);
+  if (pinHashAttempt !== user.pinHash) return null;
+  
+  let validAnswers = 0;
+  for (const ans of answers) {
+    const sq = user.securityQuestions.find(q => q.questionId === ans.questionId);
+    if (sq) {
+      const hashAttempt = await hashSecret(ans.answer.toLowerCase().trim(), user.salt);
+      if (hashAttempt === sq.answerHash) {
+        validAnswers++;
+      }
+    }
   }
-  return false;
+  
+  if (validAnswers >= 2) {
+    const decryptedPassword = await decryptWithPin(user.passwordHash, pin, user.salt);
+    return decryptedPassword;
+  }
+  
+  return null;
+}
+
+export async function hardResetApp(): Promise<void> {
+  await db.delete();
+  localStorage.clear();
+  sessionStorage.clear();
+  window.location.reload();
 }
 
 export async function loginWithSSO(providerId: string): Promise<string | null> {

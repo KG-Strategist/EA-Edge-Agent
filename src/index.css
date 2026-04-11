@@ -1,17 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:is(.dark *));
 
-@layer utilities {
-  .animate-premium-float {
-    animation: premium-float 3.5s ease-in-out infinite;
-  }
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Harmonize site theme with logo colors (0 blue tint) */
+  --color-gray-50: var(--color-zinc-50);
+  --color-gray-100: var(--color-zinc-100);
+  --color-gray-200: var(--color-zinc-200);
+  --color-gray-300: var(--color-zinc-300);
+  --color-gray-400: var(--color-zinc-400);
+  --color-gray-500: var(--color-zinc-500);
+  --color-gray-600: var(--color-zinc-600);
+  --color-gray-700: var(--color-zinc-700);
+  --color-gray-800: var(--color-zinc-800);
+  --color-gray-900: var(--color-zinc-900);
+  --color-gray-950: var(--color-zinc-950);
+
+  --color-blue-50: var(--color-sky-50);
+  --color-blue-100: var(--color-sky-100);
+  --color-blue-200: var(--color-sky-200);
+  --color-blue-300: var(--color-sky-300);
+  --color-blue-400: var(--color-sky-400);
+  --color-blue-500: var(--color-sky-500);
+  --color-blue-600: var(--color-sky-600);
+  --color-blue-700: var(--color-sky-700);
+  --color-blue-800: var(--color-sky-800);
+  --color-blue-900: var(--color-sky-900);
+  --color-blue-950: var(--color-sky-950);
 }
 
-@keyframes premium-float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
+body {
+  @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+}
+
+/* Hide default browser password reveal button (e.g., in Edge) to prevent double icons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+input[type="password"]::-webkit-reveal {
+  display: none;
 }

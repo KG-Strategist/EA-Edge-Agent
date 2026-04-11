@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, ReviewSession, BianDomain, ArchitecturePrinciple, ReviewWorkflow } from '../lib/db';
 import { runOCR } from '../lib/ocrEngine';
+import { decryptBlob } from '../lib/cryptoVault';
 import { initAIEngine, generateReview } from '../lib/aiEngine';
 import { buildPrompt } from '../lib/promptBuilder';
 import { storeReviewEmbeddings, findSimilarReviews } from '../lib/ragEngine';
@@ -15,7 +16,7 @@ import ReactMarkdown from 'react-markdown';
 import SafeMermaid from '../components/ui/SafeMermaid';
 import BDATRadar from '../components/ui/BDATRadar';
 import { exportAsPDF, exportAsMarkdown, generateADRMarkdown } from '../lib/exportEngine';
-import html2pdf from 'html2pdf.js';
+// html2pdf handled internally by exportEngine
 
 interface ReviewExecutionProps {
   sessionId: number;
@@ -29,7 +30,7 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
   const [principles, setPrinciples] = useState<ArchitecturePrinciple[]>([]);
   const [workflow, setWorkflow] = useState<ReviewWorkflow | null>(null);
   
-  const [vendorScores, setVendorScores] = useState<any[]>([]);
+  const [_vendorScores, setVendorScores] = useState<any[]>([]);
   const [vendorScorecards, setVendorScorecards] = useState<{ name: string; scorecard: DDQScorecard }[]>([]);
   const [bdatWeights, setBdatWeights] = useState<BDATWeights>({ B: 25, D: 25, A: 25, T: 25 });
   const [weightedResults, setWeightedResults] = useState<WeightedVendorResult[]>([]);
@@ -52,8 +53,9 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportText, setReportText] = useState('');
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const [historicalContext, setHistoricalContext] = useState<string[]>([]);
+  const [_historicalContext, setHistoricalContext] = useState<string[]>([]);
   
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +81,8 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
           const scorecardPairs: { name: string; scorecard: DDQScorecard }[] = [];
           for (const vblob of s.ddqBlobs) {
               try {
-                  const arrBuf = await vblob.blob.arrayBuffer();
+                  const decryptedBlob = await decryptBlob(vblob.blob);
+                  const arrBuf = await decryptedBlob.arrayBuffer();
                   const wb = XLSX.read(arrBuf, { type: 'array' });
                   const scorecard = parseDDQResponse(wb);
                   const vendorName = vblob.name.replace('.xlsx','');
@@ -123,7 +126,8 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
     
     setIsOcrRunning(true);
     try {
-      const imageBlob = session.architectureBlobs[0].blob;
+      const encryptedBlob = session.architectureBlobs[0].blob;
+      const imageBlob = await decryptBlob(encryptedBlob);
       const text = await runOCR(imageBlob);
       setOcrText(text);
       setStep(2);
@@ -142,7 +146,7 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
         const percent = Math.round(progress.progress * 100);
         setAiProgress(percent);
         setSystemHealth((prev: any) => ({ ...prev, aiModelsStatus: `Downloading (${percent}%)` }));
-      }, false, 'EA Core Model');
+      }, false, 'Primary EA Agent');
       setIsAiReady(true);
       setSystemHealth((prev: any) => ({ ...prev, aiModelsStatus: 'Loaded & Ready (WebGPU)' }));
       setStep(3);
@@ -192,13 +196,17 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
       setHistoricalContext(history);
       
       const currentStage = workflow ? workflow.stages[session.currentStageIndex || 0] : null;
-      let targetTemplateId = currentStage?.linkedReportTemplateId;
+      let targetTemplateId = session.reportTemplateId || currentStage?.linkedReportTemplateId;
       let finalPrompt = '';
       
       // We'll inject vendor winning logic dynamically
       let extContext = ocrText;
       if (winningVendor) {
           extContext += `\n\n[HUMAN ARCHITECTURE BOARD OVERRIDE]: The officially mandated Vendor for this architecture is ${winningVendor}. Justification: ${humanJustification || 'Optimal mathematical compliance.'}`;
+      }
+
+      if (session.humanThoughts) {
+          extContext += `\n\n[HUMAN THOUGHTS / CONSTRAINTS]: ${session.humanThoughts}`;
       }
       
       if (targetTemplateId) {
@@ -211,9 +219,9 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
       finalPrompt = buildPrompt(session.type, domain, principles, extContext, history);
       
       await generateReview(
-        finalPrompt, 
+        finalPrompt,
         (text) => { setReportText(text); },
-        'EA Core Model'
+        'Primary EA Agent'
       );
     } catch (error) {
       console.error("Generation Error:", error);
@@ -638,33 +646,52 @@ export default function ReviewExecution({ sessionId, setCurrentView }: ReviewExe
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col min-h-[400px] shadow-sm dark:shadow-none">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">AI Review Report</h3>
-                {isGenerating && <Loader2 size={16} className="text-blue-600 dark:text-blue-400 animate-spin" />}
+                <div className="flex items-center gap-4">
+                  {isGenerating && <Loader2 size={16} className="text-blue-600 dark:text-blue-400 animate-spin" />}
+                  {reportText && !isSaved && (
+                    <button
+                      onClick={() => setIsEditingDraft(!isEditingDraft)}
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      {isEditingDraft ? 'Preview Draft' : 'Edit Draft'}
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div ref={reportRef} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 overflow-y-auto text-gray-900 dark:text-gray-300 prose dark:prose-invert max-w-none">
-                <ReactMarkdown
-                  components={{
-                    code({node, inline, className, children, ...props}: any) {
-                      const match = /language-(\w+)/.exec(className || '')
-                      if (!inline && match && match[1] === 'mermaid') {
-                        return <SafeMermaid chart={String(children).replace(/\n$/, '')} />
+                {isEditingDraft ? (
+                  <textarea
+                    value={reportText}
+                    onChange={(e) => setReportText(e.target.value)}
+                    className="w-full h-full min-h-[300px] bg-transparent border-none outline-none resize-none font-mono text-sm"
+                    placeholder="Edit the generated draft here..."
+                  />
+                ) : (
+                  <ReactMarkdown
+                    components={{
+                      code({node, inline, className, children, ...props}: any) {
+                        const match = /language-(\w+)/.exec(className || '')
+                        if (!inline && match && match[1] === 'mermaid') {
+                          return <SafeMermaid chart={String(children).replace(/\n$/, '')} />
+                        }
+                        return <code className={className} {...props}>{children}</code>
                       }
-                      return <code className={className} {...props}>{children}</code>
-                    }
-                  }}
-                >
-                  {reportText || '*Generating...*'}
-                </ReactMarkdown>
+                    }}
+                  >
+                    {reportText || '*Generating...*'}
+                  </ReactMarkdown>
+                )}
               </div>
               
-              {!isGenerating && !isSaved && (
+              {!isGenerating && !isSaved && reportText && (
                 <div className="mt-6 flex justify-end">
                   <button 
                     onClick={handleSaveReport}
                     className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                   >
                     <CheckCircle2 size={18} />
-                    Save & Complete
+                    Approve & Finalize
                   </button>
                 </div>
               )}

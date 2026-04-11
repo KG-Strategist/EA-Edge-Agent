@@ -1,9 +1,11 @@
-import { CreateWebWorkerMLCEngine, InitProgressCallback, WebWorkerMLCEngine, hasModelInCache, AppConfig } from '@mlc-ai/web-llm';
+import { Logger } from './logger';
+import { CreateWebWorkerMLCEngine, InitProgressCallback, WebWorkerMLCEngine, hasModelInCache, AppConfig, prebuiltAppConfig } from '@mlc-ai/web-llm';
 import { db } from './db';
 import { findSimilarReviews, findRelevantEnterpriseContext } from './ragEngine';
+import { queryEAContext } from './ragOrchestrator';
 
-export const DEFAULT_PRIMARY_MODEL_ID = 'EA-NITI-Core';
-export const DEFAULT_TINY_MODEL_ID = 'EA-NITI-Alt';
+export const DEFAULT_PRIMARY_MODEL_ID = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+export const DEFAULT_TINY_MODEL_ID = 'gemma-2b-it-q4f16_1-MLC';
 
 // Removed static CUSTOM_APP_CONFIG. We now build this dynamically via getDynamicAppConfig()
 
@@ -26,48 +28,81 @@ export async function getActiveModelId(type: 'Core' | 'Tiny'): Promise<string> {
 }
 
 export async function getDynamicAppConfig(): Promise<AppConfig> {
-  const activeModels = await db.model_registry.filter(m => !!m.isActive).toArray();
+  // Pull core agents from app_settings
+  const primarySetting = await db.app_settings.get('core-primary');
+  const triageSetting = await db.app_settings.get('core-triage');
 
-  if (activeModels.length === 0) {
-    return {
-      model_list: [
-        {
-          model_id: DEFAULT_PRIMARY_MODEL_ID,
-          model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-ctx4k_cs1k-webgpu.wasm",
-          model: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-MLC"
-        },
-        {
-          model_id: DEFAULT_TINY_MODEL_ID,
-          model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm",
-          model: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-MLC"
-        }
-      ]
-    };
+  const primaryConfig = primarySetting?.value;
+  const triageConfig = triageSetting?.value;
+
+  const model_list: any[] = [];
+
+  // NATIVE VERSION MATCHER: Extract WASM URL from installed @mlc-ai/web-llm package
+  const getNativeWasmUrl = (modelId: string, dbWasmUrl?: string): string => {
+    // 1. Check if this model is built-in to the installed WebLLM package
+    const builtInModel = prebuiltAppConfig.model_list.find(m => m.model_id === modelId);
+
+    // 2. If found in native registry, use it (guarantees ABI compatibility)
+    if (builtInModel?.model_lib) {
+      Logger.log(`[NATIVE MATCHER] Using version-matched WASM for ${modelId} from @mlc-ai/web-llm`);
+      return builtInModel.model_lib;
+    }
+
+    // 3. Otherwise, trust the DB (for custom/sideloaded models only)
+    return dbWasmUrl || '';
+  };
+
+  // Register Primary — use native matching for built-in models, DB for custom
+  if (primaryConfig && primaryConfig.modelSourceMode === 'Remote URL') {
+    const record: any = { model_id: primaryConfig.id, model: primaryConfig.url };
+    // Get WASM URL: native registry first, then DB config
+    const finalWasmUrl = getNativeWasmUrl(primaryConfig.id, primaryConfig.modelLibUrl);
+    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+      record.model_lib = finalWasmUrl;
+    }
+    model_list.push(record);
+  } else {
+    // Default primary fallback — extract native WASM if available
+    const record: any = { model_id: DEFAULT_PRIMARY_MODEL_ID, model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC/resolve/main/' };
+    const finalWasmUrl = getNativeWasmUrl(DEFAULT_PRIMARY_MODEL_ID);
+    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+      record.model_lib = finalWasmUrl;
+    }
+    model_list.push(record);
   }
 
-  const model_list = activeModels.map(m => {
-    // If not provided, we infer a standardized WASM url or leave it to WebLLM defaults
-    let mLib = m.wasmUrl;
-    if (!mLib && !m.isLocalhost) {
-      if (m.modelUrl.includes('Llama-3')) {
-          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Llama-3-8B-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm";
-      } else if (m.modelUrl.includes('SmolLM')) {
-          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm";
-      } else if (m.modelUrl.includes('gemma')) {
-          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-4-E2B-it-q4f16_1-ctx4k_cs1k-webgpu.wasm";
-      } else {
-          mLib = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm"; 
-      }
+  // Register Triage — use native matching for built-in models, DB for custom
+  if (triageConfig && triageConfig.modelSourceMode === 'Remote URL') {
+    const record: any = { model_id: triageConfig.id, model: triageConfig.url };
+    // Get WASM URL: native registry first, then DB config
+    const finalWasmUrl = getNativeWasmUrl(triageConfig.id, triageConfig.modelLibUrl);
+    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+      record.model_lib = finalWasmUrl;
     }
-    
-    const record: any = {
-      model_id: m.name,
-      model: m.modelUrl
-    };
-    if (mLib) record.model_lib = mLib;
+    model_list.push(record);
+  } else {
+    // Default triage fallback — extract native WASM if available
+    const record: any = { model_id: DEFAULT_TINY_MODEL_ID, model: 'https://huggingface.co/mlc-ai/gemma-2b-it-q4f16_1-MLC/resolve/main/' };
+    const finalWasmUrl = getNativeWasmUrl(DEFAULT_TINY_MODEL_ID);
+    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+      record.model_lib = finalWasmUrl;
+    }
+    model_list.push(record);
+  }
 
-    return record;
-  });
+  const activeModels = await db.model_registry.filter(m => !!m.isActive).toArray();
+
+  if (activeModels.length > 0) {
+    activeModels.forEach(m => {
+      // For custom registry models, try native first, then DB
+      const finalWasmUrl = getNativeWasmUrl(m.name, m.wasmUrl);
+      const record: any = { model_id: m.name, model: m.modelUrl };
+      if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+        record.model_lib = finalWasmUrl;
+      }
+      model_list.push(record);
+    });
+  }
 
   return { model_list };
 }
@@ -82,20 +117,55 @@ export async function getActiveModelUrl(modelId: string): Promise<string> {
 
 let engine: WebWorkerMLCEngine | null = null;
 let currentActiveModelId: string | null = null;
+let activeWorker: Worker | null = null;
+
+export let globalMoETarget: string = 'Auto-Route (MoE)';
+
+export function triggerSwarmSync() {
+  if (activeWorker) {
+    activeWorker.postMessage({ type: 'SWARM_SYNC_TRIGGER' });
+  } else {
+    // Fallback if worker not initialized yet
+    const channel = new BroadcastChannel('ea-niti-swarm');
+    channel.postMessage({ type: 'PING', agent: 'SME', intent: 'SYNC_RAG' });
+    setTimeout(() => {
+      channel.postMessage({ type: 'ACK', agent: 'SEC', status: 'RAG_SYNCED' });
+    }, 1500);
+  }
+}
+
+export function setGlobalMoETarget(target: string) {
+  globalMoETarget = target;
+}
 
 export async function isModelCached(modelId: string): Promise<boolean> {
   try {
     const config = await getDynamicAppConfig();
     return await hasModelInCache(modelId, config);
   } catch (e) {
-    console.warn(`Could not check cache for ${modelId}:`, e);
+    Logger.warn(`Could not check cache for ${modelId}:`, e);
     return false;
+  }
+}
+
+export async function scanLocalModels(): Promise<{ modelId: string, isCached: boolean }[]> {
+  try {
+    const config = await getDynamicAppConfig();
+    const results = [];
+    for (const model of config.model_list) {
+      const isCached = await hasModelInCache(model.model_id, config);
+      results.push({ modelId: model.model_id, isCached });
+    }
+    return results;
+  } catch (e) {
+    Logger.warn("Error scanning local models:", e);
+    return [];
   }
 }
 
 export async function unloadAIEngine(): Promise<void> {
   if (engine) {
-    console.log(`Unloading active AI Engine (${currentActiveModelId}) from VRAM...`);
+    Logger.log(`Unloading active AI Engine (${currentActiveModelId}) from VRAM...`);
     await engine.unload();
     engine = null;
     currentActiveModelId = null;
@@ -105,11 +175,17 @@ export async function unloadAIEngine(): Promise<void> {
 export async function initAIEngine(
   progressCallback: InitProgressCallback,
   forceDownload: boolean = false,
-  requestedTarget: 'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid' = 'Domain SME Model'
+  requestedTarget: string = 'Tiny Triage Agent',
+  targetUrl?: string
 ): Promise<WebWorkerMLCEngine> {
-  let targetModelId = requestedTarget === 'EA Core Model' ? 
-      await getActiveModelId('Tiny') : 
-      await getActiveModelId('Core');
+  let targetModelId = requestedTarget;
+  if (requestedTarget === 'Primary EA Agent') {
+    const configSetting = await db.app_settings.get('core-primary');
+    targetModelId = configSetting?.value?.id || DEFAULT_PRIMARY_MODEL_ID;
+  } else if (requestedTarget === 'Tiny Triage Agent' || requestedTarget === 'Tiny Triage Agent') {
+    const configSetting = await db.app_settings.get('core-triage');
+    targetModelId = configSetting?.value?.id || DEFAULT_TINY_MODEL_ID;
+  }
 
   // If engine is already loaded with the requested model, return it
   if (engine && currentActiveModelId === targetModelId) {
@@ -142,6 +218,7 @@ export async function initAIEngine(
   }
 
   const worker = new Worker(new URL('./aiWorker.ts', import.meta.url), { type: 'module' });
+  activeWorker = worker;
   
   currentActiveModelId = targetModelId;
   const interceptProgress: InitProgressCallback = (progress) => {
@@ -154,6 +231,26 @@ export async function initAIEngine(
   };
 
   const config = await getDynamicAppConfig();
+
+  if (targetUrl) {
+    // NATIVE VERSION MATCHER: Use package's built-in WASM for native models
+    const dbConfig = (await db.app_settings.get('core-primary'))?.value?.id === targetModelId
+      ? (await db.app_settings.get('core-primary'))?.value
+      : (await db.app_settings.get('core-triage'))?.value;
+
+    // Check for native WASM first, then fall back to DB config
+    const builtInModel = prebuiltAppConfig.model_list.find(m => m.model_id === targetModelId);
+    const finalWasmUrl = builtInModel?.model_lib || dbConfig?.modelLibUrl;
+
+    if (!config.model_list.some(m => m.model_id === targetModelId)) {
+      const record: any = { model_id: targetModelId, model: targetUrl };
+      // WebLLM demands explicit model_lib for custom model URLs
+      if (finalWasmUrl && finalWasmUrl.trim() !== '') {
+        record.model_lib = finalWasmUrl;
+      }
+      config.model_list.push(record);
+    }
+  }
   
   engine = await CreateWebWorkerMLCEngine(
     worker,
@@ -168,23 +265,51 @@ export async function initAIEngine(
 }
 
 
+export async function getSystemPrompt(): Promise<string> {
+  let basePrompt = "You are EA-NITI (Network-isolated, In-browser, Triage & Inference). Elite, air-gapped Enterprise Architecture AI. Strict TOGAF/BIAN/0-trust focus. 0 cloud egress.";
+  
+  try {
+    const masterPersona = await db.prompt_templates.where('name').equals('Master System Persona').first();
+    if (masterPersona && masterPersona.promptText) {
+      basePrompt = masterPersona.promptText;
+    }
+  } catch (e) {
+    Logger.warn("Failed to fetch Master System Persona, falling back to default.", e);
+  }
+
+  // Inject active Privacy Guardrails as strict boundary conditions
+  try {
+    const activeGuardrails = await db.privacy_guardrails.filter(g => g.isActive).toArray();
+    if (activeGuardrails.length > 0) {
+      const rulesBlock = activeGuardrails
+        .map((g, i) => `${i + 1}. [${g.title}]: ${g.ruleText}`)
+        .join('\n');
+      basePrompt += `\n\n[PRIVACY GUARDRAILS — STRICT COMPLIANCE]\nYou MUST obey the following privacy and data protection rules at ALL times. Violations are unacceptable:\n${rulesBlock}\n[END PRIVACY GUARDRAILS]`;
+    }
+  } catch (e) {
+    Logger.warn("Failed to fetch privacy guardrails, proceeding without.", e);
+  }
+
+  return basePrompt;
+}
+
 export async function generateReview(
   prompt: string,
   onUpdate: (text: string) => void,
-  executionTarget: 'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid' = 'Domain SME Model'
+  executionTarget: string = 'Tiny Triage Agent'
 ): Promise<string> {
-  // If Auto-Route Hybrid is selected, we parse the prompt intent.
-  // We identify "DDQ", "Architecture Layer", or "STRIDE" to route to the Tiny EA Core.
-  let target = executionTarget;
-  if (target === 'Auto-Route Hybrid') {
+  // If Auto-Route (MoE) is selected, we parse the prompt intent.
+  // We identify "DDQ", "Architecture Layer", or "STRIDE" to route to the Primary EA Agent.
+  let target = globalMoETarget !== 'Auto-Route (MoE)' ? globalMoETarget : executionTarget;
+  if (target === 'Auto-Route (MoE)') {
     const isCoreEA = /DDQ|scorecard|architecture layer|STRIDE/i.test(prompt);
-    target = isCoreEA ? 'EA Core Model' : 'Domain SME Model';
-    onUpdate(`[Auto-Router] Identified intent. Routing to ${target}...`);
+    target = isCoreEA ? 'Primary EA Agent' : 'Tiny Triage Agent';
+    Logger.info(`[Auto-Router] Identified intent. Routing to ${target}...`);
   }
 
   let finalPrompt = prompt;
-  if (target === 'EA Core Model' || target === 'Domain SME Model') {
-    onUpdate(`[RAG Engine] Querying Long-Term Semantic Memory & Enterprise Context...`);
+  if (target === 'Primary EA Agent' || target === 'Tiny Triage Agent' || globalMoETarget === 'Auto-Route (MoE)') {
+    Logger.info(`[RAG Engine] Querying Long-Term Semantic Memory & Enterprise Context...`);
     try {
       const historicalContextsPromise = findSimilarReviews(prompt);
       const enterpriseContextsPromise = findRelevantEnterpriseContext(prompt);
@@ -192,14 +317,14 @@ export async function generateReview(
       const [historicalContexts, enterpriseContexts] = await Promise.all([historicalContextsPromise, enterpriseContextsPromise]);
       
       let contextInjection = "";
-      
+
       if (enterpriseContexts.length > 0) {
-        onUpdate(`[RAG Engine] Found ${enterpriseContexts.length} relevant proprietary enterprise facts.`);
+        Logger.info(`[RAG Engine] Found ${enterpriseContexts.length} relevant proprietary enterprise facts.`);
         contextInjection += `[PROPRIETARY ENTERPRISE CONTEXT]\nThe following are mandatory rules, constraints, and facts specific to this enterprise. You MUST abide by them:\n\n${enterpriseContexts.join("\n\n")}\n[END PROPRIETARY CONTEXT]\n\n`;
       }
-      
+
       if (historicalContexts.length > 0) {
-        onUpdate(`[RAG Engine] Found ${historicalContexts.length} relevant historical architectural decisions.`);
+        Logger.info(`[RAG Engine] Found ${historicalContexts.length} relevant historical architectural decisions.`);
         contextInjection += `[ENTERPRISE HISTORICAL CONTEXT]\nThe following are historical architectural decisions previously made by this enterprise. Use them to ensure your current review does not blindly conflict with past approved architectures:\n\n${historicalContexts.join("\n\n")}\n[END HISTORICAL CONTEXT]\n\n`;
       }
       
@@ -208,7 +333,59 @@ export async function generateReview(
       }
       
     } catch (e) {
-      console.warn("RAG query failed, proceeding without extended context.", e);
+      Logger.warn("RAG query failed, proceeding without extended context.", e);
+    }
+  }
+
+  let eaContext = "";
+  try {
+    eaContext = await queryEAContext(prompt);
+  } catch (e) {
+    Logger.warn("Failed to fetch EA Context", e);
+  }
+
+  const sysPrompt = await getSystemPrompt();
+  const systemMessage = eaContext 
+    ? `${sysPrompt}\n\n${eaContext}` 
+    : sysPrompt;
+
+  // Check if target is a BYOM_NETWORK model
+  const models = await db.model_registry.toArray();
+  const targetModel = models.find(m => m.name === target);
+
+  if (targetModel && targetModel.type === 'BYOM_NETWORK') {
+    Logger.info(`[BYOM Router] Routing to Custom Enterprise Endpoint: ${targetModel.name}...`);
+    try {
+      const response = await fetch(targetModel.modelUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(targetModel.apiKey ? { 'Authorization': `Bearer ${targetModel.apiKey}` } : {})
+        },
+        body: JSON.stringify({
+          model: targetModel.name,
+          messages: [
+            { role: 'system', content: systemMessage },
+            { role: 'user', content: finalPrompt }
+          ],
+          temperature: target === 'Primary EA Agent' ? 0.2 : 0.7,
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || JSON.stringify(data);
+      onUpdate(content);
+      return content;
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      const failMsg = `[BYOM Router Error] Failed to reach endpoint ${targetModel.modelUrl}. Ensure your local server (e.g., Ollama) is running and accessible. Error: ${errorMsg}`;
+      onUpdate(failMsg);
+      throw new Error(failMsg);
     }
   }
 
@@ -216,10 +393,13 @@ export async function generateReview(
   await initAIEngine(() => {}, false, target);
 
   if (!engine) throw new Error('AI Engine failed to initialize');
-  
+
   const chunks = await engine.chat.completions.create({
-    messages: [{ role: 'user', content: finalPrompt }],
-    temperature: target === 'EA Core Model' ? 0.2 : 0.7, // Lower temperature for EA Core to prevent hallucination
+    messages: [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: finalPrompt }
+    ],
+    temperature: target === 'Primary EA Agent' ? 0.2 : 0.7, // Lower temperature for Primary EA Agent to prevent hallucination
     stream: true,
   });
   
@@ -233,27 +413,152 @@ export async function generateReview(
   return reply;
 }
 
+/**
+ * ARCHITECTURAL PLACEHOLDER: In-Browser LoRA Tuning
+ * 
+ * Future implementation for Epic 7: Train via Web.
+ * This will utilize WebGPU to perform low-rank adaptation (LoRA) 
+ * on the base model using the local EADatabase as the training corpus.
+ * Weights will be saved strictly to OPFS.
+ */
+export async function initiateLocalLoRATraining(_corpus: string[], onProgress: (p: number) => void): Promise<void> {
+  Logger.warn("LoRA training is currently an architectural placeholder. WebLLM training support pending.");
+  // 1. Load base model into WebGPU
+  // 2. Initialize LoRA adapters
+  // 3. Iterate over corpus, compute gradients, update adapters
+  // 4. Save adapted weights to OPFS
+  onProgress(100);
+}
+
+// --- Small Talk Regex: matches common greetings / identity queries ---
+const SMALL_TALK_RE = /^\s*(h(i|ello|ey|owdy)|yo|sup|good\s*(morning|afternoon|evening)|greetings|what'?s\s*up|who\s+are\s+you|what\s+are\s+you|are\s+you\s+an?\s+ai|thanks?|thank\s*you|ok|okay|bye|goodbye|see\s*ya)[!?.,\s]*$/i;
+
+const GREETING_RESPONSE =
+  "Hello! I am **EA-NITI**, your air-gapped Enterprise Architecture assistant. " +
+  "I am currently operating in **lightweight mode** (RAG-only — no generative LLM loaded).\n\n" +
+  "I can still search your local knowledge base for architecture principles, BIAN domains, " +
+  "and historical review context. How can I assist with your architecture reviews today?";
+
 export async function chatWithAgent(
   messages: { role: 'user' | 'assistant' | 'system', content: string }[],
   onUpdate: (text: string) => void,
-  executionTarget: 'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid' = 'Domain SME Model'
+  executionTarget: string = 'Tiny Triage Agent'
 ): Promise<string> {
-  // Use the auto-routing logic if Hybrid is selected
-  let target = executionTarget;
-  if (target === 'Auto-Route Hybrid') {
-    const prompt = messages[messages.length - 1]?.content || '';
-    const isCoreEA = /DDQ|scorecard|architecture layer|STRIDE/i.test(prompt);
-    target = isCoreEA ? 'EA Core Model' : 'Domain SME Model';
-    onUpdate(`[Auto-Router] Routing to ${target}...\n\n`);
+  const userPrompt = messages[messages.length - 1]?.content || '';
+
+  // ── 1. Small-Talk Interceptor ─────────────────────────────────────
+  // Bypass vector search + LLM entirely for trivial greetings.
+  if (SMALL_TALK_RE.test(userPrompt)) {
+    onUpdate(GREETING_RESPONSE);
+    return GREETING_RESPONSE;
   }
 
-  await initAIEngine(() => {}, false, target);
+  // ── 2. MoE Auto-Routing ───────────────────────────────────────────
+  let target = globalMoETarget !== 'Auto-Route (MoE)' ? globalMoETarget : executionTarget;
+  if (target === 'Auto-Route (MoE)') {
+    const isCoreEA = /DDQ|scorecard|architecture layer|STRIDE/i.test(userPrompt);
+    target = isCoreEA ? 'Primary EA Agent' : 'Tiny Triage Agent';
+    Logger.info(`[Auto-Router] Routing to ${target}...`);
+  }
 
-  if (!engine) throw new Error('AI Engine failed to initialize');
-  
+  // ── 3. Gather EA Context (lightweight Dexie lookup) ───────────────
+  let eaContext = "";
+  try {
+    eaContext = await queryEAContext(userPrompt);
+  } catch (e) {
+    Logger.warn("Failed to fetch EA Context", e);
+  }
+
+  const sysPrompt = await getSystemPrompt();
+  const systemMessage = eaContext 
+    ? `${sysPrompt}\n\n${eaContext}` 
+    : sysPrompt;
+
+  const messagesWithSystem = [...messages];
+  if (messagesWithSystem.length === 0 || messagesWithSystem[0].role !== 'system') {
+    messagesWithSystem.unshift({ role: 'system', content: systemMessage });
+  } else {
+    messagesWithSystem[0].content = `${systemMessage}\n\n${messagesWithSystem[0].content}`;
+  }
+
+  // ── 4. BYOM Network Model ─────────────────────────────────────────
+  const models = await db.model_registry.toArray();
+  const targetModel = models.find(m => m.name === target);
+
+  if (targetModel && targetModel.type === 'BYOM_NETWORK') {
+    Logger.info(`[BYOM Router] Routing to Custom Enterprise Endpoint: ${targetModel.name}...`);
+    try {
+      const response = await fetch(targetModel.modelUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(targetModel.apiKey ? { 'Authorization': `Bearer ${targetModel.apiKey}` } : {})
+        },
+        body: JSON.stringify({
+          model: targetModel.name,
+          messages: messagesWithSystem,
+          temperature: executionTarget === 'Primary EA Agent' ? 0.3 : 0.7,
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || JSON.stringify(data);
+      onUpdate(content);
+      return content;
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      const failMsg = `\n\n[BYOM Router Error] Failed to reach endpoint ${targetModel.modelUrl}. Ensure your local server (e.g., Ollama) is running and accessible. Error: ${errorMsg}`;
+      onUpdate(failMsg);
+      throw new Error(failMsg);
+    }
+  }
+
+  // ── 5. Local LLM — with tiered generative fallback ─────────────────
+  // Priority: requested model → any cached model → RAG-only (no generation)
+  try {
+    await initAIEngine(() => {}, false, target);
+  } catch (primaryError) {
+    Logger.warn(`[chatWithAgent] Primary target "${target}" unavailable. Scanning for cached fallback…`, primaryError);
+
+    // Scan all registered models for a cached alternative
+    let fallbackLoaded = false;
+    try {
+      const cachedModels = await scanLocalModels();
+      const available = cachedModels.filter(m => m.isCached);
+
+      if (available.length > 0) {
+        // Prefer SECONDARY (tiny) over PRIMARY (heavy) for fast fallback
+        const tinyModelId = await getActiveModelId('Tiny');
+        const preferTiny = available.find(m => m.modelId === tinyModelId);
+        const fallbackId = preferTiny ? preferTiny.modelId : available[0].modelId;
+
+        Logger.warn(`[chatWithAgent] Primary model unavailable. Falling back to cached model: ${fallbackId}…`);
+        await initAIEngine(() => {}, false, fallbackId);
+        fallbackLoaded = !!engine;
+      }
+    } catch (scanError) {
+      Logger.warn('[chatWithAgent] Fallback model scan failed:', scanError);
+    }
+
+    if (!fallbackLoaded) {
+      // No generative models cached at all → RAG-only
+      return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
+    }
+  }
+
+  if (!engine) {
+    // Engine ref null after init (should not happen, but guard anyway)
+    return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
+  }
+
   const chunks = await engine.chat.completions.create({
-    messages,
-    temperature: executionTarget === 'EA Core Model' ? 0.3 : 0.7,
+    messages: messagesWithSystem,
+    temperature: executionTarget === 'Primary EA Agent' ? 0.3 : 0.7,
     stream: true,
   });
   
@@ -265,6 +570,62 @@ export async function chatWithAgent(
   }
   
   return reply;
+}
+
+/**
+ * Constructs a formatted RAG-only response when no generative LLM is loaded.
+ * Merges lightweight Dexie context + vector store results into a readable reply.
+ */
+async function buildRagOnlyResponse(
+  userPrompt: string,
+  eaContext: string,
+  onUpdate: (text: string) => void
+): Promise<string> {
+  onUpdate('🔍 _No generative model loaded — searching local knowledge base…_\n\n');
+
+  let sections: string[] = [];
+
+  // Lightweight Dexie context (principles + BIAN domains)
+  if (eaContext) {
+    sections.push(eaContext);
+  }
+
+  // Vector store context
+  try {
+    const [historical, enterprise] = await Promise.all([
+      findSimilarReviews(userPrompt),
+      findRelevantEnterpriseContext(userPrompt)
+    ]);
+
+    if (enterprise.length > 0) {
+      sections.push(
+        `**📂 Proprietary Enterprise Context** _(${enterprise.length} result${enterprise.length > 1 ? 's' : ''})_\n\n` +
+        enterprise.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
+      );
+    }
+    if (historical.length > 0) {
+      sections.push(
+        `**📜 Historical Architectural Decisions** _(${historical.length} result${historical.length > 1 ? 's' : ''})_\n\n` +
+        historical.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
+      );
+    }
+  } catch (ragErr) {
+    Logger.warn('[buildRagOnlyResponse] Vector search failed:', ragErr);
+  }
+
+  let response: string;
+  if (sections.length > 0) {
+    response = `> **⚡ RAG-Only Mode** — No generative LLM is loaded. Showing raw knowledge base results.\n\n---\n\n` + sections.join('\n\n---\n\n');
+  } else {
+    response =
+      `> **⚡ RAG-Only Mode**\n\n` +
+      `No relevant results found in the local knowledge base for your query.\n\n` +
+      `**To unlock full AI analysis**, download a model via **Admin → System → Model Sandbox**, ` +
+      `or sideload weights from USB in **Network & Privacy** settings.`;
+  }
+
+  onUpdate(response);
+  return response;
 }
 
 export async function analyzeWebTrends(

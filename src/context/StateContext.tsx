@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, BianDomain, BespokeTag } from '../lib/db';
 
@@ -7,6 +7,16 @@ export interface UserIdentity {
   provider?: string;
   username: string;
   role: 'Lead EA' | 'Architect' | 'Viewer';
+}
+
+export interface GlobalDownloadState {
+  isActive: boolean;
+  isMinimized: boolean;
+  progressPercentage: number;
+  progressText: string;
+  message?: string;
+  modelId?: string;
+  status: 'Downloading' | 'Complete' | 'Error' | 'Idle';
 }
 
 interface StateContextType {
@@ -25,30 +35,54 @@ interface StateContextType {
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   identity: UserIdentity | null;
+  setIdentity: (identity: UserIdentity | null) => void;
+  downloadState: GlobalDownloadState;
+  setDownloadState: React.Dispatch<React.SetStateAction<GlobalDownloadState>>;
 }
 
 const StateContext = createContext<StateContextType | undefined>(undefined);
 
 export function StateProvider({ children, initialIdentity = null }: { children: ReactNode, initialIdentity?: UserIdentity | null }) {
-  const [identity] = useState<UserIdentity | null>(initialIdentity);
+  const [identity, setIdentity] = useState<UserIdentity | null>(initialIdentity);
   const [pendingReviews, setPendingReviews] = useState(0);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
-  const [systemHealth, setSystemHealth] = useState({
+  const [systemHealth, setSystemHealth] = useState<{
+    webGpuSupported: boolean | null;
+    dbStatus: 'Pending' | 'Connected (IndexedDB)' | 'Error';
+    aiModelsStatus: string;
+  }>({
     webGpuSupported: null,
-    dbStatus: 'Pending' as const,
-    aiModelsStatus: 'Unloaded' as const,
+    dbStatus: 'Pending',
+    aiModelsStatus: 'Unloaded',
+  });
+  
+  const [downloadState, setDownloadState] = useState<GlobalDownloadState>({
+    isActive: false,
+    isMinimized: false,
+    progressPercentage: 0,
+    progressText: '',
+    status: 'Idle'
   });
   
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('ea-theme') as 'light' | 'dark' | null;
     if (savedTheme) return savedTheme;
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
-    return 'dark';
+    return 'dark'; // Default to dark theme on first load
   });
 
   useEffect(() => {
     const hasWebGPU = !!(navigator as any).gpu;
     setSystemHealth((prev) => ({ ...prev, webGpuSupported: hasWebGPU }));
+
+    // Listen for Dexie DB ready state
+    db.on('ready', () => {
+      setSystemHealth((prev) => ({ ...prev, dbStatus: 'Connected (IndexedDB)' }));
+    });
+
+    // Check if it's already open
+    if (db.isOpen()) {
+      setSystemHealth((prev) => ({ ...prev, dbStatus: 'Connected (IndexedDB)' }));
+    }
   }, []);
 
   useEffect(() => {
@@ -81,6 +115,9 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
         theme,
         toggleTheme,
         identity,
+        setIdentity,
+        downloadState,
+        setDownloadState,
       }}
     >
       {children}

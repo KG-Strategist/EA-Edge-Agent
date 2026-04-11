@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { db } from '../lib/db';
+import { encryptString, decryptString } from '../lib/cryptoVault';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   DataFlowComponent, ComponentType, StrideThreat, ThreatModel,
@@ -19,7 +20,7 @@ const TYPE_ICONS: Record<ComponentType, string> = {
   'Trust Boundary':  '🛡️',
 };
 
-export default function ThreatEditor({ onClose }: { onClose?: () => void }) {
+export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?: () => void, modelId?: number }) {
   const [projectName, setProjectName] = useState('');
   const [components, setComponents] = useState<DataFlowComponent[]>([]);
   const [threats, setThreats] = useState<StrideThreat[]>([]);
@@ -29,6 +30,32 @@ export default function ThreatEditor({ onClose }: { onClose?: () => void }) {
   const [enrichedReport, setEnrichedReport] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    if (modelId) {
+      db.threat_models.get(modelId).then(async (model) => {
+        if (model) {
+          setProjectName(model.projectName);
+          setLinkedSessionId(model.sessionId);
+          if (model.encryptedData) {
+            try {
+              const decrypted = await decryptString(model.encryptedData);
+              const data = JSON.parse(decrypted);
+              setComponents(data.components || []);
+              setThreats(data.threats || []);
+              setMermaidDFD(data.mermaidDFD || '');
+            } catch (e) {
+              console.error('Failed to decrypt threat model', e);
+            }
+          } else {
+            setComponents(model.components || []);
+            setThreats(model.threats || []);
+            setMermaidDFD(model.mermaidDFD || '');
+          }
+        }
+      });
+    }
+  }, [modelId]);
 
   // Form state for adding components
   const [showAddForm, setShowAddForm] = useState(false);
@@ -91,7 +118,7 @@ export default function ThreatEditor({ onClose }: { onClose?: () => void }) {
         updatedAt: new Date(),
       };
       const prompt = generateThreatModelPrompt(model, principles);
-      await generateReview(prompt, (text) => setEnrichedReport(text), 'EA Core Model');
+      await generateReview(prompt, (text) => setEnrichedReport(text), 'Primary EA Agent');
     } catch (error: any) {
       if (!error.message?.includes('CONSENT_REQUIRED')) {
         console.error('AI Enrichment error:', error);
@@ -109,15 +136,29 @@ export default function ThreatEditor({ onClose }: { onClose?: () => void }) {
     }
     setIsSaving(true);
     try {
-      await db.threat_models.add({
-        projectName: projectName.trim(),
-        sessionId: linkedSessionId,
-        components: components as any[],
-        threats: threats as any[],
-        mermaidDFD,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const payload = JSON.stringify({ components, threats, mermaidDFD });
+      const encryptedData = await encryptString(payload);
+
+      if (modelId) {
+        await db.threat_models.update(modelId, {
+          projectName: projectName.trim(),
+          sessionId: linkedSessionId,
+          encryptedData,
+          componentCount: components.length,
+          threatCount: threats.length,
+          updatedAt: new Date(),
+        });
+      } else {
+        await db.threat_models.add({
+          projectName: projectName.trim(),
+          sessionId: linkedSessionId,
+          encryptedData,
+          componentCount: components.length,
+          threatCount: threats.length,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
       setSaveMessage('Threat model saved to local database.');
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (e) {
@@ -128,7 +169,6 @@ export default function ThreatEditor({ onClose }: { onClose?: () => void }) {
   };
 
   const handleExportMarkdown = () => {
-    const stats = getThreatStats(threats);
     let md = `# STRIDE Threat Model: ${projectName || 'Untitled'}\n\n`;
     md += `**Generated:** ${new Date().toISOString()}\n\n`;
     md += `## Data Flow Diagram\n\n\`\`\`mermaid\n${mermaidDFD}\n\`\`\`\n\n`;

@@ -1,121 +1,74 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db } from '../../lib/db';
-import { Settings, Download, Upload, Cpu, Save, Loader2, RefreshCcw, Activity, TerminalSquare } from 'lucide-react';
-import { DEFAULT_PRIMARY_MODEL_ID, DEFAULT_TINY_MODEL_ID, unloadAIEngine, getActiveModelId, getActiveModelUrl } from '../../lib/aiEngine';
-
-function EngineDiagnostics() {
-  const [logs, setLogs] = useState<string[]>([]);
-  const [activeModel, setActiveModel] = useState<string>('Unloaded');
-  const [sourceUrl, setSourceUrl] = useState<string>('N/A');
-
-  useEffect(() => {
-    // Try to get what would be loaded by default
-    getActiveModelId('Core').then(async id => {
-       setActiveModel(id);
-       const url = await getActiveModelUrl(id);
-       setSourceUrl(url);
-    });
-
-    const handleProgress = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const { text, progress } = customEvent.detail;
-      setLogs(prev => {
-        const newLogs = [...prev, `[${new Date().toLocaleTimeString()}] ${text}`];
-        return newLogs.slice(-50); // Keep last 50 lines
-      });
-    };
-
-    window.addEventListener('EA_AI_PROGRESS', handleProgress);
-    return () => window.removeEventListener('EA_AI_PROGRESS', handleProgress);
-  }, []);
-
-  return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mt-8 font-mono shadow-inner">
-      <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
-        <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-          <TerminalSquare className="text-green-500" size={16} />
-          Engine Diagnostics Terminal
-        </h3>
-        <div className="flex items-center gap-2">
-           <span className="flex h-2 w-2 relative">
-             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-           </span>
-           <span className="text-[10px] text-gray-500 uppercase tracking-wider">Live Monitor</span>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div className="bg-black/50 rounded-lg p-3 border border-gray-800/50">
-           <p className="text-[10px] text-gray-500 uppercase mb-1">Target Engine ID</p>
-           <p className="text-xs text-blue-400 truncate">{activeModel}</p>
-        </div>
-        <div className="bg-black/50 rounded-lg p-3 border border-gray-800/50">
-           <p className="text-[10px] text-gray-500 uppercase mb-1">Upstream Source URL</p>
-           <p className="text-[10px] text-blue-400 truncate break-all">{sourceUrl}</p>
-        </div>
-      </div>
-
-      <div className="bg-black rounded-lg p-3 border border-gray-800 h-40 overflow-y-auto custom-scrollbar text-[10px] leading-relaxed text-gray-400 flex flex-col-reverse">
-        <div>
-          {logs.length === 0 ? (
-            <p className="opacity-50 italic">Waiting for AI Engine initialization events...</p>
-          ) : (
-            logs.map((log, i) => (
-              <div key={i} className="mb-1 hover:bg-gray-800/50 px-1 rounded transition-colors break-words text-green-500/80">
-                <span className="text-gray-600 mr-2">{'>'}</span> {log}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+import { Download, Upload, Loader2, RefreshCcw, History, Search, Calendar } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 export default function SystemTab() {
-  // Core Model
-  const [coreModel, setCoreModel] = useState(DEFAULT_PRIMARY_MODEL_ID);
-  const [coreUrl, setCoreUrl] = useState("https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-MLC");
-  const [coreLib, setCoreLib] = useState("https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm");
-  
-  // Tiny Model
-  const [tinyModel, setTinyModel] = useState(DEFAULT_TINY_MODEL_ID);
-  const [tinyUrl, setTinyUrl] = useState("https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-MLC");
-  const [tinyLib, setTinyLib] = useState("https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-ctx4k_cs1k-webgpu.wasm");
-
-  const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      const settings = await db.app_settings.toArray();
-      const st = (key: string) => settings.find(s => s.key === key)?.value;
-      
-      if (st('customCoreModelId')) setCoreModel(st('customCoreModelId'));
-      if (st('customCoreModelUrl')) setCoreUrl(st('customCoreModelUrl'));
-      if (st('customCoreModelLibUrl')) setCoreLib(st('customCoreModelLibUrl'));
-      
-      if (st('customTinyModelId')) setTinyModel(st('customTinyModelId'));
-      if (st('customTinyModelUrl')) setTinyUrl(st('customTinyModelUrl'));
-      if (st('customTinyModelLibUrl')) setTinyLib(st('customTinyModelLibUrl'));
-    };
-    fetchSettings();
-  }, []);
+  // Fetch sync history from audit_logs table
+  const syncLogs = useLiveQuery(() => 
+    db.audit_logs
+      .where('tableName')
+      .equals('system_portability')
+      .reverse()
+      .toArray()
+  ) || [];
 
-  const handleSaveModels = async () => {
-    setIsSaving(true);
-    await db.app_settings.put({ key: 'customCoreModelId', value: coreModel });
-    await db.app_settings.put({ key: 'customCoreModelUrl', value: coreUrl });
-    await db.app_settings.put({ key: 'customCoreModelLibUrl', value: coreLib });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const filteredLogs = syncLogs.filter(log => {
+      let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
+      try {
+        if (log.details) parsedDetails = JSON.parse(log.details);
+      } catch (e) {
+        // Ignore parse error
+      }
+
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = parsedDetails.event.toLowerCase().includes(q) || 
+                            log.pseudokey.toLowerCase().includes(q) ||
+                            parsedDetails.status.toLowerCase().includes(q);
+      
+      if (!matchesSearch) return false;
+
+      const logDate = new Date(log.timestamp);
+      if (startDate && logDate < new Date(startDate)) return false;
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (logDate > end) return false;
+      }
+      
+      return true;
+  });
+
+  const handleExportCSV = () => {
+    const headers = ['Timestamp,Action,Status,User Alias'];
+    const rows = filteredLogs.map(log => {
+      let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
+      try {
+        if (log.details) parsedDetails = JSON.parse(log.details);
+      } catch (e) {
+        // Ignore parse error
+      }
+      return `"${new Date(log.timestamp).toISOString()}","${parsedDetails.event}","${parsedDetails.status}","${log.pseudokey}"`;
+    });
     
-    await db.app_settings.put({ key: 'customTinyModelId', value: tinyModel });
-    await db.app_settings.put({ key: 'customTinyModelUrl', value: tinyUrl });
-    await db.app_settings.put({ key: 'customTinyModelLibUrl', value: tinyLib });
-    
-    await unloadAIEngine(); // Unload from VRAM when user switches models
-    setTimeout(() => setIsSaving(false), 500);
+    const csvContent = headers.concat(rows).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'niti_portability_sync_log.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportBrain = async () => {
@@ -143,7 +96,22 @@ export default function SystemTab() {
       a.download = `niti_brain_export_${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
+
+      await db.audit_logs.add({
+        timestamp: new Date(),
+        pseudokey: sessionStorage.getItem('ea_niti_pseudokey') || 'System',
+        action: 'UPDATE',
+        tableName: 'system_portability',
+        details: JSON.stringify({ event: 'EXPORT_BRAIN', status: 'Success' })
+      });
     } catch (e) {
+      await db.audit_logs.add({
+        timestamp: new Date(),
+        pseudokey: sessionStorage.getItem('ea_niti_pseudokey') || 'System',
+        action: 'UPDATE',
+        tableName: 'system_portability',
+        details: JSON.stringify({ event: 'EXPORT_BRAIN', status: 'Failed' })
+      });
       alert("Failed to export database: " + e);
     } finally {
       setIsExporting(false);
@@ -160,11 +128,38 @@ export default function SystemTab() {
     }
 
     setIsImporting(true);
+    setImportError(null);
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const text = e.target?.result as string;
-        const dump = JSON.parse(text);
+        
+        let dump;
+        try {
+          dump = JSON.parse(text);
+        } catch {
+          throw new Error('Invalid NITI Brain Payload: File is not a valid JSON document.');
+        }
+        
+        // Strict Schema Validation
+        if (!dump || typeof dump !== 'object') {
+          throw new Error('Invalid NITI Brain Payload: Root element is not a JSON object.');
+        }
+
+        const requiredTopLevelKeys = [
+          'architecture_categories',
+          'master_categories',
+          'content_metamodel',
+          'architecture_layers',
+          'architecture_principles',
+          'bian_domains'
+        ];
+
+        // Ensure at least one known architectural array exists in the payload, preventing random JSON uploads
+        const hasAnyValidKey = requiredTopLevelKeys.some(key => Array.isArray(dump[key]));
+        if (!hasAnyValidKey) {
+            throw new Error('Invalid NITI Brain Payload: Missing core architectural entities (e.g., principles, layers).');
+        }
         
         await db.transaction('rw', 
           [db.architecture_categories, db.master_categories, db.content_metamodel,
@@ -186,10 +181,25 @@ export default function SystemTab() {
           if (dump.threat_models) await db.threat_models.bulkPut(dump.threat_models);
         });
         
+        await db.audit_logs.add({
+          timestamp: new Date(),
+          pseudokey: sessionStorage.getItem('ea_niti_pseudokey') || 'System',
+          action: 'UPDATE',
+          tableName: 'system_portability',
+          details: JSON.stringify({ event: 'IMPORT_MERGE', status: 'Success' })
+        });
+
         alert("NITI Brain state successfully restored! The agent interface will reload to apply changes.");
         window.location.reload();
-      } catch (err) {
-        alert("Failed to import brain state: " + err);
+      } catch (err: any) {
+        setImportError(err.message || 'Validation failed');
+        await db.audit_logs.add({
+          timestamp: new Date(),
+          pseudokey: sessionStorage.getItem('ea_niti_pseudokey') || 'System',
+          action: 'UPDATE',
+          tableName: 'system_portability',
+          details: JSON.stringify({ event: 'IMPORT_MERGE', status: 'Failed' })
+        });
       } finally {
         setIsImporting(false);
       }
@@ -199,67 +209,6 @@ export default function SystemTab() {
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
-          <Cpu className="text-blue-500" />
-          AI Engine Configurations
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-          Override the native WebGPU Local Inference models. Models must match HuggingFace MLC registry IDs to be cached via CacheStorage.
-          Note: Very large model configs may trigger browser memory quota constraints.
-        </p>
-        
-        <div className="space-y-6">
-           {/* Core Model Section */}
-           <div className="bg-white dark:bg-gray-800/50 p-4 border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm">
-             <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 border-b border-gray-100 dark:border-gray-800 pb-2">Core Capability Model (Domain SME)</h4>
-             <div className="space-y-3">
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Model Name / HuggingFace ID</label>
-                 <input type="text" value={coreModel} onChange={(e) => setCoreModel(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" placeholder="EA-NITI-Core" />
-               </div>
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Model Weights URL (Folder containing config.json & shards)</label>
-                 <input type="text" value={coreUrl} onChange={(e) => setCoreUrl(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" />
-               </div>
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">WASM Library URL (.wasm binary)</label>
-                 <input type="text" value={coreLib} onChange={(e) => setCoreLib(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" />
-               </div>
-             </div>
-           </div>
-
-           {/* Tiny Model Section */}
-           <div className="bg-white dark:bg-gray-800/50 p-4 border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm">
-             <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 border-b border-gray-100 dark:border-gray-800 pb-2">Fast Triage Model (Constraints/MoE)</h4>
-             <div className="space-y-3">
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Model Name / HuggingFace ID</label>
-                 <input type="text" value={tinyModel} onChange={(e) => setTinyModel(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" placeholder="EA-NITI-Alt" />
-               </div>
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Model Weights URL (Folder containing config.json & shards)</label>
-                 <input type="text" value={tinyUrl} onChange={(e) => setTinyUrl(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" />
-               </div>
-               <div>
-                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">WASM Library URL (.wasm binary)</label>
-                 <input type="text" value={tinyLib} onChange={(e) => setTinyLib(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm outline-none focus:border-blue-500 font-mono" />
-               </div>
-             </div>
-           </div>
-           
-           <button 
-             onClick={handleSaveModels}
-             disabled={isSaving}
-             className="mt-4 flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors text-sm shadow-sm"
-           >
-             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-             {isSaving ? 'Binding to Local DB...' : 'Apply Model Overrides'}
-           </button>
-        </div>
-        <EngineDiagnostics />
-      </div>
-      
       <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800/50 p-6">
          <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
            <RefreshCcw className="text-indigo-500" />
@@ -269,7 +218,7 @@ export default function SystemTab() {
            Export your agent's entirely localized knowledge base (Categories, Domains, Taxonomies, Templates, Workflow Pipelines, Principles) into a raw JSON struct. Use this to seed new NITI installations without re-training standard metadata manually. (Note: Review Sessions and Vector Embeddings are deliberately excluded from brain dumps for privacy isolation layer.)
          </p>
          
-         <div className="flex gap-4 items-center">
+         <div className="flex gap-4 items-center mb-4">
             <button 
                onClick={handleExportBrain}
                disabled={isExporting}
@@ -285,6 +234,9 @@ export default function SystemTab() {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   onChange={handleImportBrain}
                   disabled={isImporting}
+                  id="import-upload"
+                  aria-label="Import upload"
+                  title="Import upload"
                />
                <button 
                   className={`flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-gray-800 border-2 border-indigo-200 dark:border-indigo-700 hover:border-indigo-500 dark:hover:border-indigo-400 text-indigo-700 dark:text-indigo-300 rounded-lg font-medium transition-colors ${isImporting ? 'opacity-50' : ''}`}
@@ -294,6 +246,114 @@ export default function SystemTab() {
                </button>
             </div>
          </div>
+
+         {/* Localized Error Banner for Validation */}
+         {importError && (
+            <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg">
+                <p className="text-sm text-red-700 dark:text-red-400 font-medium">Import Aborted</p>
+                <p className="text-xs text-red-600 dark:text-red-300 mt-1">{importError}</p>
+            </div>
+         )}
+      </div>
+
+      {/* ─── Task 1: Knowledge Sync History Table ─── */}
+      <div className="bg-white dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+             <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+               <History size={16} className="text-gray-500" />
+               Knowledge Sync & Portability History
+             </h3>
+             <div className="flex flex-wrap items-center gap-3">
+               <div className="relative">
+                 <Search size={14} className="absolute left-2.5 top-2 text-gray-400" />
+                 <input 
+                   type="text" 
+                   value={searchQuery}
+                   onChange={e => setSearchQuery(e.target.value)}
+                   placeholder="Search logs..." 
+                   className="pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md focus:border-indigo-500 outline-none w-48 text-gray-800 dark:text-gray-200"
+                 />
+               </div>
+               <div className="flex items-center gap-2 relative">
+                 <Calendar size={14} className="absolute left-2.5 top-2 text-gray-400" />
+                 <input 
+                   type="date"
+                   value={startDate}
+                   onChange={e => setStartDate(e.target.value)}
+                   className="pl-8 pr-2 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md outline-none text-gray-800 dark:text-gray-200"
+                   aria-label="Start date"
+                   title="Start date"
+                   placeholder="Start date"
+                 />
+                 <span className="text-gray-400 text-xs">-</span>
+                 <input 
+                   type="date"
+                   value={endDate}
+                   onChange={e => setEndDate(e.target.value)}
+                   className="px-2 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md outline-none text-gray-800 dark:text-gray-200"
+                   aria-label="End date"
+                   title="End date"
+                   placeholder="End date"
+                 />
+               </div>
+               <button 
+                  onClick={handleExportCSV}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md text-xs font-semibold transition-colors shadow-sm"
+               >
+                 <Download size={14} />
+                 Export CSV
+               </button>
+             </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-100 dark:bg-gray-900/50">
+              <tr>
+                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Timestamp</th>
+                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Action</th>
+                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
+                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">User Alias</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredLogs.length > 0 ? (
+                filteredLogs.map(log => {
+                  let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
+                  try {
+                    if (log.details) parsedDetails = JSON.parse(log.details);
+                  } catch (e) {
+                    // Ignore parse error
+                  }
+
+                  return (
+                    <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                      <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{new Date(log.timestamp).toLocaleString()}</td>
+                      <td className="px-5 py-3 font-medium text-gray-900 dark:text-gray-200">{parsedDetails.event}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          parsedDetails.status === 'Success' 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {parsedDetails.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-gray-600 dark:text-gray-400">{log.pseudokey}</td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-gray-500 dark:text-gray-400">
+                    No portability sync history recorded locally.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

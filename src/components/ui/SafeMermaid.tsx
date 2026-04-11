@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
 // Lazy-load Mermaid: only imported when SafeMermaid component mounts
 // This allows Mermaid.js (~400KB gzipped) to be code-split from main bundle

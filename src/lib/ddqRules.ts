@@ -64,7 +64,6 @@ function withNA(opts: DDQOption[]): DDQOption[] {
 const isNSI = (m: DDQMetadata) => m.reviewType.includes('NSI') || m.reviewType.includes('New System');
 const isTier1 = (m: DDQMetadata) => m.appTier === 'Tier 1';
 const isCloudHosted = (m: DDQMetadata) => m.hostingModel?.toLowerCase().includes('cloud') || m.tags.some(t => t.includes('Cloud'));
-const isEnhancement = (m: DDQMetadata) => m.reviewType.includes('Enhancement');
 const hasPII = (m: DDQMetadata) => m.tags.some(t => t.includes('PII')) || m.dataClassification === 'Restricted' || m.dataClassification === 'Confidential';
 
 // ──────────────────────────────────────────────────────────────

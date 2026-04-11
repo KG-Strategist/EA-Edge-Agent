@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, ChevronDown, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen, Library } from 'lucide-react';
 import { useStateContext } from '../context/StateContext';
 import Logo from './ui/Logo';
 
@@ -10,104 +10,46 @@ interface NavbarProps {
   setAdminSubView: (view: string) => void;
 }
 
-const adminGroups = [
-  {
-    parentNavId: 'expert-config',
-    id: 'arch-setup',
-    label: 'Architecture Setup',
-    icon: Layers,
-    tabs: [
-      { id: 'layers', label: 'Layers', icon: Layers },
-      { id: 'principles', label: 'Principles', icon: Lightbulb },
-      { id: 'bian', label: 'BIAN Domains', icon: Network },
-    ],
-  },
-  {
-    parentNavId: 'expert-config',
-    id: 'taxonomy',
-    label: 'Taxonomy & Metadata',
-    icon: Database,
-    tabs: [
-      { id: 'metamodel', label: 'Content Metamodel', icon: Database },
-      { id: 'categories', label: 'Master Categories', icon: Database },
-      { id: 'tags', label: 'Tags', icon: Tag },
-    ],
-  },
-  {
-    parentNavId: 'agent-config',
-    id: 'agent',
-    label: 'Agent Behaviors',
-    icon: Brain,
-    tabs: [
-      { id: 'prompts', label: 'AI Prompts', icon: Brain },
-      { id: 'workflows', label: 'Workflows', icon: Workflow },
-      { id: 'templates', label: 'Templates', icon: FileDown },
-    ],
-  },
-  {
-    parentNavId: 'system-config',
-    id: 'system',
-    label: 'System Preferences',
-    icon: Settings,
-    tabs: [
-      { id: 'network', label: 'Network & Privacy', icon: Network },
-      { id: 'knowledge', label: 'Enterprise Knowledge', icon: BookOpen },
-      { id: 'models', label: 'Model Sandbox', icon: Database },
-      { id: 'system', label: 'System & Portability', icon: Settings },
-    ],
-  },
-  {
-    parentNavId: 'system-config',
-    id: 'security',
-    label: 'Security & Access',
-    icon: Shield,
-    tabs: [
-      { id: 'users', label: 'User Access Management', icon: Shield },
-      { id: 'audit', label: 'Audit Workspace', icon: FileText },
-      { id: 'dpdp', label: 'DPDP / Privacy', icon: Shield },
-    ],
-  },
-];
-
-function findGroupForTab(tabId: string): string | null {
-  for (const group of adminGroups) {
-    if (group.tabs.some(t => t.id === tabId)) return group.id;
-  }
-  return null;
-}
-
+/** Flat 2-level map: parent nav ID → direct child tabs (no intermediate groups). */
+const adminTabs: Record<string, { id: string; label: string; icon: React.ComponentType<any> }[]> = {
+  'expert-config': [
+    { id: 'layers', label: 'Layers', icon: Layers },
+    { id: 'principles', label: 'Principles', icon: Lightbulb },
+    { id: 'bian', label: 'BIAN Domains', icon: Network },
+    { id: 'metamodel', label: 'Content Metamodel', icon: Database },
+    { id: 'categories', label: 'Master Categories', icon: Database },
+    { id: 'tags', label: 'Tags', icon: Tag },
+  ],
+  'agent-config': [
+    { id: 'prompts', label: 'AI Prompts', icon: Brain },
+    { id: 'configs', label: 'Agent Configurations', icon: Settings },
+    { id: 'workflows', label: 'Workflows', icon: Workflow },
+    { id: 'templates', label: 'Templates', icon: FileDown },
+  ],
+  'system-pref': [
+    { id: 'network', label: 'Network & Privacy', icon: Network },
+    { id: 'users', label: 'User Access', icon: Shield },
+    { id: 'audit', label: 'Audit Workspace', icon: FileText },
+    { id: 'dpdp', label: 'DPDP / Privacy', icon: Shield },
+  ],
+  'knowledge-mgmt': [
+    { id: 'knowledge', label: 'Enterprise Knowledge', icon: BookOpen },
+    { id: 'models', label: 'Model Sandbox', icon: Database },
+    { id: 'system', label: 'System & Portability', icon: Settings },
+  ],
+};
 export default function Navbar({ currentView, setCurrentView, adminSubView, setAdminSubView }: NavbarProps) {
   const { theme, toggleTheme, identity } = useStateContext();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-    const activeGroup = findGroupForTab(adminSubView);
-    return new Set(activeGroup ? [activeGroup] : ['arch-setup']);
-  });
   const [isAdminSubmenuVisible, setIsAdminSubmenuVisible] = useState(true);
 
-  // Auto-expand the group containing the active sub-tab
+  // Keep submenu open when navigating within an admin view
   useEffect(() => {
-    if (['expert-config', 'agent-config', 'system-config', 'admin'].includes(currentView)) {
-      const activeGroup = findGroupForTab(adminSubView);
-      if (activeGroup && !expandedGroups.has(activeGroup)) {
-        setExpandedGroups(prev => new Set([...prev, activeGroup]));
-      }
+    if (['expert-config', 'agent-config', 'system-pref', 'knowledge-mgmt'].includes(currentView)) {
       setIsAdminSubmenuVisible(true);
     }
   }, [adminSubView, currentView]);
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  };
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -116,67 +58,42 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
     ...(identity?.role === 'Lead EA' ? [
       { id: 'expert-config', label: 'Expert Setup', icon: Layers, hasSubmenu: true },
       { id: 'agent-config', label: 'Agent Center', icon: Brain, hasSubmenu: true },
-      { id: 'system-config', label: 'System Admin', icon: Settings, hasSubmenu: true }
+      { id: 'knowledge-mgmt', label: 'Knowledge Management', icon: Library, hasSubmenu: true },
+      { id: 'system-pref', label: 'System & Preference', icon: Settings, hasSubmenu: true }
     ] : [])
   ];
 
-  const renderAdminGroups = (isMobile: boolean, parentNavId: string) => (
-    <div className={`${isMobile ? 'ml-2 pl-2' : 'ml-2 pl-2'} border-l border-gray-200 dark:border-gray-700 mt-1 flex flex-col gap-1`}>
-      {adminGroups.filter(g => g.parentNavId === parentNavId).map(group => {
-        const GroupIcon = group.icon;
-        const isGroupOpen = expandedGroups.has(group.id);
-        const hasActiveChild = group.tabs.some(t => t.id === adminSubView);
+  /** Renders flat child tabs directly under the parent nav item (2-level only). */
+  const renderAdminTabs = (isMobile: boolean, parentNavId: string) => {
+    const tabs = adminTabs[parentNavId];
+    if (!tabs) return null;
 
-        return (
-          <div key={group.id}>
-            {/* Group Header */}
+    return (
+      <div className="ml-2 pl-2 border-l border-gray-200 dark:border-gray-700 mt-1 flex flex-col gap-0.5">
+        {tabs.map(tab => {
+          const TabIcon = tab.icon;
+          const isActive = adminSubView === tab.id;
+          return (
             <button
-              onClick={() => toggleGroup(group.id)}
-              className={`flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                hasActiveChild
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+              key={tab.id}
+              onClick={() => {
+                setAdminSubView(tab.id);
+                if (isMobile) setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors w-full text-left ${
+                isActive
+                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
-              <GroupIcon size={12} className="shrink-0" />
-              <span className="flex-1 text-left truncate">{group.label}</span>
-              <ChevronDown 
-                size={12} 
-                className={`shrink-0 transition-transform duration-200 ${isGroupOpen ? 'rotate-0' : '-rotate-90'}`} 
-              />
+              <TabIcon size={13} className="shrink-0" />
+              <span className="truncate">{tab.label}</span>
             </button>
-
-            {/* Group Children */}
-            {isGroupOpen && (
-              <div className="flex flex-col gap-0.5 mt-0.5">
-                {group.tabs.map(tab => {
-                  const TabIcon = tab.icon;
-                  const isActive = adminSubView === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setAdminSubView(tab.id);
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors w-full text-left ${
-                        isActive
-                          ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      <TabIcon size={13} className="shrink-0" />
-                      <span className="truncate">{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -196,7 +113,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
         <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setIsMobileMenuOpen(false)}>
           <div className="fixed left-0 top-16 bottom-0 w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
-              <Logo className="w-12 h-12 shrink-0" animated={false} />
+              <Logo className="w-8 h-8 shrink-0" animated={false} />
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight leading-tight">EA NITI</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Triage & Inference</p>
@@ -227,7 +144,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
                       <Icon size={18} className="shrink-0" />
                       <span>{item.label}</span>
                     </button>
-                    {item.hasSubmenu && isActive && isAdminSubmenuVisible && renderAdminGroups(true, item.id)}
+                    {item.hasSubmenu && isActive && isAdminSubmenuVisible && renderAdminTabs(true, item.id)}
                   </div>
                 );
               })}
@@ -246,20 +163,27 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
       )}
 
       {/* Desktop Sidebar */}
-      <nav className={`hidden md:flex md:flex-col ${isCollapsed ? 'md:w-20' : 'md:w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen flex-col transition-all duration-300`}>
-        <div className={`p-5 border-b border-gray-200 dark:border-gray-800 flex ${isCollapsed ? 'justify-center' : 'justify-between'} items-center h-[73px]`}>
+      <nav className={`hidden md:flex md:flex-col ${isCollapsed ? 'md:w-20' : 'md:w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen flex-col transition-all duration-300 relative`}>
+        <div className={`p-5 border-b border-gray-200 dark:border-gray-800 flex ${isCollapsed ? 'justify-center' : 'justify-between'} items-center h-[73px] relative`}>
           {!isCollapsed && (
             <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-              <Logo className="w-12 h-12 shrink-0" animated={false} />
+              <Logo className="w-10 h-10 shrink-0" animated={false} />
               <div>
                 <h1 className="text-[17px] font-bold text-gray-900 dark:text-white tracking-tight leading-tight">EA NITI</h1>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Triage & Inference</p>
               </div>
             </div>
           )}
-          {isCollapsed && <Logo className="w-10 h-10 shrink-0" animated={false} />}
-          <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0">
-            {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          {isCollapsed && <Logo className="w-8 h-8 shrink-0" animated={false} />}
+          <button 
+            onClick={() => setIsCollapsed(!isCollapsed)} 
+            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0 z-10 ${
+              isCollapsed 
+                ? 'absolute -right-3.5 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm rounded-full' 
+                : 'rounded-lg'
+            }`}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={20} />}
           </button>
         </div>
         <div className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
@@ -290,7 +214,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
                   <Icon size={18} className="shrink-0" />
                   {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
                 </button>
-                {item.hasSubmenu && isActive && !isCollapsed && isAdminSubmenuVisible && renderAdminGroups(false, item.id)}
+                {item.hasSubmenu && isActive && !isCollapsed && isAdminSubmenuVisible && renderAdminTabs(false, item.id)}
               </div>
             );
           })}

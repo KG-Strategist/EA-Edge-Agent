@@ -1,0 +1,65 @@
+{
+  "togaf_phases": [
+    { "id": "A", "name": "Architecture Vision", "description": "Initial phase of an architecture development cycle." },
+    { "id": "B", "name": "Business Architecture", "description": "Development of a Business Architecture to support an agreed Architecture Vision." },
+    { "id": "C", "name": "Information Systems Architectures", "description": "Development of Information Systems Architectures for an IT project." },
+    { "id": "D", "name": "Technology Architecture", "description": "Development of the Technology Architecture." },
+    { "id": "E", "name": "Opportunities & Solutions", "description": "Initial implementation planning and the identification of delivery vehicles." },
+    { "id": "F", "name": "Migration Planning", "description": "Formulation of a set of detailed sequence of transition architectures." }
+  ],
+  "bian_domains": [
+    { "id": "1", "name": "Party Routing", "businessArea": "Reference Data", "status": "Active" },
+    { "id": "2", "name": "Customer Offer", "businessArea": "Sales", "status": "Active" },
+    { "id": "3", "name": "Consumer Loan", "businessArea": "Lending", "status": "Active" },
+    { "id": "4", "name": "Current Account", "businessArea": "Deposits", "status": "Active" },
+    { "id": "5", "name": "Payment Execution", "businessArea": "Payments", "status": "Active" }
+  ],
+  "ea_principles": [
+    { "id": "P1", "name": "Primacy of Principles", "statement": "These principles of information management apply to all organizations within the enterprise." },
+    { "id": "P2", "name": "Maximize Benefit to the Enterprise", "statement": "Information management decisions are made to provide maximum benefit to the enterprise as a whole." },
+    { "id": "P3", "name": "Information Management is Everybody's Business", "statement": "All organizations in the enterprise participate in information management decisions needed to accomplish business objectives." },
+    { "id": "P4", "name": "Business Continuity", "statement": "Enterprise operations are maintained in spite of system interruptions." },
+    { "id": "P5", "name": "Common Use Applications", "statement": "Development of applications used across the enterprise is preferred over the development of similar or duplicative applications which are only provided to a particular organization." }
+  ],
+  "review_workflows": [
+    {
+      "name": "Enhancement Review",
+      "triggerReviewType": "Enhancement Review (ER)",
+      "status": "Active",
+      "version": 1,
+      "stages": [
+        { "id": "stage-1", "name": "Context & DDQ", "type": "Automated", "order": 1 },
+        { "id": "stage-2", "name": "AI Draft", "type": "Automated", "order": 2 },
+        { "id": "stage-3", "name": "Human Review", "type": "Human", "order": 3 }
+      ]
+    },
+    {
+      "name": "New System Implementation",
+      "triggerReviewType": "New System Implementation (NSI)",
+      "status": "Active",
+      "version": 1,
+      "stages": [
+        { "id": "stage-1", "name": "Context & DDQ", "type": "Automated", "order": 1 },
+        { "id": "stage-2", "name": "Threat Modeling", "type": "Automated", "order": 2 },
+        { "id": "stage-3", "name": "AI Draft", "type": "Automated", "order": 3 },
+        { "id": "stage-4", "name": "Human Review", "type": "Human", "order": 4 }
+      ]
+    }
+  ],
+  "report_templates": [
+    {
+      "name": "Standard ADR",
+      "category": "ADR",
+      "status": "Active",
+      "version": 1,
+      "markdownStructure": "# Architecture Decision Record\n\n## Context\n{{context}}\n\n## Decision\n{{decision}}\n\n## Consequences\n{{consequences}}"
+    },
+    {
+      "name": "Security Threat Report",
+      "category": "Security",
+      "status": "Active",
+      "version": 1,
+      "markdownStructure": "# Security Threat Report\n\n## Identified Threats\n{{threats}}\n\n## Mitigations\n{{mitigations}}"
+    }
+  ]
+}

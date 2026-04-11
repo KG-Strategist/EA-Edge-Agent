@@ -1,26 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, DownloadCloud, ShieldAlert, Cpu, X, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle, DownloadCloud, ShieldAlert } from 'lucide-react';
 import { initAIEngine } from '../../lib/aiEngine';
 import { useStateContext } from '../../context/StateContext';
+import { db } from '../../lib/db';
 
 export default function ModelConsentModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(false);
   const [targetModelId, setTargetModelId] = useState('');
-  const [executionTarget, setExecutionTarget] = useState('Domain SME Model');
+  const [targetModelUrl, setTargetModelUrl] = useState('');
+  const [modelSize, setModelSize] = useState<string>('Size: Varies (Check documentation)');
   
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [progressText, setProgressText] = useState('');
-  const [progressPercentage, setProgressPercentage] = useState(0);
+  const [hasAcknowledged, setHasAcknowledged] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
-  const { setSystemHealth } = useStateContext();
+  const { setSystemHealth, setDownloadState } = useStateContext();
 
   useEffect(() => {
     const handleConsentEvent = (e: Event) => {
       const customEvent = e as CustomEvent;
       setNetworkEnabled(customEvent.detail.networkEnabled);
       setTargetModelId(customEvent.detail.targetModelId);
-      setExecutionTarget(customEvent.detail.executionTarget || 'Domain SME Model');
+      setTargetModelUrl(customEvent.detail.targetModelUrl);
+      setModelSize(customEvent.detail.modelSize || 'Size: Varies (Check documentation)');
+      setHasAcknowledged(false); // Reset acknowledgment on open
       setIsOpen(true);
     };
 
@@ -29,34 +32,86 @@ export default function ModelConsentModal() {
   }, []);
 
   const handleDownload = async () => {
-    setIsDownloading(true);
-    setProgressText('Initiating download...');
+    if (!hasAcknowledged) return;
+    
+    setIsProcessing(true);
     
     try {
-      await initAIEngine((progress) => {
-        setProgressText(progress.text);
-        setProgressPercentage(Math.round(progress.progress * 100));
+      // 1. Await Dexie DB Transaction
+      await db.audit_logs.add({
+        timestamp: new Date(),
+        pseudokey: sessionStorage.getItem('ea_niti_session') || 'Unknown',
+        action: 'WEBLLM_CACHE_CONSENT',
+        tableName: 'system',
+        recordId: targetModelId,
+        details: `Consented to network egress for downloading model URL: ${targetModelUrl}`
+      });
+
+      console.log('Consent logged, initiating download background task...');
+      
+      // 2. Only upon DB Success, setup background task and close
+      setDownloadState({
+        isActive: true,
+        isMinimized: false,
+        progressPercentage: 0,
+        progressText: 'Connecting to registry...',
+        modelId: targetModelId,
+        status: 'Downloading'
+      });
+      setIsOpen(false);
+      setIsProcessing(false);
+
+      // 3. Trigger WebLLM async safely
+      initAIEngine((progress) => {
+        setDownloadState(prev => ({
+          ...prev,
+          progressPercentage: Math.round(progress.progress * 100),
+          progressText: progress.text
+        }));
         setSystemHealth((prev: any) => ({
           ...prev,
           aiModelsStatus: `Downloading (${Math.round(progress.progress * 100)}%)`
         }));
-      }, true, executionTarget as 'Domain SME Model' | 'EA Core Model'); // Pass forceDownload = true AND requestedTarget
-      
-      setSystemHealth((prev: any) => ({
-        ...prev,
-        aiModelsStatus: 'Loaded & Ready (WebGPU)'
-      }));
-      
-      setIsOpen(false);
+      }, true, targetModelId, targetModelUrl)
+      .then(() => {
+        setDownloadState(prev => ({
+          ...prev,
+          progressPercentage: 100,
+          progressText: 'Download Complete! Engine cached to IDB.',
+          status: 'Complete'
+        }));
+        setSystemHealth((prev: any) => ({
+          ...prev,
+          aiModelsStatus: 'Loaded & Ready (WebGPU)'
+        }));
+      })
+      .catch((error) => {
+        console.error('Failed to download model:', error);
+
+        // TASK 3: Enhanced Cache Corruption Handling
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isCacheCorruption = errorMsg.includes("execute 'add' on 'Cache'") || errorMsg.includes('Failed to fetch');
+        const userMessage = isCacheCorruption
+          ? "Cache corrupted by previous 404 error. Please clear your browser's Site Data/Cache (F12 → Application → Storage → Clear site data) and refresh."
+          : errorMsg;
+
+        setDownloadState(prev => ({
+          ...prev,
+          progressText: `Initialization Failed (WebLLM)`,
+          message: userMessage,
+          status: 'Error'
+        }));
+        setSystemHealth((prev: any) => ({
+          ...prev,
+          aiModelsStatus: 'Error'
+        }));
+      });
+
     } catch (error) {
-      console.error('Failed to download model:', error);
-      setProgressText(`Error: ${error instanceof Error ? error.message : 'Download failed'}`);
-      setSystemHealth((prev: any) => ({
-        ...prev,
-        aiModelsStatus: 'Error'
-      }));
-    } finally {
-      setIsDownloading(false);
+      console.error('Failed to log consent to IDB:', error);
+      // DB failed, stay open but alert user
+      setIsProcessing(false);
+      alert('Security Audit Error: Failed to write to Audit Log. Download aborted to maintain compliance.');
     }
   };
 
@@ -92,6 +147,12 @@ export default function ModelConsentModal() {
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <p>Action Blocked: To preserve air-gap integrity, you must explicitly enable "External Network Features" in the Control Panel.</p>
               </div>
+              <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg">
+                <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-1">🚀 Future Roadmap: Hybrid Agentic Ecosystem</h4>
+                <p className="text-xs text-indigo-700 dark:text-indigo-200/80">
+                  Enabling network features will soon unlock the <strong>EA Marketplace</strong> (community models/prompts) and the <strong>Global EA Network</strong> (direct chat with web-mode global agents).
+                </p>
+              </div>
             </div>
           ) : (
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-800 space-y-3">
@@ -99,30 +160,43 @@ export default function ModelConsentModal() {
                 To run the AI completely locally, we need to cache the neural network weights into your browser (IndexedDB).
               </p>
               <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2 mt-3 list-disc pl-5">
-                <li><strong>Size:</strong> ~1.8 GB (one-time download)</li>
+                <li><strong>Model:</strong> {targetModelId || 'Unknown'}</li>
+                <li><strong>Size:</strong> {modelSize} (one-time download)</li>
                 <li><strong>Privacy:</strong> Once downloaded, it operates 100% offline.</li>
                 <li><strong>Hardware requirement:</strong> WebGPU capable browser & device.</li>
               </ul>
               
-              {isDownloading && (
-                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Download Progress</span>
-                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{progressPercentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progressPercentage}%` }}></div>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 truncate w-full">{progressText}</p>
+              {!isProcessing && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={hasAcknowledged} 
+                      onChange={(e) => setHasAcknowledged(e.target.checked)} 
+                      className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                    />
+                    <span className="text-xs text-gray-700 dark:text-gray-300">
+                      <strong>I acknowledge that this action requires network egress.</strong> I confirm this model URL complies with internal safety and malware scanning policies.
+                    </span>
+                  </label>
                 </div>
               )}
+              
+              <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg">
+                <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-1">🚀 Future Roadmap: Hybrid Agentic Ecosystem</h4>
+                <p className="text-xs text-indigo-700 dark:text-indigo-200/80">
+                  By consenting, you are preparing your environment for the upcoming <strong>EA Marketplace</strong> and <strong>Global EA Network</strong> integrations.
+                </p>
+              </div>
+              
+              {/* Note: In-modal progress bar removed in favor of Global Progress Widget */}
             </div>
           )}
         </div>
 
         {/* Footer Actions */}
         <div className="flex justify-end gap-3 pt-2">
-          {!isDownloading && (
+          {!isProcessing && (
             <button 
               onClick={() => setIsOpen(false)} 
               className="px-5 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
@@ -131,13 +205,14 @@ export default function ModelConsentModal() {
             </button>
           )}
           
-          {networkEnabled && !isDownloading && (
+          {networkEnabled && (
             <button 
               onClick={handleDownload}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-transform active:scale-95 shadow-md shadow-blue-500/20"
+              disabled={!hasAcknowledged || isProcessing}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium transition-transform active:scale-95 shadow-md shadow-blue-500/20"
             >
               <DownloadCloud size={18} />
-              Consent & Download
+              {isProcessing ? 'Processing...' : 'Consent & Download'}
             </button>
           )}
         </div>

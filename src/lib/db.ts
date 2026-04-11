@@ -124,6 +124,8 @@ export interface ReviewSession {
   architectureBlobs?: ArchitectureBlob[];
   ddqScorecard?: any; // Aggregate scorecards mapping array
   reportMarkdown?: string;
+  humanThoughts?: string;
+  reportTemplateId?: number;
   
   // Final Board Overrides
   humanOverrides?: {
@@ -147,9 +149,12 @@ export interface ThreatModelRecord {
   id?: number;
   sessionId?: number;
   projectName: string;
-  components: any[];
-  threats: any[];
-  mermaidDFD: string;
+  components?: any[];
+  threats?: any[];
+  mermaidDFD?: string;
+  encryptedData?: string; // Holds encrypted JSON of components, threats, and mermaidDFD
+  componentCount?: number;
+  threatCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -166,10 +171,11 @@ export interface EnterpriseEmbedding {
 export interface TrainingJob {
   id?: number;
   filename: string;
-  status: 'Pending' | 'Processing' | 'Completed' | 'Failed';
+  status: 'Pending' | 'Processing' | 'Completed' | 'Failed' | 'PURGED';
   logs: string[]; // Progress and error logs
   startedAt: Date;
   completedAt?: Date;
+  purgedAt?: Date;
 }
 
 export interface AppSetting {
@@ -186,13 +192,28 @@ export interface LocalUser {
   providerId?: string; // For Hybrid mode SSO linkage
   authMode: 'Air-Gapped' | 'Hybrid';
   createdAt: Date;
+  securityQuestions?: {
+    questionId: string;
+    answerHash: string;
+  }[];
+  // DPDP/GDPR Data Management
+  demographics?: {
+    regionToken: string; // Tokenized region (e.g., EU, APAC)
+    roleToken: string; // Tokenized role
+  };
+  consentHistory?: {
+    type: 'TELEMETRY' | 'OFFLINE_LIMITS' | 'MULTI_UAM' | 'PAM_PIM' | 'HYBRID_LIMITED';
+    grantedAt: Date;
+    version: string;
+    revokedAt?: Date;
+  }[];
 }
 
 export interface AuditLog {
   id?: number;
   timestamp: Date;
   pseudokey: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'WEBLLM_CACHE_CONSENT';
   tableName: string;
   recordId?: string | number;
   details?: string;
@@ -210,12 +231,13 @@ export interface DashboardState {
 export interface AIModelRecord {
   id?: number;
   name: string; // e.g., 'EA-NITI Core' or 'Llama-3-BYOM'
-  type: 'PRIMARY' | 'SECONDARY';
-  modelUrl: string; // Points to WebLLM config root
+  type: 'PRIMARY' | 'SECONDARY' | 'BYOM_NETWORK';
+  modelUrl: string; // Points to WebLLM config root or endpoint URL
   wasmUrl?: string; // Optional custom WASM binder
   isLocalhost: boolean; // Resolves against window.location.origin
   isActive: boolean;
   allowDistillation?: boolean; // For Secondary models
+  apiKey?: string;
 }
 
 export interface NetworkIntegration {
@@ -226,6 +248,7 @@ export interface NetworkIntegration {
   apiKey: string;
   isDefault: boolean;
   createdAt: Date;
+  modelName?: string;
 }
 
 export interface GlobalSetting {
@@ -244,12 +267,53 @@ export interface PromptTemplate {
   id?: number;
   name: string;
   category: string;
-  executionTarget?: 'EA Core Model' | 'Domain SME Model' | 'Auto-Route Hybrid';
+  executionTarget?: 'Primary EA Agent' | 'Tiny Triage Agent' | 'Auto-Route (MoE)';
   promptText: string;
   version?: string;
   status: 'Draft' | 'Active' | 'Needs Review' | 'Deprecated';
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface PrivacyGuardrail {
+  id?: number;
+  title: string;
+  ruleText: string;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
+export interface CustomAgent {
+  id?: number;
+  name: string;
+  isActive: boolean;
+  agentCategory: string;
+  engineType: string;
+  personaInstruction: string;
+  modelSourceMode: 'Remote URL' | 'Offline Sideloaded';
+  modelId: string;
+  modelUrl: string;
+  baseApiEndpoint: string;
+  context: number;
+  status: 'Active' | 'Inactive' | 'PURGED' | 'Deprecated';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatThread {
+  id?: number;
+  title: string;
+  threadId: string; // UUID or timestamp-based ID
+  updatedAt: Date;
+  createdAt: Date;
+}
+
+export interface ChatMessage {
+  id?: number;
+  threadId: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: Date;
 }
 
 export class EADatabase extends Dexie {
@@ -275,6 +339,10 @@ export class EADatabase extends Dexie {
   dashboard_states!: Table<DashboardState>;
   model_registry!: Table<AIModelRecord>;
   global_settings!: Table<GlobalSetting>;
+  privacy_guardrails!: Table<PrivacyGuardrail>;
+  custom_agents!: Table<CustomAgent>;
+  chat_threads!: Table<ChatThread>;
+  chat_messages!: Table<ChatMessage>;
 
   constructor() {
     super('EADatabase');
@@ -631,15 +699,25 @@ export class EADatabase extends Dexie {
       dashboard_states: '++id, name, isDefault',
       model_registry: '++id, name, type, isActive'
     }).upgrade(async tx => {
-      // Seed default Core Model on upgrade
+      // Seed default Core + Tiny models on upgrade
       if ((await tx.table('model_registry').count()) === 0) {
-        await tx.table('model_registry').add({
-          name: 'EA-NITI Core (Llama-3-8B-Instruct-q4f16_1-MLC)',
-          type: 'PRIMARY',
-          modelUrl: 'https://huggingface.co/mlc-ai/Llama-3-8B-Instruct-q4f16_1-MLC',
-          isLocalhost: false,
-          isActive: true
-        });
+        await tx.table('model_registry').bulkAdd([
+          {
+            name: 'EA-NITI Core (Llama-3-8B-Instruct-q4f16_1-MLC)',
+            type: 'PRIMARY',
+            modelUrl: 'https://huggingface.co/mlc-ai/Llama-3-8B-Instruct-q4f16_1-MLC',
+            isLocalhost: false,
+            isActive: true
+          },
+          {
+            name: 'EA-NITI-Alt',
+            type: 'SECONDARY',
+            modelUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-MLC',
+            wasmUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm',
+            isLocalhost: false,
+            isActive: true
+          }
+        ]);
       }
     });
     // v23: DPDP Global Settings
@@ -667,17 +745,145 @@ export class EADatabase extends Dexie {
       model_registry: '++id, name, type, isActive',
       global_settings: 'id'
     });
+    // v24: Privacy Guardrails — DPDP/GDPR contextual compliance rules
+    this.version(24).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive'
+    }).upgrade(async tx => {
+      if ((await tx.table('privacy_guardrails').count()) === 0) {
+        await tx.table('privacy_guardrails').bulkAdd([
+          {
+            title: 'Strict PII Anonymization',
+            ruleText: 'Never output names, emails, or exact IP addresses in architecture reviews.',
+            isDefault: true,
+            isActive: true
+          },
+          {
+            title: 'Data Localization (DPDP)',
+            ruleText: 'Assume all enterprise data must remain within the geographic boundaries of the host organization.',
+            isDefault: true,
+            isActive: true
+          }
+        ]);
+      }
+    });
+
+    // v25: Custom Agent Registry (Buddy Personas)
+    this.version(25).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive',
+      custom_agents: '++id, name, agentCategory, status'
+    });
+    // v26: Chat History Rolling Cache (FIFO)
+    this.version(26).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      bian_domains: '++id, name, businessArea, businessDomain, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, threadId, updatedAt',
+      chat_messages: '++id, threadId, timestamp, role'
+    });
   }
 }
 
 export const db = new EADatabase();
+
+/**
+ * Prunes old chat threads to maintain storage efficiency.
+ * Automatically deletes the oldest thread and its associated messages if count > 50.
+ */
+export async function pruneOldChats(): Promise<void> {
+  try {
+    const threadCount = await db.chat_threads.count();
+    if (threadCount > 50) {
+      const oldest = await db.chat_threads
+        .orderBy('updatedAt')
+        .first();
+
+      if (oldest?.id) {
+        // Delete all messages associated with oldest thread
+        await db.chat_messages.where('threadId').equals(oldest.id).delete();
+        // Delete the thread itself
+        await db.chat_threads.delete(oldest.id);
+      }
+    }
+  } catch (e) {
+    // Silently log to avoid disrupting UI
+    if (typeof window !== 'undefined') {
+      // Logger not imported here to avoid circular deps
+      console.warn('[pruneOldChats] Error during chat history pruning:', e);
+    }
+  }
+}
 
 // Setup Audit Hooks globally across all tables (excluding audit_logs itself)
 db.on('ready', () => {
   db.tables.forEach(table => {
     if (table.name === 'audit_logs' || table.name === 'users') return; // Don't audit the audit or identity table loops
 
-    table.hook('creating', function (primKey, obj, transaction) {
+    table.hook('creating', function (_primKey, _obj, _transaction) {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       // Create separate async transaction to avoid blocking main CRUD
       Dexie.ignoreTransaction(() => {
@@ -691,7 +897,7 @@ db.on('ready', () => {
       });
     });
 
-    table.hook('updating', function (modifications, primKey, obj, transaction) {
+    table.hook('updating', function (_modifications, primKey, _obj, _transaction) {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       Dexie.ignoreTransaction(() => {
         db.audit_logs.add({
@@ -705,7 +911,7 @@ db.on('ready', () => {
       });
     });
 
-    table.hook('deleting', function (primKey, obj, transaction) {
+    table.hook('deleting', function (primKey, _obj, _transaction) {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       Dexie.ignoreTransaction(() => {
         db.audit_logs.add({

@@ -4,7 +4,7 @@
  * Production-grade database initialization with schema validation and migration support.
  */
 
-import { db, EADatabase } from './db';
+import { db } from './db';
 
 // Current schema version (increment on any breaking schema changes)
 const CURRENT_SCHEMA_VERSION = 23;

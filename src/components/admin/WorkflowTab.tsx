@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ReviewWorkflow } from '../../lib/db';
-import { Plus, Edit2, Trash2, Check, X, GitMerge, ArrowRight, Save, PlayCircle, Settings2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, GitMerge, Save, PlayCircle, Settings2 } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import { useMasterData } from '../../hooks/useMasterData';
 import StatusToggle from '../ui/StatusToggle';

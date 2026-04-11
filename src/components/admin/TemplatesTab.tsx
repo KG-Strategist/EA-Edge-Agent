@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ReportTemplate } from '../../lib/db';
 import { Plus, Edit2, Trash2, Check, X, FileText } from 'lucide-react';

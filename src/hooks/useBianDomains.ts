@@ -62,7 +62,7 @@ export function useBianDomains(searchTerm: string = '') {
           await db.bian_domains.bulkAdd(SEED_DOMAINS);
 
           // Seed Master Categories mapping to these new types
-          const masterAdditions = [];
+          const masterAdditions: { name: string; type: string; status: string }[] = [];
           
           const uniqueAreas = Array.from(new Set(SEED_DOMAINS.map(d => d.businessArea)));
           uniqueAreas.forEach(a => masterAdditions.push({ name: a, type: 'bian_business_area', status: 'Active' }));
