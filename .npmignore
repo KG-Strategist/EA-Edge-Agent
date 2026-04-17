@@ -1,0 +1,31 @@
+# Source & config
+src/
+public/
+.agents/
+.git/
+.github/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE & Editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tests & coverage
+coverage/
+*.test.*
+*.spec.*
+
+# Development files
+*.log
+tsconfig.json
+vite.config.ts
+.editorconfig
+.gitignore

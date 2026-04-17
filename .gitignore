@@ -1,0 +1,25 @@
+node_modules/
+/dist/
+.env
+.DS_Store
+
+# Local Wasm/IndexedDB cache artifacts
+.vite/
+.cache/
+*.wasm
+*.idb
+
+# IDE / AI Studio
+meta.json
+*.json.meta
+.vscode/
+.idea/
+.cline/
+.aider/
+
+# Proprietary Docs
+architecture.md
+PROJECT_STATUS.md
+node_modules/
+dist/
+.env
