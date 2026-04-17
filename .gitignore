@@ -1,25 +1,58 @@
+# ---------------------------------------------------
+# Dependencies & Builds
+# ---------------------------------------------------
 node_modules/
 /dist/
-.env
-.DS_Store
-
-# Local Wasm/IndexedDB cache artifacts
 .vite/
+
+# ---------------------------------------------------
+# Environment Variables & Secrets (CRITICAL)
+# ---------------------------------------------------
+.env
+.env.*
+!.env.example # (Optional) Allows you to push a safe template file
+
+# ---------------------------------------------------
+# OS Generated Files
+# ---------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------
+# Local Cache & Runtime Artifacts
+# ---------------------------------------------------
 .cache/
 *.wasm
 *.idb
 
-# IDE / AI Studio
-meta.json
-*.json.meta
+# ---------------------------------------------------
+# Logs
+# ---------------------------------------------------
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ---------------------------------------------------
+# IDE / Workspace Settings
+# ---------------------------------------------------
 .vscode/
 .idea/
+*.code-workspace
+
+# ---------------------------------------------------
+# AI Coding Agents & Studio Metadata
+# ---------------------------------------------------
+.agents/
+.claude/
 .cline/
 .aider/
+.cursor/
+meta.json
+*.json.meta
 
-# Proprietary Docs
+# ---------------------------------------------------
+# Proprietary / Internal Documentation
+# ---------------------------------------------------
 architecture.md
 PROJECT_STATUS.md
-node_modules/
-dist/
-.env
