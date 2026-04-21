@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../../lib/db';
-import { Download, Upload, Loader2, History, Search, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, HardDriveDownload } from 'lucide-react';
+import { Download, Upload, Loader2, History, Search, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, HardDriveDownload, RefreshCw } from 'lucide-react';
+import { requestDirectoryPermission } from '../../lib/fileSystemPermissions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import PageHeader from '../ui/PageHeader';
 import { useStateContext } from '../../context/StateContext';
 import { logoutUser } from '../../lib/authEngine';
+import { useLocalBackupState } from '../../hooks/useLocalBackupState';
 
 export default function SystemTab() {
   const { identity, setIdentity } = useStateContext();
@@ -14,58 +16,185 @@ export default function SystemTab() {
   const [importError, setImportError] = useState<string | null>(null);
 
   // ── Local Backup State ─────────────────────────────────────────────
-  const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [isRestoringPermission, setIsRestoringPermission] = useState(false);
+
+  const { isConfigured, backupPath, backupDirectoryHandle, isPermissionSuspended, permissionStatus } = useLocalBackupState();
+
+  // ── Listen for Consent Modal Events ────────────────────────────────
+  useEffect(() => {
+    const handleConsentAccepted = async (e: Event) => {
+      const event = e as CustomEvent;
+      const { mode } = event.detail;
+      
+      try {
+        if ('showDirectoryPicker' in window) {
+          const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+          
+          // Store handle and metadata
+          await db.app_settings.put({ key: 'backupDirectoryHandle', value: handle });
+          await db.app_settings.put({ key: 'backupConfigured', value: true });
+          await db.app_settings.put({ key: 'backupPath', value: handle.name });
+          await db.app_settings.put({ key: 'backupStatus', value: 'active' });
+          
+          setBackupError(null);
+        } else {
+          setBackupError("Your browser does not support the File System Access API.");
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          setBackupError(null);
+          return;
+        }
+        console.error("Failed to select directory:", err);
+        setBackupError("Persistent file system access is blocked in this preview environment. Please open the app in a standalone browser tab.");
+      }
+    };
+
+    const handleConsentRejected = () => {
+      setBackupError(null);
+    };
+
+    const handleRevokeSuccess = () => {
+      setBackupError(null);
+      // Clear any other local state that might interfere with UI rendering
+      setSyncToast(null);
+    };
+
+    window.addEventListener('EA_BACKUP_CONSENT_ACCEPTED', handleConsentAccepted);
+    window.addEventListener('EA_BACKUP_CONSENT_REJECTED', handleConsentRejected);
+    window.addEventListener('EA_BACKUP_REVOKE_SUCCESS', handleRevokeSuccess);
+
+    return () => {
+      window.removeEventListener('EA_BACKUP_CONSENT_ACCEPTED', handleConsentAccepted);
+      window.removeEventListener('EA_BACKUP_CONSENT_REJECTED', handleConsentRejected);
+      window.removeEventListener('EA_BACKUP_REVOKE_SUCCESS', handleRevokeSuccess);
+    };
+  }, []);
 
   const handleConfigureBackup = async () => {
     setBackupError(null);
     try {
       if ('showDirectoryPicker' in window) {
-        const handle = await (window as any).showDirectoryPicker();
-        setDirHandle(handle);
+        // Check if consent already exists
+        const existingConsent = await db.app_settings.get('autoDumpConsent');
+        
+        if (existingConsent?.value) {
+          // ── RECONFIGURE FLOW: Consent already given, skip modal ──
+          try {
+            const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+            setDirHandle(handle);
+            
+            // Store handle and metadata directly
+            await db.app_settings.put({ key: 'backupDirectoryHandle', value: handle });
+            await db.app_settings.put({ key: 'backupPath', value: handle.name });
+            await db.app_settings.put({ key: 'backupStatus', value: 'active' });
+            
+            // Log reconfiguration event
+            await db.audit_logs.add({
+              timestamp: new Date().toISOString(),
+              action: 'SYSTEM_BACKUP_CONFIGURED',
+              tableName: 'app_settings',
+              pseudokey: identity?.pseudokey || 'SYSTEM',
+              details: { path: handle.name, mode: 'reconfigure' }
+            });
+            
+            setBackupError(null);
+          } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') {
+              setBackupError(null);
+              return;
+            }
+            console.error("Failed to select directory:", err);
+            setBackupError("Persistent file system access is blocked in this preview environment. Please open the app in a standalone browser tab.");
+          }
+        } else {
+          // ── INITIAL SETUP FLOW: No consent yet, show consent modal ──
+          window.dispatchEvent(new CustomEvent('EA_BACKUP_CONSENT_REQUIRED', {
+            detail: {
+              mode: 'initial',
+              backupPath: backupPath || '',
+              existingConsent: false
+            }
+          }));
+        }
       } else {
         setBackupError("Your browser does not support the File System Access API.");
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
-      console.error("Failed to map directory:", err);
-      setBackupError("Persistent file system access is blocked in this preview environment. Please open the app in a standalone browser tab.");
+      console.error("Failed to configure backup:", err);
+      setBackupError("Backup configuration failed. Please try again.");
     }
   };
 
-  const handleSyncAndPurge = async () => {
-    if (!dirHandle) return;
-    setIsSyncing(true);
+  const handleRemoveConfiguration = async () => {
+    setBackupError(null);
     try {
-      const guardrails = await db.privacy_guardrails.toArray();
-      const auditLogs = await db.audit_logs.toArray();
-      
-      const payload = {
-        timestamp: new Date().toISOString(),
-        privacy_guardrails: guardrails,
-        audit_logs: auditLogs
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      
-      const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `ea-niti-archive-${dateStr}.json`;
-      
-      const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      
-      await db.audit_logs.clear();
-      
-      setSyncToast("Backup successfully synced to local disk. IndexedDB pruned.");
-      setTimeout(() => setSyncToast(null), 5000);
+      // Dispatch revoke consent event (BackupConsentModal will intercept)
+      window.dispatchEvent(new CustomEvent('EA_BACKUP_CONSENT_REQUIRED', {
+        detail: {
+          mode: 'revoke',
+          backupPath: backupPath || '',
+          existingConsent: true
+        }
+      }));
     } catch (err) {
-      console.error("Sync failed:", err);
-      alert("Failed to sync backup: " + (err instanceof Error ? err.message : String(err)));
+      console.error("Failed to revoke backup configuration:", err);
+      setBackupError("Failed to revoke backup configuration. Please try again.");
+    }
+  };
+
+  // ── Permission Restoration Handler ────────────────────────────────
+  const handleRestoreBackupAccess = async () => {
+    if (!backupDirectoryHandle) {
+      setBackupError("No backup directory handle available.");
+      return;
+    }
+
+    setIsRestoringPermission(true);
+    setBackupError(null);
+
+    try {
+      // requestPermission() MUST be called directly from user interaction
+      const granted = await requestDirectoryPermission(backupDirectoryHandle);
+      
+      if (granted) {
+        // Update backup status to active after permission restored
+        await db.app_settings.put({ key: 'backupStatus', value: 'active' });
+        await db.audit_logs.add({
+          timestamp: new Date().toISOString(),
+          action: 'SYSTEM_BACKUP_PERMISSION_RESTORED',
+          tableName: 'app_settings',
+          pseudokey: identity?.pseudokey || 'SYSTEM',
+          details: { path: backupPath || '(Restored)', status: 'permission_granted' }
+        });
+        setSyncToast('Backup access restored successfully!');
+        setTimeout(() => setSyncToast(null), 3000);
+      } else {
+        setBackupError('Permission request denied. Please try again or reconfigure your backup directory.');
+        await db.audit_logs.add({
+          timestamp: new Date().toISOString(),
+          action: 'SYSTEM_BACKUP_PERMISSION_RESTORE_FAILED',
+          tableName: 'app_settings',
+          pseudokey: identity?.pseudokey || 'SYSTEM',
+          details: { path: backupPath || '(Unknown)', status: 'permission_denied' }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to restore backup access:', err);
+      setBackupError('Failed to restore backup access. Please try again.');
+      await db.audit_logs.add({
+        timestamp: new Date().toISOString(),
+        action: 'SYSTEM_BACKUP_PERMISSION_ERROR',
+        tableName: 'app_settings',
+        pseudokey: identity?.pseudokey || 'SYSTEM',
+        details: { path: backupPath || '(Error)', error: err instanceof Error ? err.message : 'Unknown error' }
+      });
     } finally {
-      setIsSyncing(false);
+      setIsRestoringPermission(false);
     }
   };
 
@@ -110,6 +239,48 @@ export default function SystemTab() {
       setIsWiping(false);
     }
   }, [isConfirmValid, setIdentity]);
+
+  const handleSyncAndPurge = async () => {
+    if (!dirHandle) {
+      setBackupError("No backup directory selected.");
+      return;
+    }
+    
+    setIsSyncing(true);
+    setSyncToast(null);
+    setBackupError(null);
+    
+    try {
+      // Get all audit logs
+      const logs = await db.audit_logs.toArray();
+      
+      // Export logs to directory
+      const logsFileName = `audit_logs_${new Date().toISOString().split('T')[0]}.json`;
+      const logsFileHandle = await dirHandle.getFileHandle(logsFileName, { create: true });
+      const logsWritable = await logsFileHandle.createWritable();
+      await logsWritable.write(JSON.stringify(logs, null, 2));
+      await logsWritable.close();
+      
+      setSyncToast(`Successfully backed up ${logs.length} audit logs to ${logsFileName}`);
+      
+      // Note: Actual purging logic would go here once configured
+      // For now, just log the sync event
+      await db.audit_logs.add({
+        timestamp: new Date().toISOString(),
+        action: 'SYSTEM_BACKUP_SYNC',
+        tableName: 'app_settings',
+        pseudokey: identity?.pseudokey || 'SYSTEM',
+        details: { records: logs.length, status: 'success' }
+      });
+      
+      setTimeout(() => setSyncToast(null), 4000);
+    } catch (err) {
+      console.error("Sync and purge failed:", err);
+      setBackupError(err instanceof Error ? err.message : "Sync and purge operation failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleCloseWipeModal = () => {
     setShowWipeModal(false);
@@ -499,31 +670,73 @@ export default function SystemTab() {
           Map a local OS directory to dump database records directly to your hard drive before purging them from the browser to prevent IndexedDB quota limits.
         </p>
         
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <button
-            onClick={handleConfigureBackup}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border border-gray-300 dark:border-gray-600"
-          >
-            <FolderOutput size={16} />
-            Configure Backup Folder
-          </button>
-          
-          {dirHandle && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-mono text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-1.5 rounded-md border border-green-200 dark:border-green-800/50">
-                Linked Path: {dirHandle.name}
-              </span>
-              <button
-                onClick={handleSyncAndPurge}
-                disabled={isSyncing}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
-              >
-                {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <HardDriveDownload size={16} />}
-                Sync Local Backup & Purge Logs
-              </button>
+        {isConfigured ? (
+          isPermissionSuspended ? (
+            // Permission Suspended State
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3 mb-3">
+                <AlertTriangle size={16} className="text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-medium text-orange-800 dark:text-orange-200">Backup Access Suspended</h4>
+                  <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                    Your permission to access the backup directory was revoked (likely after browser restart). Restore access to resume automatic backups.
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-orange-700 dark:text-orange-300 mb-3 font-mono">
+                Path: {backupPath}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRestoreBackupAccess}
+                  disabled={isRestoringPermission}
+                  className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw size={14} className={isRestoringPermission ? 'animate-spin' : ''} />
+                  {isRestoringPermission ? 'Restoring...' : 'Restore Backup Access'}
+                </button>
+                <button
+                  onClick={handleRemoveConfiguration}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Remove Configuration
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          ) : (
+            // Active Configuration State
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg p-4 mb-4">
+              <h4 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">Current Configuration</h4>
+              <p className="text-sm text-green-700 dark:text-green-300 mb-3">
+                Active Path: {backupPath}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleConfigureBackup}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Edit / Reconfigure
+                </button>
+                <button
+                  onClick={handleRemoveConfiguration}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Remove Configuration
+                </button>
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button
+              onClick={handleConfigureBackup}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border border-gray-300 dark:border-gray-600"
+            >
+              <FolderOutput size={16} />
+              Configure Backup Folder
+            </button>
+          </div>
+        )}
 
         {backupError && (
           <div className="mt-3 text-red-500 dark:text-red-400 text-sm font-medium flex items-center gap-2">

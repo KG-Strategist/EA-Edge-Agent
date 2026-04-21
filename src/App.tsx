@@ -10,6 +10,7 @@ import Header from './components/layout/Header';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import AgentChat from './components/ui/AgentChat';
 import ModelConsentModal from './components/ui/ModelConsentModal';
+import BackupConsentModal from './components/ui/BackupConsentModal';
 import NetworkGatekeeperModal from './components/ui/NetworkGatekeeperModal';
 import { seedDatabase } from './lib/seedData';
 
@@ -104,6 +105,7 @@ function AppContent() {
       </div>
       <AgentChat />
       <ModelConsentModal />
+      <BackupConsentModal />
       <NetworkGatekeeperModal />
     </>
   );

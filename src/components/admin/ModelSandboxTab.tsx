@@ -329,7 +329,7 @@ export default function ModelSandboxTab() {
                  <label htmlFor="allowDistillation" className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable as Distillation Target</label>
                </div>
              </div>
-             <div className="flex items-center justify-between mt-2">
+             <div className="flex justify-end items-center gap-3 mt-4">
                 <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors">Save Engine</button>
                 <button type="button" onClick={() => setIsAdding(false)} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-white">Cancel</button>
              </div>
@@ -497,7 +497,7 @@ export default function ModelSandboxTab() {
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
                   className={`bg-blue-600 h-2 rounded-full transition-all duration-300 progress-width-${Math.min(100, Math.max(0, Math.round(sideloadProgress.percent / 10) * 10))}`}
-                /loadProgress.percent / 10) * 10))}`}
+
                 />
               </div>
             </div>

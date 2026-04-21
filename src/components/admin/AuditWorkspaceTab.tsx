@@ -1,8 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, AuditLog } from '../../lib/db';
-import { Search, Download, CalendarDays, ClipboardList, Eye, X } from 'lucide-react';
+import { Search, Download, CalendarDays, ClipboardList, Eye, X, RefreshCw } from 'lucide-react';
 import PageHeader from '../ui/PageHeader';
+import ConfirmModal from '../ui/ConfirmModal';
+import { importJsonToTable } from '../../utils/importUtils';
+import { useLocalBackupState } from '../../hooks/useLocalBackupState';
 
 /** Convert a Date to a local YYYY-MM-DD string for date input comparison. */
 function toLocalDateString(date: Date): string {
@@ -19,6 +22,9 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+  const { isConfigured, lastBackupDate, backupPath } = useLocalBackupState();
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   // ── Filtered logs (text + date range) ──────────────────────────────
   const filteredLogs = useMemo(() => {
@@ -86,6 +92,50 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
     URL.revokeObjectURL(url);
   }, [filteredLogs]);
 
+  const handlePurgeLogs = async () => {
+    if (!lastBackupDate) return;
+    setIsPurging(true);
+    try {
+      await db.audit_logs.where('timestamp').below(lastBackupDate).delete();
+      setShowPurgeModal(false);
+    } catch (err) {
+      console.error('Purge failed:', err);
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
+  const handleImportLogs = async () => {
+    try {
+      const [fileHandle] = await window.showOpenFilePicker({
+        types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
+      });
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.audit_logs && Array.isArray(data.audit_logs)) {
+        await db.audit_logs.bulkPut(data.audit_logs);
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+    }
+  };
+
+  const handleSyncBackup = useCallback(async () => {
+    // Strict action guard: Verify database-level configuration exists
+    const activeConfig = await db.app_settings.get('backupDirectoryHandle');
+    if (!activeConfig || !activeConfig.value) {
+      console.error("Sync aborted: No valid local backup configuration found in database.");
+      // TODO: Optionally trigger a UI toast error here
+      return;
+    }
+
+    // Trigger backup sync - this is a placeholder that would integrate with
+    // the actual backup sync engine (sideloadEngine, exportEngine, etc.)
+    console.log('Backup sync initiated for path:', backupPath);
+    // TODO: Integrate with actual backup export/sync logic
+  }, [backupPath]);
+
   return (
     <div className="flex flex-col h-full w-full">
       <PageHeader 
@@ -141,13 +191,19 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
             <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
               {filteredLogs.length} record{filteredLogs.length !== 1 ? 's' : ''}
             </span>
-            {setAdminSubView && (
-              <button
-                onClick={() => setAdminSubView('system')}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Configure Local Backup
-              </button>
+            {isConfigured && backupPath ? (
+              <span className="text-sm font-mono text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-1.5 rounded-md border border-green-200 dark:border-green-800/50">
+                Selected: {backupPath}
+              </span>
+            ) : (
+              !isConfigured && setAdminSubView && (
+                <button
+                  onClick={() => setAdminSubView('system')}
+                  className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Configure Local Backup
+                </button>
+              )
             )}
             <button
               id="audit-export-csv-btn"
@@ -237,6 +293,37 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
         </div>
       </div>
 
+      {/* Lifecycle Dashboard */}
+      {isConfigured && backupPath && (
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Backup Lifecycle</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            Logs safely pruned and backed up until: {lastBackupDate ? new Date(lastBackupDate).toLocaleString() : 'N/A'}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSyncBackup}
+              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              <RefreshCw size={14} />
+              Sync Backup
+            </button>
+            <button
+              onClick={() => setShowPurgeModal(true)}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Purge Logs
+            </button>
+            <button
+              onClick={handleImportLogs}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Import Historical Logs
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Details Modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setSelectedLog(null)}>
@@ -277,6 +364,14 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showPurgeModal}
+        title="Purge Old Logs"
+        message="This will permanently delete audit logs older than the last backup date. Continue?"
+        onConfirm={handlePurgeLogs}
+        onCancel={() => setShowPurgeModal(false)}
+      />
     </div>
   );
 }

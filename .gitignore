@@ -3,6 +3,7 @@
 # ---------------------------------------------------
 node_modules/
 /dist/
+dist/
 .vite/
 
 # ---------------------------------------------------
@@ -49,10 +50,13 @@ yarn-error.log*
 .aider/
 .cursor/
 meta.json
+metadata.json
 *.json.meta
 
 # ---------------------------------------------------
 # Proprietary / Internal Documentation
 # ---------------------------------------------------
+AGENTS.md
 architecture.md
 PROJECT_STATUS.md
+features.md
