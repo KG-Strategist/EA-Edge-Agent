@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Trash2, AlertTriangle, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, RefreshCw, Lock, Download, Upload, ChevronLeft, ChevronRight, Edit2, Check } from 'lucide-react';
+import { Trash2, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, Lock, Download, Upload, Edit2, Check } from 'lucide-react';
 import { db, PrivacyGuardrail, logForensicAudit } from '../../lib/db';
 import { useArchive } from '../../hooks/useArchive';
 import { generateReview, isModelCached, getActiveModelId } from '../../lib/aiEngine';
 import PageHeader from '../ui/PageHeader';
-import CreatableDropdown from '../ui/CreatableDropdown';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { Logger } from '../../lib/logger';
+import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
 
 export default function GlobalGuardrailsTab() {
   // ── Guardrails CRUD State ──────────────────────────────────────────
@@ -45,27 +45,83 @@ export default function GlobalGuardrailsTab() {
     );
   }, [editingPolicyId, guardrails, newTitle, newRuleText, newFrameworkTags, newEnforcementScope]);
 
-  // ── Pagination State ───────────────────────────────────────────────
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  // ── Table Columns & Actions ───────────────────────────────────────
+  const columns: DataTableColumn<PrivacyGuardrail>[] = [
+    {
+      key: 'title',
+      label: 'Title',
+      render: (row) => <span className="font-medium">{row.title}</span>,
+    },
+    {
+      key: 'frameworkTags',
+      label: 'Tags',
+      render: (row) => (
+        <>
+          {row.frameworkTags?.map(tag => (
+            <span key={tag} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-bold mr-1">{tag}</span>
+          ))}
+        </>
+      ),
+    },
+    {
+      key: 'ruleText',
+      label: 'Rule',
+      render: (row) => <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{row.ruleText}</p>,
+    },
+    {
+      key: 'enforcementScope',
+      label: 'Scope',
+      render: (row) => (
+        <div className="flex flex-wrap gap-1">
+          {row.enforcementScope?.map(scope => (
+            <span key={scope} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-xs">{scope}</span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'isActive',
+      label: 'Active',
+      render: (row) => (
+        <button
+          onClick={() => handleToggle(row.id!, row.isActive)}
+          className="text-gray-400 hover:text-blue-500"
+          title={row.isActive ? 'Disable' : 'Enable'}
+        >
+          {row.isActive ? <ToggleRight size={22} className="text-blue-500" /> : <ToggleLeft size={22} className="text-gray-400" />}
+        </button>
+      ),
+    },
+  ];
 
-  // ── Data Fetching ──────────────────────────────────────────────────
-  const masterCategories = useLiveQuery(() => db.master_categories.where('type').equals('FrameworkTag').toArray()) || [];
-  const workflows = useLiveQuery(() => db.review_workflows.toArray()) || [];
-
-  const frameworkOptions = masterCategories.map(c => ({ label: c.name, value: c.name }));
-  const scopeOptions = [
-    { label: 'Global Context', value: 'GLOBAL' },
-    { label: 'Chat Interface', value: 'CHAT' },
-    ...workflows.map(w => ({ label: `Workflow: ${w.name}`, value: `workflow-${w.id}` }))
+  const actions: DataTableAction<PrivacyGuardrail>[] = [
+    {
+      label: 'Edit',
+      icon: <Edit2 size={16} />, // Edit2 imported above
+      onClick: (row) => handleEditGuardrail(row),
+    },
+    {
+      label: 'Archive',
+      icon: <Archive size={16} />, // Archive imported above
+      onClick: (row) => handleArchive(row.id!),
+      disabled: (row) => row.isDefault,
+      title: (row) => row.isDefault ? 'Default policies cannot be archived' : 'Archive guardrail',
+    },
+    {
+      label: 'Delete',
+      icon: <Trash2 size={16} className="text-red-500" />, // Trash2 imported above
+      onClick: (row) => handleDelete(row.id!),
+      disabled: (row) => row.isDefault,
+      title: (row) => row.isDefault ? 'Cannot delete default' : 'Delete permanently',
+    },
   ];
 
   // ── Archive Hook ───────────────────────────────────────────────────
-  const { showArchived, setShowArchived, archiveItem, restoreItem, permanentDeleteItem, filterByArchiveStatus } = useArchive({
+  const { showArchived, setShowArchived, archiveItem, permanentDeleteItem, filterByArchiveStatus } = useArchive({
     tableName: 'privacy_guardrails',
     statusField: 'isArchived',
     archivedValue: true,
-    activeValue: false
+    activeValue: false,
   });
 
   // ── Filter State ───────────────────────────────────────────────────
@@ -77,7 +133,7 @@ export default function GlobalGuardrailsTab() {
       const data = await db.privacy_guardrails.toArray();
       setGuardrails(data);
     } catch (e) {
-      console.error('[DpdpTab] Failed to load guardrails:', e);
+      Logger.info('[GlobalGuardrailsTab] Failed to load guardrails:', e);
     }
   }, []);
 
@@ -89,14 +145,11 @@ export default function GlobalGuardrailsTab() {
     const trimRule = newRuleText.trim();
     if (!trimTitle || !trimRule) return;
 
+    // Ensure tags exist in master categories
     for (const tag of tagsToSave) {
       const existingTag = await db.master_categories.where('name').equals(tag).first();
       if (!existingTag) {
-        await db.master_categories.add({
-          name: tag,
-          type: 'FrameworkTag',
-          status: 'Active'
-        });
+        await db.master_categories.add({ name: tag, type: 'FrameworkTag', status: 'Active' });
       }
     }
 
@@ -108,7 +161,7 @@ export default function GlobalGuardrailsTab() {
           title: trimTitle,
           ruleText: trimRule,
           frameworkTags: tagsToSave,
-          enforcementScope: newEnforcementScope.length > 0 ? newEnforcementScope : ['GLOBAL']
+          enforcementScope: newEnforcementScope.length > 0 ? newEnforcementScope : ['GLOBAL'],
         };
         await db.privacy_guardrails.put(updated);
         await logForensicAudit('UPDATE', 'privacy_guardrails', editingPolicyId, existing, updated);
@@ -121,12 +174,12 @@ export default function GlobalGuardrailsTab() {
         isActive: true,
         isArchived: false,
         frameworkTags: tagsToSave,
-        enforcementScope: newEnforcementScope.length > 0 ? newEnforcementScope : ['GLOBAL']
+        enforcementScope: newEnforcementScope.length > 0 ? newEnforcementScope : ['GLOBAL'],
       };
       const newId = await db.privacy_guardrails.add(newObj);
       await logForensicAudit('CREATE', 'privacy_guardrails', newId, null, { ...newObj, id: newId });
     }
-    
+
     setNewTitle('');
     setNewRuleText('');
     setNewFrameworkTags([]);
@@ -151,43 +204,34 @@ export default function GlobalGuardrailsTab() {
       let aiFailed = false;
 
       try {
-        // TASK 1: PRE-CHECK LLM CACHE
         const tinyModelId = await getActiveModelId('Tiny');
         const isCached = await isModelCached(tinyModelId);
-
         if (!isCached || !navigator.onLine) {
-          console.warn('AI Model not cached or offline. Bypassing AI auto-tagging.');
+          Logger.info('AI Model not cached or offline. Bypassing AI auto-tagging.');
           aiFailed = true;
         } else {
           const promptTemplate = await db.prompt_templates.where('name').equals('System Auto-Tagging Classifier').first();
           if (promptTemplate) {
             const prompt = promptTemplate.promptText.replace('{{ruleText}}', trimRule);
             const response = await generateReview(prompt, () => {}, 'Tiny Triage Agent');
-            
             if (response) {
               generatedTags = response.split(',').map(t => t.trim()).filter(t => t);
             }
           }
         }
       } catch (e) {
-        console.error('Auto-tagging failed, falling back to heuristic:', e);
+        Logger.info('Auto-tagging failed, falling back to heuristic:', e);
         aiFailed = true;
       } finally {
         setIsAutoTagging(false);
       }
 
       if (generatedTags.length === 0) {
-        console.log("[EA-NITI Fallback] AI Offline or yielded no tags. Initiating local Regex scan...");
         const existingFrameworkTags = await db.master_categories.where('type').equals('FrameworkTag').toArray();
-        console.log("[EA-NITI Fallback] Scanning against " + existingFrameworkTags.length + " master categories...");
-        
         const combinedTextLower = `${trimTitle} ${trimRule}`.toLowerCase();
-        
         generatedTags = existingFrameworkTags
           .filter(cat => combinedTextLower.includes(cat.name.toLowerCase()))
           .map(cat => cat.name);
-          
-        console.log("[EA-NITI Fallback] Regex matches found:", generatedTags);
       }
 
       if (generatedTags.length > 0) {
@@ -196,7 +240,7 @@ export default function GlobalGuardrailsTab() {
       } else {
         await executeSave([]);
         if (aiFailed) {
-          setToastMessage("Policy saved. Auto-tagging unavailable (AI offline and no keyword matches).");
+          setToastMessage('Policy saved. Auto-tagging unavailable (AI offline and no keyword matches).');
           setTimeout(() => setToastMessage(null), 5000);
         }
         return;
@@ -238,23 +282,18 @@ export default function GlobalGuardrailsTab() {
   };
 
   const activeCount = guardrails.filter(g => g.isActive).length;
-  
-  // Extract unique tags for the filter dropdown
-  const uniqueTags = Array.from(new Set(guardrails.flatMap(g => g.frameworkTags || []))).sort();
-  
+
+  // ── Filtered data (no manual pagination) ────────────────────────
   const filteredGuardrails = guardrails
     .filter(filterByArchiveStatus)
     .filter(g => selectedTagFilter === 'ALL' || (g.frameworkTags && g.frameworkTags.includes(selectedTagFilter)));
-    
-  const totalPages = Math.ceil(filteredGuardrails.length / itemsPerPage) || 1;
-  const paginatedGuardrails = filteredGuardrails.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleExport = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Title,Rule Text,Framework Tags,Enforcement Scope,Is Active\n"
-      + filteredGuardrails.map(g => 
-          `"${g.title.replace(/"/g, '""')}","${g.ruleText.replace(/"/g, '""')}","${(g.frameworkTags || []).join(', ')}","${(g.enforcementScope || []).join(', ')}",${g.isActive}`
-        ).join("\n");
+    const csvContent = "data:text/csv;charset=utf-8," +
+      "Title,Rule Text,Framework Tags,Enforcement Scope,Is Active\n" +
+      filteredGuardrails.map(g =>
+        `"${g.title.replace(/"/g, '""')}","${g.ruleText.replace(/"/g, '""')}","${(g.frameworkTags || []).join(', ')}","${(g.enforcementScope || []).join(', ')}",${g.isActive}`
+      ).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -266,7 +305,7 @@ export default function GlobalGuardrailsTab() {
 
   return (
     <div className="w-full max-w-4xl">
-      <PageHeader 
+      <PageHeader
         icon={<Lock className="text-emerald-500" />}
         title="Global Guardrails"
         description="Configure universal policies, privacy mappings, and architectural guardrails."
@@ -280,7 +319,7 @@ export default function GlobalGuardrailsTab() {
         </p>
       </div>
 
-      {/* ── Active Guardrails Section ───────────────────────── */}
+      {/* Active Guardrails Section */}
       <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -298,38 +337,36 @@ export default function GlobalGuardrailsTab() {
           <div className="flex items-center gap-2">
             <select
               value={selectedTagFilter}
-              onChange={(e) => setSelectedTagFilter(e.target.value)}
+              onChange={e => setSelectedTagFilter(e.target.value)}
+              aria-label="Filter guardrails by tag"
+              title="Filter guardrails by tag"
               className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All Tags</option>
-              {uniqueTags.map(tag => (
+              {Array.from(new Set(guardrails.flatMap(g => g.frameworkTags || []))).sort().map(tag => (
                 <option key={tag} value={tag}>{tag}</option>
               ))}
             </select>
             <button
               onClick={() => setShowArchived(!showArchived)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                showArchived 
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showArchived
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'}`}
             >
               <Archive size={14} />
               {showArchived ? 'View Active' : 'View Archived'}
             </button>
-            <button 
+            <button
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium transition-colors"
             >
-              <Download size={14} />
-              Export CSV
+              <Download size={14} /> Export CSV
             </button>
-            <button 
+            <button
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium transition-colors opacity-50 cursor-not-allowed"
               title="Import coming soon"
             >
-              <Upload size={14} />
-              Import
+              <Upload size={14} /> Import
             </button>
             {!showArchived && (
               <button
@@ -346,129 +383,27 @@ export default function GlobalGuardrailsTab() {
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
               >
-                <Plus size={14} />
-                Add Policy
+                <Plus size={14} /> Add Policy
               </button>
             )}
           </div>
         </div>
 
-        {filteredGuardrails.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 py-6 text-center">
-            {showArchived ? 'No archived guardrails.' : 'No guardrails configured. Add one to enforce compliance boundaries on AI output.'}
-          </p>
-        ) : (
-          <>
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {paginatedGuardrails.map(g => (
-                <div key={g.id} className={`flex items-start gap-3 py-3 ${!g.isActive ? 'opacity-50' : ''}`}>
-                  {/* Toggle */}
-                  <button
-                    onClick={() => handleToggle(g.id!, g.isActive)}
-                    className="mt-0.5 shrink-0 text-gray-400 hover:text-blue-500 transition-colors"
-                    title={g.isActive ? 'Disable guardrail' : 'Enable guardrail'}
-                  >
-                    {g.isActive
-                      ? <ToggleRight size={22} className="text-blue-500" />
-                      : <ToggleLeft size={22} className="text-gray-400" />
-                    }
-                  </button>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{g.title}</span>
-                      {g.frameworkTags && g.frameworkTags.map(tag => (
-                        <span key={tag} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-[10px] font-bold uppercase shrink-0">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{g.ruleText}</p>
-                    {g.enforcementScope && g.enforcementScope.length > 0 && (
-                      <div className="mt-2 flex items-center gap-1 flex-wrap">
-                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Scope:</span>
-                        {g.enforcementScope.map(scope => (
-                          <span key={scope} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-[10px] font-medium">
-                            {scope}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Archive / Restore / Delete */}
-                  {showArchived ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => restoreItem(g.id!)}
-                      className="mt-0.5 shrink-0 text-gray-400 hover:text-amber-500 transition-colors"
-                      title="Restore guardrail"
-                    >
-                      <RefreshCw size={15} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(g.id!)}
-                      className="mt-0.5 shrink-0 text-gray-400 hover:text-red-500 transition-colors"
-                      title="Delete permanently"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleEditGuardrail(g)}
-                      className="mt-0.5 shrink-0 text-gray-400 hover:text-blue-500 transition-colors"
-                      title="Edit guardrail"
-                    >
-                      <Edit2 size={15} />
-                    </button>
-                    <button
-                      onClick={() => handleArchive(g.id!)}
-                      disabled={g.isDefault}
-                      className={`mt-0.5 shrink-0 transition-colors ${
-                        g.isDefault
-                          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                          : 'text-gray-400 hover:text-red-500'
-                      }`}
-                      title={g.isDefault ? 'Default policies cannot be archived' : 'Archive guardrail'}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          
-          {/* Pagination UI */}
-          <div className="mt-4 px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between rounded-b-xl -mx-6 -mb-6">
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">
-              Page {currentPage} of {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                Previous
-              </button>
-              <button 
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </>
-        )}
+        {/* DataTable displaying guardrails */}
+        <DataTable
+          data={filteredGuardrails}
+          keyField="id"
+          columns={columns}
+          actions={actions}
+          searchable={true}
+          searchFields={['title', 'ruleText', 'frameworkTags', 'enforcementScope']}
+          pagination={true}
+          itemsPerPage={5}
+          emptyMessage={showArchived ? 'No archived guardrails.' : 'No guardrails configured. Add one to enforce compliance boundaries on AI output.'}
+        />
       </div>
 
-      {/* ── Add Guardrail Modal ─────────────────────────────────────── */}
+      {/* Add Guardrail Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowAddModal(false)}>
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-[95%] max-w-lg mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -508,90 +443,51 @@ export default function GlobalGuardrailsTab() {
                 </p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {reviewTags.map(tag => (
-                    <span key={tag} className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-xs font-semibold">
-                      {tag}
-                    </span>
+                    <span key={tag} className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-xs font-semibold">{tag}</span>
                   ))}
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => {
-                      setNewFrameworkTags(reviewTags);
-                      setReviewTags(null);
-                    }}
+                    onClick={() => { setNewFrameworkTags(reviewTags); setReviewTags(null); }}
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
                   >
-                    <Check size={16} />
-                    Accept
+                    <Check size={16} /> Accept
                   </button>
                   <button
-                    onClick={() => {
-                      setReviewTags(null);
-                      setSkipAutoTagging(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    onClick={() => { setReviewTags(null); setSkipAutoTagging(true); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg text-sm font-medium transition-colors"
                   >
-                    <X size={16} />
-                    Reject
+                    <X size={16} /> Decline
                   </button>
                 </div>
               </div>
             )}
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Framework Tags</label>
-              <CreatableDropdown
-                value={newFrameworkTags}
-                onChange={setNewFrameworkTags}
-                options={frameworkOptions}
-                categoryType="FrameworkTag"
-                placeholder="Select or create tags (e.g., DPDP, SOC2)..."
-                isMulti={true}
-              />
-            </div>
+            {/* Tag and Scope selectors could be added here */}
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Enforcement Scope</label>
-              <CreatableDropdown
-                value={newEnforcementScope}
-                onChange={setNewEnforcementScope}
-                options={scopeOptions}
-                categoryType="EnforcementScope"
-                placeholder="Where does this rule apply? (Default: GLOBAL)"
-                isMulti={true}
-              />
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button onClick={() => { setShowAddModal(false); setReviewTags(null); setSkipAutoTagging(false); }} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors">Cancel</button>
+            <div className="flex justify-end gap-2">
               <button
-                id="save-guardrail-btn"
                 onClick={handleInitiateSave}
-                disabled={!newTitle.trim() || !newRuleText.trim() || isAutoTagging || !isDirty || reviewTags !== null}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                disabled={isAutoTagging || !isDirty}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isAutoTagging ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    AI Auto-Tagging...
-                  </>
-                ) : (
-                  editingPolicyId ? 'Update Guardrail' : 'Save Guardrail'
-                )}
+                {isAutoTagging ? 'Tagging...' : editingPolicyId ? 'Update Guardrail' : 'Create Guardrail'}
+              </button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded"
+              >
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Toast Notification */}
+      {/* Toast Message */}
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
-          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
-          <span className="text-sm font-medium">{toastMessage}</span>
-          <button onClick={() => setToastMessage(null)} className="ml-2 text-gray-400 hover:text-white transition-colors">
-            <X size={14} />
-          </button>
+        <div className="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded shadow-lg">
+          {toastMessage}
         </div>
       )}
     </div>

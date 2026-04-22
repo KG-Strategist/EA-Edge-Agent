@@ -1,40 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, NetworkIntegration } from '../../lib/db';
-import { Plus, Edit, Trash2, Eye, EyeOff, ShieldAlert, Save, RefreshCw, Loader2, Globe, KeyRound, ExternalLink, CheckCircle2, Network } from 'lucide-react';
-import ConfirmModal from '../ui/ConfirmModal';
+import { db } from '../../lib/db';
+import { ShieldAlert, Save, Globe, KeyRound, ExternalLink, CheckCircle2, Network, Server, FolderKey, AlertTriangle } from 'lucide-react';
 import { OAUTH_PROVIDERS, getRedirectUri } from '../../lib/oauthConfig';
+import { getCurrentUser } from '../../lib/authEngine';
 import PageHeader from '../ui/PageHeader';
-import { encryptString, decryptString } from '../../lib/cryptoVault';
 
 export default function NetworkIntegrationTab() {
-  const providers = useLiveQuery(() => db.network_integrations.toArray()) || [];
   const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
 
   const enableNetworkIntegrations =
     appSettings.find(s => s.key === 'enableNetworkIntegrations')?.value === true;
 
-
-  const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<NetworkIntegration | null>(null);
-  const [formData, setFormData] = useState({
-    displayName: '',
-    endpointUrl: '',
-    apiKey: '',
-    providerType: 'WebSearchAPI' as 'WebSearchAPI' | 'CloudLLMAPI' | 'CustomEnterprise',
-    isDefault: false,
-    modelName: '',
-  });
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
-  const [isPullingLive, setIsPullingLive] = useState(false);
-
   // SSO Provider Config State
   const [googleClientId, setGoogleClientId] = useState('');
   const [microsoftClientId, setMicrosoftClientId] = useState('');
   const [ssoSaveMessage, setSsoSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Enterprise SSO Config State
+  const [entProviderName, setEntProviderName] = useState('');
+  const [entAuthUrl, setEntAuthUrl] = useState('');
+  const [entClientId, setEntClientId] = useState('');
+
+  // LDAP Config State
+  const [ldapUrl, setLdapUrl] = useState('');
+  const [ldapBaseDn, setLdapBaseDn] = useState('');
+
+  // Consent Interceptor Modal
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [consentModalType, setConsentModalType] = useState<'network_upgrade' | 'save_sso' | 'save_ldap' | 'save_oauth'>('network_upgrade');
+  const [pendingConsentAction, setPendingConsentAction] = useState<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -47,250 +43,194 @@ export default function NetworkIntegrationTab() {
       const mId = await db.app_settings.get('SSO_MICROSOFT_CLIENT_ID');
       if (gId?.value) setGoogleClientId(gId.value);
       if (mId?.value) setMicrosoftClientId(mId.value);
+
+      // Load Enterprise SSO / LDAP from global_settings
+      const globalCfg = await db.global_settings.get('SSO_CONFIG');
+      if (globalCfg?.local_enterprise_sso) {
+        setEntProviderName(globalCfg.local_enterprise_sso.providerName || '');
+        setEntAuthUrl(globalCfg.local_enterprise_sso.authUrl || '');
+        setEntClientId(globalCfg.local_enterprise_sso.clientId || '');
+      }
+      if (globalCfg?.local_ldap) {
+        setLdapUrl(globalCfg.local_ldap.ldapUrl || '');
+        setLdapBaseDn(globalCfg.local_ldap.baseDn || '');
+      }
     };
     loadSettings();
   }, []);
 
-  const resetForm = () => {
-    setFormData({
-      displayName: '',
-      endpointUrl: '',
-      apiKey: '',
-      providerType: 'WebSearchAPI',
-      isDefault: false,
-      modelName: '',
+  const requiresHybridNetworkConsent = async (): Promise<boolean> => {
+    const pseudokey = getCurrentUser();
+    if (!pseudokey) return true;
+    const user = await db.users.where('pseudokey').equals(pseudokey).first();
+    if (!user?.consentHistory) return true;
+    return !user.consentHistory.some(
+      (c: any) => c.type === 'HYBRID_NETWORK' || c.type === 'HYBRID_LIMITED'
+    );
+  };
+
+  const appendHybridNetworkConsent = async () => {
+    const pseudokey = getCurrentUser();
+    if (!pseudokey) return;
+    const user = await db.users.where('pseudokey').equals(pseudokey).first();
+    if (!user?.id) return;
+    await db.users.update(user.id, {
+      consentHistory: [
+        ...(user.consentHistory || []),
+        { type: 'HYBRID_NETWORK' as const, grantedAt: new Date(), version: '1.0' }
+      ]
     });
-    setError(null);
-    setShowApiKey(false);
-  };
-
-  const handleAddProvider = () => {
-    setFormMode('add');
-    setSelectedProvider(null);
-    resetForm();
-  };
-
-  const handleEditProvider = async (provider: NetworkIntegration) => {
-    setFormMode('edit');
-    setSelectedProvider(provider);
-
-    // Decrypt API key if encrypted version exists
-    let decryptedKey = '';
-    if (provider.encryptedApiKey) {
-      try {
-        decryptedKey = await decryptString(provider.encryptedApiKey);
-      } catch (e) {
-        console.error('[SECURITY] Failed to decrypt API key:', e);
-        setError('Failed to decrypt stored API key. It may be corrupted.');
-      }
-    } else if (provider.apiKey) {
-      // Fallback for legacy plaintext API keys
-      decryptedKey = provider.apiKey;
-    }
-
-    setFormData({
-      displayName: provider.displayName,
-      endpointUrl: provider.endpointUrl,
-      apiKey: decryptedKey,
-      providerType: provider.providerType,
-      isDefault: provider.isDefault,
-      modelName: provider.modelName || '',
-    });
-    setError(null);
-  };
-
-  const validateForm = (): boolean => {
-    setError(null);
-    if (!formData.displayName.trim()) {
-      setError('Display name is required');
-      return false;
-    }
-    if (!formData.endpointUrl.trim()) {
-      setError('Endpoint URL is required');
-      return false;
-    }
-    if (formData.providerType !== 'CustomEnterprise' && !formData.apiKey.trim()) {
-      setError('API key is required');
-      return false;
-    }
-    if (formData.providerType === 'CustomEnterprise' && !formData.modelName.trim()) {
-      setError('Model Name is required for Custom Enterprise endpoints');
-      return false;
-    }
-    try {
-      new URL(formData.endpointUrl);
-    } catch {
-      setError('Invalid URL format');
-      return false;
-    }
-    return true;
-  };
-
-  const handleSaveProvider = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    try {
-      // Encrypt the API key before storage
-      const encryptedApiKey = formData.apiKey ? await encryptString(formData.apiKey) : undefined;
-
-      const providerData: NetworkIntegration = {
-        displayName: formData.displayName,
-        endpointUrl: formData.endpointUrl,
-        encryptedApiKey: encryptedApiKey,
-        providerType: formData.providerType,
-        isDefault: formData.isDefault,
-        modelName: formData.modelName || undefined,
-        createdAt: selectedProvider?.createdAt || new Date(),
-      };
-
-      if (formMode === 'add') {
-        await db.network_integrations.add(providerData);
-        if (providerData.providerType === 'CustomEnterprise' && providerData.modelName) {
-          await db.model_registry.add({
-            name: providerData.modelName,
-            type: 'BYOM_NETWORK',
-            modelUrl: providerData.endpointUrl,
-            encryptedApiKey: encryptedApiKey,
-            isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1'),
-            isActive: true
-          });
-        }
-        setSaveMessage({ type: 'success', text: 'Provider added successfully!' });
-      } else if (formMode === 'edit' && selectedProvider?.id) {
-        await db.network_integrations.update(selectedProvider.id, providerData);
-        if (providerData.providerType === 'CustomEnterprise' && providerData.modelName) {
-           // Try to update existing model registry entry if it exists with encrypted API credentials.
-           const existingModel = await db.model_registry.where('modelUrl').equals(selectedProvider.endpointUrl).first();
-           if (existingModel && existingModel.id) {
-             await db.model_registry.update(existingModel.id, {
-               name: providerData.modelName,
-               modelUrl: providerData.endpointUrl,
-               encryptedApiKey: encryptedApiKey,
-               apiKey: undefined,
-               isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1')
-             });
-           } else {
-             await db.model_registry.add({
-               name: providerData.modelName,
-               type: 'BYOM_NETWORK',
-               modelUrl: providerData.endpointUrl,
-               encryptedApiKey: encryptedApiKey,
-               isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1'),
-               isActive: true
-             });
-           }
-        }
-        setSaveMessage({ type: 'success', text: 'Provider updated successfully!' });
-      }
-
-      resetForm();
-      setFormMode(null);
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch (err) {
-      const errorText = err instanceof Error ? err.message : 'Failed to save provider';
-      setSaveMessage({ type: 'error', text: errorText });
-    }
-  };
-
-  const handleDeleteProvider = async () => {
-    if (!itemToDelete) return;
-
-    try {
-      await db.network_integrations.delete(itemToDelete);
-      setSaveMessage({ type: 'success', text: 'Provider deleted successfully!' });
-      setItemToDelete(null);
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch {
-      setSaveMessage({ type: 'error', text: 'Failed to delete provider' });
-    }
-  };
-
-  const handleSetDefault = async (providerId: number) => {
-    try {
-      const all = await db.network_integrations.toArray();
-      await Promise.all(
-        all.map(p => (p.id === providerId ? db.network_integrations.update(p.id!, { isDefault: true }) : db.network_integrations.update(p.id!, { isDefault: false })))
-      );
-      setSaveMessage({ type: 'success', text: 'Default provider set!' });
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch {
-      setSaveMessage({ type: 'error', text: 'Failed to set default provider' });
-    }
   };
 
   const handleToggleNetworkIntegrations = async (enabled: boolean) => {
+    // If enabling, check for HYBRID_NETWORK consent first
+    if (enabled) {
+      const needsConsent = await requiresHybridNetworkConsent();
+      if (needsConsent) {
+        setConsentModalType('network_upgrade');
+        setPendingConsentAction(() => async () => {
+          await appendHybridNetworkConsent();
+          await db.app_settings.put({ key: 'enableNetworkIntegrations', value: true });
+          setSaveMessage({ type: 'success', text: 'Network access enabled with consent.' });
+          setTimeout(() => setSaveMessage(null), 3000);
+        });
+        setShowConsentModal(true);
+        return;
+      }
+    }
     try {
       await db.app_settings.put({ key: 'enableNetworkIntegrations', value: enabled });
-      setSaveMessage({ type: 'success', text: enabled ? 'Network integrations enabled' : 'Network integrations disabled' });
+      // If toggling OFF, instantly fire the Kill Switch to stop active downloads
+      if (!enabled) {
+        window.dispatchEvent(new CustomEvent('APP_NETWORK_FORCE_KILLED'));
+      }
+      setSaveMessage({ type: 'success', text: enabled ? 'Network access enabled.' : 'Network access disabled. Active background processes terminated.' });
       setTimeout(() => setSaveMessage(null), 3000);
-    } catch {
-      setSaveMessage({ type: 'error', text: 'Failed to update setting' });
+    } catch (err) {
+      console.error("Toggle error:", err);
+      setSaveMessage({ type: 'error', text: 'Failed to update network settings.' });
     }
   };
 
+  // ── Granular Consent Helpers ────────────────────────────────────────────────
+  const appendConsentRecord = async (consentType: string) => {
+    const pseudokey = getCurrentUser();
+    if (!pseudokey) return;
+    const user = await db.users.where('pseudokey').equals(pseudokey).first();
+    if (!user?.id) return;
+    await db.users.update(user.id, {
+      consentHistory: [
+        ...(user.consentHistory || []),
+        { type: consentType as any, grantedAt: new Date(), version: '1.0' }
+      ]
+    });
+  };
+
+  const handleAcceptConsent = async () => {
+    setShowConsentModal(false);
+    if (pendingConsentAction) {
+      await pendingConsentAction();
+      setPendingConsentAction(null);
+    }
+  };
+
+  // ── Public OAuth Save Handler ──────────────────────────────────────────────
   const handleSaveSsoConfig = async () => {
-    try {
-      if (googleClientId.trim()) {
-        await db.app_settings.put({ key: 'SSO_GOOGLE_CLIENT_ID', value: googleClientId.trim() });
-      } else {
-        await db.app_settings.delete('SSO_GOOGLE_CLIENT_ID');
+    setConsentModalType('save_oauth');
+    setPendingConsentAction(() => async () => {
+      try {
+        await appendConsentRecord('EXTERNAL_IDENTITY');
+        if (googleClientId.trim()) {
+          await db.app_settings.put({ key: 'SSO_GOOGLE_CLIENT_ID', value: googleClientId.trim() });
+        } else {
+          await db.app_settings.delete('SSO_GOOGLE_CLIENT_ID');
+        }
+        if (microsoftClientId.trim()) {
+          await db.app_settings.put({ key: 'SSO_MICROSOFT_CLIENT_ID', value: microsoftClientId.trim() });
+        } else {
+          await db.app_settings.delete('SSO_MICROSOFT_CLIENT_ID');
+        }
+        const existing = await db.global_settings.get('SSO_CONFIG');
+        await db.global_settings.put({
+          ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
+          id: 'SSO_CONFIG',
+          authType: 'OAUTH'
+        });
+        setSsoSaveMessage({ type: 'success', text: 'Public OAuth configuration saved.' });
+        setTimeout(() => setSsoSaveMessage(null), 3000);
+      } catch {
+        setSsoSaveMessage({ type: 'error', text: 'Failed to save OAuth configuration.' });
+        setTimeout(() => setSsoSaveMessage(null), 3000);
       }
-      if (microsoftClientId.trim()) {
-        await db.app_settings.put({ key: 'SSO_MICROSOFT_CLIENT_ID', value: microsoftClientId.trim() });
-      } else {
-        await db.app_settings.delete('SSO_MICROSOFT_CLIENT_ID');
-      }
-      setSsoSaveMessage({ type: 'success', text: 'SSO configuration saved successfully!' });
-      setTimeout(() => setSsoSaveMessage(null), 3000);
-    } catch {
-      setSsoSaveMessage({ type: 'error', text: 'Failed to save SSO configuration.' });
-      setTimeout(() => setSsoSaveMessage(null), 3000);
-    }
+    });
+    setShowConsentModal(true);
   };
 
-  const handlePullLiveLearnings = async () => {
-    if (!enableNetworkIntegrations) {
-        setSaveMessage({ type: 'error', text: 'Network Integrations are globally disabled. Enable them above.' });
-        setTimeout(() => setSaveMessage(null), 3000);
-        return;
-    }
-    const hasApi = providers.some(p => p.providerType === 'WebSearchAPI' || p.providerType === 'CloudLLMAPI');
-    if (!hasApi) {
-        setSaveMessage({ type: 'error', text: 'No external APIs configured. Please add a Web Search API.' });
-        setTimeout(() => setSaveMessage(null), 3000);
-        return;
-    }
-
-    setIsPullingLive(true);
-    try {
-        // Mock external fetching logic insertion
-        await new Promise(r => setTimeout(r, 2000)); 
-        await db.architecture_principles.add({
-            name: `Cloud-First API Governance (Synced ${new Date().toISOString().split('T')[0]})`,
-            statement: "All external capabilities must surface decoupled APIs.",
-            rationale: "Pulled from latest Gartner 2026 Architectural Sync.",
-            implications: "Legacy monoliths require strangler-fig API wrappers.",
-            layerId: 1,
-            status: "Needs Review"
+  // ── Enterprise SSO Save Handler ────────────────────────────────────────────
+  const handleSaveEnterpriseSso = async () => {
+    setConsentModalType('save_sso');
+    setPendingConsentAction(() => async () => {
+      try {
+        await appendConsentRecord('EXTERNAL_IDENTITY');
+        const existing = await db.global_settings.get('SSO_CONFIG');
+        await db.global_settings.put({
+          ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
+          id: 'SSO_CONFIG',
+          authType: 'SSO',
+          local_enterprise_sso: {
+            providerName: entProviderName.trim(),
+            authUrl: entAuthUrl.trim(),
+            clientId: entClientId.trim(),
+          }
         });
-        setSaveMessage({ type: 'success', text: 'Live learning payload synced successfully! 1 Pattern Drafted.' });
-    } catch (e) {
-        setSaveMessage({ type: 'error', text: 'Failed to sync live learnings externally.' });
-    } finally {
-        setIsPullingLive(false);
-        setTimeout(() => setSaveMessage(null), 4000);
-    }
+        setSaveMessage({ type: 'success', text: 'Enterprise SSO configuration saved.' });
+        setTimeout(() => setSaveMessage(null), 3000);
+      } catch {
+        setSaveMessage({ type: 'error', text: 'Failed to save Enterprise SSO config.' });
+      }
+    });
+    setShowConsentModal(true);
+  };
+
+  // ── LDAP Save Handler ─────────────────────────────────────────────────────
+  const handleSaveLdapConfig = async () => {
+    setConsentModalType('save_ldap');
+    setPendingConsentAction(() => async () => {
+      try {
+        await appendConsentRecord('EXTERNAL_IDENTITY');
+        const existing = await db.global_settings.get('SSO_CONFIG');
+        await db.global_settings.put({
+          ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
+          id: 'SSO_CONFIG',
+          authType: 'LDAP',
+          local_ldap: {
+            ldapUrl: ldapUrl.trim(),
+            baseDn: ldapBaseDn.trim(),
+          },
+          local_enterprise_sso: {
+            providerName: `LDAP (${ldapBaseDn.trim()})`,
+            authUrl: ldapUrl.trim(),
+            clientId: ldapBaseDn.trim(),
+            tokenUrl: ''
+          }
+        });
+        setSaveMessage({ type: 'success', text: 'LDAP configuration saved.' });
+        setTimeout(() => setSaveMessage(null), 3000);
+      } catch {
+        setSaveMessage({ type: 'error', text: 'Failed to save LDAP config.' });
+      }
+    });
+    setShowConsentModal(true);
   };
 
   const redirectUri = getRedirectUri();
 
   return (
     <div className="flex flex-col max-w-4xl">
-      <PageHeader 
+      <PageHeader
         icon={<Network className="text-indigo-500" />}
         title="Network & Privacy"
-        description="Configure external data providers, SSO identity providers, and manage privacy controls."
+        description="Configure SSO identity providers and manage global privacy controls."
       />
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
@@ -327,14 +267,15 @@ export default function NetworkIntegrationTab() {
         </div>
       </div>
 
-      {/* ─── Authentication Settings (OAuth / SSO) ─── */}
+      {/* ─── Public OAuth Settings (External Network Required) ─── */}
+      {enableNetworkIntegrations && (
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
             <KeyRound size={20} />
           </div>
           <div>
-            <h4 className="text-base font-medium text-gray-900 dark:text-white">Authentication Settings (OAuth)</h4>
+            <h4 className="text-base font-medium text-gray-900 dark:text-white">Public OAuth</h4>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">OAuth 2.0 PKCE Client IDs for Hybrid SSO — no secrets required (public SPA clients).</p>
           </div>
         </div>
@@ -419,135 +360,171 @@ export default function NetworkIntegrationTab() {
           </div>
         </div>
       </div>
-      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/10 dark:to-purple-900/10 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-6 mb-8 flex justify-between items-center">
-         <div>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
-               <Globe className="text-indigo-600 dark:text-indigo-400" size={18} />
-               Sync Live Enterprise Trends (Web Pull)
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
-               Scraping connected Cloud APIs to automatically identify new industry taxonomy shifts and drafting them as "Needs Review" Architecture Principles in your local NITI database.
-            </p>
-         </div>
-         <button 
-            onClick={handlePullLiveLearnings}
-            disabled={isPullingLive}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors shadow-md whitespace-nowrap"
-         >
-            {isPullingLive ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-            {isPullingLive ? 'Syncing...' : 'Pull Live Learnings'}
-         </button>
-      </div>
-
-      {formMode && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
-          <h4 className="text-base font-medium text-gray-900 dark:text-white mb-4">{formMode === 'add' ? 'Add New Provider' : 'Edit Provider'}</h4>
-          <form onSubmit={handleSaveProvider} className="space-y-4">
-            {error && <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg text-sm">{error}</div>}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Display Name</label>
-              <input type="text" value={formData.displayName} onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., Tavily API" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider Type</label>
-              <select value={formData.providerType} onChange={(e) => setFormData(prev => ({ ...prev, providerType: e.target.value as any }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" aria-label="Provider Type" title="Provider Type">
-                <option value="WebSearchAPI">Web Search API</option>
-                <option value="CloudLLMAPI">Cloud LLM API</option>
-                <option value="CustomEnterprise">Custom Enterprise</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
-              <input type="url" value={formData.endpointUrl} onChange={(e) => setFormData(prev => ({ ...prev, endpointUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="https://api.example.com/search" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key {formData.providerType === 'CustomEnterprise' && '(Optional)'}</label>
-              <div className="relative">
-                <input type={showApiKey ? 'text' : 'password'} value={formData.apiKey} onChange={(e) => setFormData(prev => ({ ...prev, apiKey: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 pr-10" aria-label="API Key" title="API Key" placeholder="Enter API Key" />
-                <button type="button" onClick={() => setShowApiKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                  {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Stored locally securely in IndexedDB.</p>
-            </div>
-
-            {formData.providerType === 'CustomEnterprise' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Model Name</label>
-                <input type="text" value={formData.modelName} onChange={(e) => setFormData(prev => ({ ...prev, modelName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., llama3" />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">The exact model name expected by the OpenAI-compatible endpoint.</p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={formData.isDefault} onChange={(e) => setFormData(prev => ({ ...prev, isDefault: e.target.checked }))} id="defaultProvider" className="rounded" />
-              <label htmlFor="defaultProvider" className="text-sm text-gray-700 dark:text-gray-300">Set as default provider</label>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
-              <button type="button" onClick={() => { setFormMode(null); resetForm(); }} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancel</button>
-              <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"> <Save size={16} /> {formMode === 'add' ? 'Add Provider' : 'Update Provider'}</button>
-            </div>
-          </form>
-        </div>
       )}
 
-      {!formMode && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mb-6">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-            <h4 className="font-medium text-gray-900 dark:text-white">Configured Providers</h4>
-            <button onClick={handleAddProvider} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm"><Plus size={16} /> Add Provider</button>
+      {/* ─── Enterprise SSO Configuration (Always Visible — Intranet) ─── */}
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg">
+              <Server size={20} />
+            </div>
+            <div>
+              <h4 className="text-base font-medium text-gray-900 dark:text-white">Enterprise SSO</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">OIDC / SAML identity provider for corporate authentication (Keycloak, ADFS, Okta).</p>
+            </div>
           </div>
 
-          {providers.length === 0 ? (
-            <div className="p-6 text-center text-gray-500 dark:text-gray-400">No providers configured. Add your first provider.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-                  <tr>
-                    <th className="px-6 py-3 font-medium text-gray-700 dark:text-gray-300">Display Name</th>
-                    <th className="px-6 py-3 font-medium text-gray-700 dark:text-gray-300">Type</th>
-                    <th className="px-6 py-3 font-medium text-gray-700 dark:text-gray-300">Endpoint</th>
-                    <th className="px-6 py-3 font-medium text-gray-700 dark:text-gray-300">Default</th>
-                    <th className="px-6 py-3 font-medium text-gray-700 dark:text-gray-300">Created</th>
-                    <th className="px-6 py-3 text-right font-medium text-gray-700 dark:text-gray-300">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {providers.map(provider => (
-                    <tr key={provider.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-200">{provider.displayName}</td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{provider.providerType}</td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-xs truncate max-w-xs">{provider.endpointUrl}</td>
-                      <td className="px-6 py-4">{provider.isDefault ? <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs">Default</span> : <button onClick={() => provider.id && handleSetDefault(provider.id)} className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Set default</button>}</td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{new Date(provider.createdAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button onClick={() => handleEditProvider(provider)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" aria-label="Edit Provider" title="Edit Provider"><Edit size={16} /></button>
-                        <button onClick={() => setItemToDelete(provider.id || null)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete Provider" title="Delete Provider"><Trash2 size={16} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider Name</label>
+              <input type="text" value={entProviderName} onChange={e => setEntProviderName(e.target.value)} placeholder="Corporate Keycloak" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 text-xs" />
             </div>
-          )}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Auth URL (Intranet)</label>
+              <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} placeholder="https://sso.corp.local/auth" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Client ID</label>
+              <input type="text" value={entClientId} onChange={e => setEntClientId(e.target.value)} placeholder="ea-edge-agent" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
+            </div>
+            <button onClick={handleSaveEnterpriseSso} disabled={!entProviderName.trim() || !entAuthUrl.trim()} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Save size={14} /> Save Enterprise SSO
+            </button>
+          </div>
         </div>
-      )}
 
+      {/* ─── LDAP / Active Directory (Always Visible — Intranet) ─── */}
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+              <FolderKey size={20} />
+            </div>
+            <div>
+              <h4 className="text-base font-medium text-gray-900 dark:text-white">LDAP / Active Directory</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Bind against a corporate directory service for centralized identity.</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">LDAP URL</label>
+              <input type="text" value={ldapUrl} onChange={e => setLdapUrl(e.target.value)} placeholder="ldap://dc.corp.local:389" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Base DN</label>
+              <input type="text" value={ldapBaseDn} onChange={e => setLdapBaseDn(e.target.value)} placeholder="dc=corp,dc=local" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
+            </div>
+            <button onClick={handleSaveLdapConfig} disabled={!ldapUrl.trim() || !ldapBaseDn.trim()} className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Save size={14} /> Save LDAP Configuration
+            </button>
+          </div>
+        </div>
+      
       {saveMessage && (
-        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium ${
-          saveMessage.type === 'success' ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
-        }`}>
+        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium ${saveMessage.type === 'success' ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
+          }`}>
           {saveMessage.text}
         </div>
       )}
 
-      <ConfirmModal isOpen={!!itemToDelete} title="Delete Provider" message="Are you sure you want to delete this provider? This action cannot be undone." onConfirm={handleDeleteProvider} onCancel={() => setItemToDelete(null)} />
+      {/* ─── Granular Consent Interceptor Modal ─── */}
+      {showConsentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className={`p-2 rounded-lg shrink-0 ${
+                consentModalType === 'network_upgrade' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                : consentModalType === 'save_sso' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+                : consentModalType === 'save_ldap' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+              }`}>
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {consentModalType === 'network_upgrade' && 'Network Upgrade Consent'}
+                  {consentModalType === 'save_sso' && 'Enterprise SSO Consent'}
+                  {consentModalType === 'save_ldap' && 'LDAP Binding Consent'}
+                  {consentModalType === 'save_oauth' && 'Public OAuth Consent'}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {consentModalType === 'network_upgrade' && 'Transitioning from Air-Gapped to Hybrid mode'}
+                  {consentModalType === 'save_sso' && 'Enabling corporate identity federation'}
+                  {consentModalType === 'save_ldap' && 'Enabling internal directory querying'}
+                  {consentModalType === 'save_oauth' && 'Enabling external identity provider'}
+                </p>
+              </div>
+            </div>
+            <div className={`p-4 rounded-lg border mb-4 ${
+              consentModalType === 'save_sso' ? 'bg-purple-50 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/20'
+              : consentModalType === 'save_ldap' ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
+              : 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20'
+            }`}>
+              {consentModalType === 'network_upgrade' && (
+                <>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed">
+                    You are enabling external network connections, transitioning from <strong>Air-Gapped</strong> to <strong>Hybrid</strong> mode.
+                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed mt-2">
+                    By proceeding, I consent to the local storage of cryptographic keys and authorize explicit network egress required for identity federation, LLM caching, and external enterprise integrations.
+                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed mt-2">
+                    <strong>This action is reversible</strong> — you can disable network access at any time from this panel.
+                  </p>
+                </>
+              )}
+              {consentModalType === 'save_sso' && (
+                <>
+                  <p className="text-sm text-purple-900 dark:text-purple-100 leading-relaxed">
+                    You are enabling <strong>Enterprise SSO</strong>. Authentication metadata will be exchanged with your corporate identity provider ({entProviderName || 'configured provider'}).
+                  </p>
+                  <p className="text-sm text-purple-900 dark:text-purple-100 leading-relaxed mt-2">
+                    Do you consent to <strong>local identity federation</strong>? All AI processing remains local to this device.
+                  </p>
+                </>
+              )}
+              {consentModalType === 'save_ldap' && (
+                <>
+                  <p className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed">
+                    You are enabling <strong>LDAP Binding</strong>. The application will query your internal directory server at <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-xs">{ldapUrl || 'configured URL'}</code>.
+                  </p>
+                  <p className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed mt-2">
+                    Do you consent to <strong>internal directory querying</strong> for centralized identity resolution?
+                  </p>
+                </>
+              )}
+              {consentModalType === 'save_oauth' && (
+                <>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed">
+                    You are enabling <strong>Public OAuth</strong>. Authentication metadata will be exchanged with <strong>Google</strong> and/or <strong>Microsoft</strong> via OAuth 2.0 PKCE.
+                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed mt-2">
+                    Do you consent to <strong>external metadata exchange</strong> with these identity providers?
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowConsentModal(false); setPendingConsentAction(null); }}
+                className="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAcceptConsent}
+                className={`px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors ${
+                  consentModalType === 'save_sso' ? 'bg-purple-600 hover:bg-purple-700'
+                  : consentModalType === 'save_ldap' ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                I Accept & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

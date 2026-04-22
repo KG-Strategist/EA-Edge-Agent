@@ -1,5 +1,6 @@
 import { db } from './db';
 import seedData from '../data/ea_seed_data.json';
+import { Logger } from '../lib/logger';
 
 async function cleanupDuplicateMasterCategories() {
   const allCategories = await db.master_categories.toArray();
@@ -17,7 +18,7 @@ async function cleanupDuplicateMasterCategories() {
 
   if (duplicatesToRemove.length > 0) {
     await db.master_categories.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate master categories.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate master categories.`);
   }
 }
 
@@ -51,7 +52,7 @@ async function cleanupDuplicateCategories() {
       }
     }
     await db.architecture_categories.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate categories.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate categories.`);
   }
 }
 
@@ -71,7 +72,7 @@ async function cleanupDuplicateMetamodel() {
 
   if (duplicatesToRemove.length > 0) {
     await db.content_metamodel.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate metamodel entries.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate metamodel entries.`);
   }
 }
 
@@ -100,7 +101,7 @@ async function cleanupDuplicateLayers() {
       }
     }
     await db.architecture_layers.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate layers.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate layers.`);
   }
 }
 
@@ -120,7 +121,7 @@ async function cleanupDuplicatePrinciples() {
 
   if (duplicatesToRemove.length > 0) {
     await db.architecture_principles.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate principles.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate principles.`);
   }
 }
 
@@ -144,12 +145,12 @@ async function cleanupDuplicateServiceDomains() {
   if (duplicatesToRemove.length > 0) {
     const sessions = await db.review_sessions.toArray();
     for (const s of sessions) {
-      if (s.bianDomainId && idMapping.has(s.bianDomainId)) {
-        await db.review_sessions.update(s.id!, { bianDomainId: idMapping.get(s.bianDomainId)! });
+      if ((s as any).bianDomainId && idMapping.has((s as any).bianDomainId)) {
+        await db.review_sessions.update(s.id!, { serviceDomainId: idMapping.get((s as any).bianDomainId)! });
       }
     }
     await db.service_domains.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate Service domains.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate Service domains.`);
   }
 }
 
@@ -169,7 +170,7 @@ async function cleanupDuplicateTags() {
 
   if (duplicatesToRemove.length > 0) {
     await db.bespoke_tags.bulkDelete(duplicatesToRemove);
-    console.log(`Cleaned up ${duplicatesToRemove.length} duplicate tags.`);
+    Logger.info(`Cleaned up ${duplicatesToRemove.length} duplicate tags.`);
   }
 }
 
@@ -588,7 +589,7 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
           modelLibUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm',
           context: 4096,
           isActive: true,
-          agentCategory: 'Coding Agent',
+          agentCategory: 'MOE (Mixture of Experts)',
           engineType: 'WebLLM (Browser Cache)',
           personaInstruction: 'You are EA-NITI. Elite, air-gapped Enterprise Architecture AI.',
           modelSourceMode: 'Remote URL',
@@ -623,7 +624,7 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
 
     return true;
   } catch (error) {
-    console.error('Failed to seed database:', error);
+    Logger.info('Failed to seed database:', error);
     return false;
   } finally {
     isSeeding = false;

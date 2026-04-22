@@ -5,6 +5,8 @@
 // Dependencies: Native File System API, Dexie
 // Example: await importJsonToTable(fileHandle, db.audit_logs, 'audit_logs');
 
+import Dexie from 'dexie';
+
 export async function importJsonToTable<T>(
   fileHandle: FileSystemFileHandle,
   table: Dexie.Table<T>,

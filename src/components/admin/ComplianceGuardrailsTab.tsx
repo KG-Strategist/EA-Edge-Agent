@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ShieldAlert, Trash2, AlertTriangle, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Trash2, AlertTriangle, Plus, ToggleRight, Shield, X, Archive, RefreshCw } from 'lucide-react';
 import { db, PrivacyGuardrail, logForensicAudit } from '../../lib/db';
 import { logoutUser } from '../../lib/authEngine';
 import { useStateContext } from '../../context/StateContext';

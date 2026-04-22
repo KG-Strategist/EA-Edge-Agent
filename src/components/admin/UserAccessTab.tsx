@@ -1,37 +1,13 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, LocalUser } from '../../lib/db';
-import { Shield, Lock, CheckCircle, Plus, X, UserPlus, Globe, Server, Wifi, Users, Edit2, Trash2 } from 'lucide-react';
-import { registerLocalUser, generatePseudonym, createTempUserByAdmin, getCurrentUser } from '../../lib/authEngine';
+import { Shield, Lock, CheckCircle, Plus, X, UserPlus, Globe, Server, Wifi, Users, Edit2, Trash2, FolderKey } from 'lucide-react';
+import { generatePseudonym, createTempUserByAdmin, getCurrentUser } from '../../lib/authEngine';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
-/** Static tier metadata (styling, labels). Active state is derived at render time. */
-const TIER_META = [
-  {
-    id: 'standalone',
-    matchMode: 'AIR_GAPPED' as const,
-    label: 'Standalone Air-Gap',
-    subtitle: 'Local Pseudonyms via Dexie',
-    icon: Shield,
-    plannedBadge: null,
-  },
-  {
-    id: 'intranet',
-    matchMode: null,
-    label: 'Intranet Air-Gap',
-    subtitle: 'On-Premise AD / LDAP',
-    icon: Server,
-    plannedBadge: 'v1.1',
-  },
-  {
-    id: 'hybrid',
-    matchMode: 'HYBRID' as const,
-    label: 'Hybrid Cloud',
-    subtitle: 'External SSO / SAML / OIDC',
-    icon: Globe,
-    plannedBadge: 'v1.2',
-  },
-] as const;
+const environmentMap: Record<string, string> = { 'AIR_GAPPED': 'Air-Gapped', 'HYBRID': 'Hybrid' };
+const authMap: Record<string, string> = { 'S2FA': 'Standard 2FA', 'SSO': 'Enterprise SSO', 'LDAP': 'LDAP / Active Directory', 'OAUTH': 'Public OAuth' };
 
 const ROLE_OPTIONS = ['System Admin', 'Lead EA', 'Viewer'] as const;
 
@@ -58,39 +34,33 @@ function getRoleBadgeClass(role: string): string {
   }
 }
 
+/** Determine exact Global Nomenclature identity provider based on providerId */
+function getUserIdentityProvider(user: LocalUser): 'Standard 2FA' | 'Enterprise SSO' | 'LDAP / Active Directory' | 'Public OAuth' {
+  if (!user.providerId) return 'Standard 2FA';
+  if (user.providerId.startsWith('enterprise-')) return 'Enterprise SSO';
+  if (user.providerId.startsWith('ldap-')) return 'LDAP / Active Directory';
+  return 'Public OAuth';
+}
+
 export default function UserAccessTab() {
   const users = useLiveQuery(() => db.users.toArray());
 
   // ── Derive auth mode from DB instead of hardcoding ─────────────────
   const globalSettings = useLiveQuery(() => db.global_settings.get('SSO_CONFIG'));
-  const activeMode = globalSettings?.connection_mode ?? 'AIR_GAPPED';
 
-  // ── Compute tier card states dynamically ───────────────────────────
-  const tiers = useMemo(() =>
-    TIER_META.map(tier => {
-      // A tier is "active" if its matchMode equals the DB-derived activeMode.
-      // Tiers with matchMode === null (intranet/LDAP) are always locked (no v1.0 support).
-      const isActive = tier.matchMode !== null && tier.matchMode === activeMode;
-      const isLocked = !isActive;
+  const hasEnterpriseSSO = !!globalSettings?.local_enterprise_sso?.clientId;
+  const hasLDAP = !!globalSettings?.local_ldap?.ldapUrl;
+  const hasPublicSSO = globalSettings?.connection_mode === 'HYBRID' && globalSettings?.public_sso_enabled === true;
 
-      return {
-        ...tier,
-        isActive,
-        badge: isActive ? 'Active' : (tier.plannedBadge ?? 'Locked'),
-        badgeColor: isActive
-          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-          : tier.id === 'intranet'
-          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-          : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
-        borderColor: isActive
-          ? 'border-green-400 dark:border-green-600'
-          : 'border-gray-200 dark:border-gray-700',
-        bgColor: isActive
-          ? 'bg-green-50/50 dark:bg-green-900/10'
-          : 'bg-gray-50/50 dark:bg-gray-800/30',
-        isLocked,
-      };
-    }), [activeMode]);
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Standard 2FA' | 'Enterprise SSO' | 'LDAP / Active Directory' | 'Public OAuth'>('All');
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    if (activeFilter === 'All') return users;
+    return users.filter(u => getUserIdentityProvider(u) === activeFilter);
+  }, [users, activeFilter]);
+
+
 
   const adminCount = users?.filter(u => getRole(u) === 'System Admin').length || 0;
 
@@ -114,7 +84,7 @@ export default function UserAccessTab() {
 
   // Safe destructuring and nullish coalescing to prevent runtime crashes
   const currentUserId = userToEdit?.id ?? null;
-  const initialRole = userToEdit?.demographics?.roleToken || 'Viewer';
+
 
   const openCreateModal = () => {
     setUserToEdit(null);
@@ -292,115 +262,156 @@ export default function UserAccessTab() {
           EA-NITI supports a 3-tier identity model. The active flow is determined by the deployment's Global Settings.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {tiers.map(tier => {
-            const TierIcon = tier.icon;
-            return (
-              <div
-                key={tier.id}
-                className={`relative rounded-lg border-2 p-4 transition-colors ${tier.borderColor} ${tier.bgColor} ${
-                  tier.isLocked ? 'opacity-60 cursor-not-allowed' : ''
-                }`}
-              >
-                {/* Badge */}
-                <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${tier.badgeColor}`}>
-                  {tier.badge}
-                </span>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          {/* Standard 2FA */}
+          <div className="relative rounded-lg border-2 p-4 transition-colors border-green-400 dark:border-green-600 bg-green-50/50 dark:bg-green-900/10">
+            <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Active</span>
+            <div className="flex items-center gap-2.5 mb-2">
+              <CheckCircle size={18} className="text-green-500 shrink-0" />
+              <Shield size={16} className="text-green-600 dark:text-green-400" />
+            </div>
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Standard 2FA</h4>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Zero-Trust Local MFA</p>
+          </div>
 
-                <div className="flex items-center gap-2.5 mb-2">
-                  {tier.isActive
-                    ? <CheckCircle size={18} className="text-green-500 shrink-0" />
-                    : <Lock size={16} className="text-gray-400 shrink-0" />
-                  }
-                  <TierIcon size={16} className={tier.isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
-                </div>
-                <h4 className={`text-sm font-semibold ${tier.isActive ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {tier.label}
-                </h4>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{tier.subtitle}</p>
-              </div>
-            );
-          })}
+          {/* Enterprise SSO */}
+          <div className={`relative rounded-lg border-2 p-4 transition-colors ${hasEnterpriseSSO ? 'border-green-400 dark:border-green-600 bg-green-50/50 dark:bg-green-900/10' : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 opacity-60'}`}>
+            <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasEnterpriseSSO ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>{hasEnterpriseSSO ? 'Active' : 'Not Configured'}</span>
+            <div className="flex items-center gap-2.5 mb-2">
+              {hasEnterpriseSSO ? <CheckCircle size={18} className="text-green-500 shrink-0" /> : <Lock size={16} className="text-gray-400 shrink-0" />}
+              <Server size={16} className={hasEnterpriseSSO ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
+            </div>
+            <h4 className={`text-sm font-semibold ${hasEnterpriseSSO ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Enterprise SSO</h4>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Corporate Identity Federation</p>
+          </div>
+
+          {/* LDAP / Active Directory */}
+          <div className={`relative rounded-lg border-2 p-4 transition-colors ${hasLDAP ? 'border-green-400 dark:border-green-600 bg-green-50/50 dark:bg-green-900/10' : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 opacity-60'}`}>
+            <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasLDAP ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>{hasLDAP ? 'Active' : 'Not Configured'}</span>
+            <div className="flex items-center gap-2.5 mb-2">
+              {hasLDAP ? <CheckCircle size={18} className="text-green-500 shrink-0" /> : <Lock size={16} className="text-gray-400 shrink-0" />}
+              <FolderKey size={16} className={hasLDAP ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
+            </div>
+            <h4 className={`text-sm font-semibold ${hasLDAP ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>LDAP / Active Directory</h4>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Internal Directory Querying</p>
+          </div>
+
+          {/* Public OAuth */}
+          <div className={`relative rounded-lg border-2 p-4 transition-colors ${hasPublicSSO ? 'border-green-400 dark:border-green-600 bg-green-50/50 dark:bg-green-900/10' : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 opacity-60'}`}>
+            <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasPublicSSO ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>{hasPublicSSO ? 'Active' : 'Not Configured'}</span>
+            <div className="flex items-center gap-2.5 mb-2">
+              {hasPublicSSO ? <CheckCircle size={18} className="text-green-500 shrink-0" /> : <Lock size={16} className="text-gray-400 shrink-0" />}
+              <Globe size={16} className={hasPublicSSO ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
+            </div>
+            <h4 className={`text-sm font-semibold ${hasPublicSSO ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Public OAuth</h4>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">External Identity Provider</p>
+          </div>
         </div>
       </div>
 
+      {/* ── Quick Filters ── */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={() => setActiveFilter('All')} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeFilter === 'All' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'}`}>All Identities</button>
+        <button onClick={() => setActiveFilter('Standard 2FA')} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeFilter === 'Standard 2FA' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'}`}>Standard 2FA</button>
+        <button onClick={() => hasEnterpriseSSO && setActiveFilter('Enterprise SSO')} disabled={!hasEnterpriseSSO} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeFilter === 'Enterprise SSO' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : hasEnterpriseSSO ? 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50 dark:bg-gray-800 dark:text-purple-400 dark:border-purple-900/30 dark:hover:bg-purple-900/50' : 'bg-gray-50 text-gray-400 border-gray-100 opacity-60 cursor-not-allowed dark:bg-white/[0.02] dark:text-gray-600 dark:border-gray-800'}`}>Enterprise SSO</button>
+        <button onClick={() => hasLDAP && setActiveFilter('LDAP / Active Directory')} disabled={!hasLDAP} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeFilter === 'LDAP / Active Directory' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : hasLDAP ? 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50 dark:bg-gray-800 dark:text-amber-400 dark:border-amber-900/30 dark:hover:bg-amber-900/50' : 'bg-gray-50 text-gray-400 border-gray-100 opacity-60 cursor-not-allowed dark:bg-white/[0.02] dark:text-gray-600 dark:border-gray-800'}`}>LDAP / Active Directory</button>
+        <button onClick={() => hasPublicSSO && setActiveFilter('Public OAuth')} disabled={!hasPublicSSO} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeFilter === 'Public OAuth' ? 'bg-red-600 text-white border-red-600 shadow-sm' : hasPublicSSO ? 'bg-white text-red-700 border-red-200 hover:bg-red-50 dark:bg-gray-800 dark:text-red-400 dark:border-red-900/30 dark:hover:bg-red-900/50' : 'bg-gray-50 text-gray-400 border-gray-100 opacity-60 cursor-not-allowed dark:bg-white/[0.02] dark:text-gray-600 dark:border-gray-800'}`}>Public OAuth</button>
+      </div>
+
       {/* ── Local Identities Table ──────────────────────────────────── */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Registered Local Identities</h3>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mb-6">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/30">
+          <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+            <Users size={18} className="text-blue-500" />
+            Identity Directory
+          </h4>
           <button
-            id="create-local-profile-btn"
             onClick={openCreateModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
-            <Plus size={14} />
-            Create Local Profile
+            <Plus size={16} /> Add Local Profile
           </button>
         </div>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-100 dark:bg-gray-900/50">
-            <tr>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Pseudonym</th>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Role</th>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Auth Mode</th>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Joined</th>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
-              <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {users?.map(u => {
-              const role = getRole(u);
-              const isPending = u.requiresPinSetup;
-              const joinedDate = new Date(u.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-              return (
-                <tr key={u.pseudokey} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-5 py-4 font-mono font-medium text-gray-900 dark:text-white">{u.pseudokey}</td>
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getRoleBadgeClass(role)}`}>
-                      {role}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-xs text-gray-500 dark:text-gray-400 uppercase">{u.authMode}</td>
-                  <td className="px-5 py-4 text-gray-500 dark:text-gray-400">{joinedDate}</td>
-                  <td className="px-5 py-4">
-                    {isPending ? (
-                      <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pending Setup</span>
-                    ) : u.isActive === false ? (
-                      <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Deactivated</span>
-                    ) : (
-                      <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEditModal(u)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                        title="Edit Role"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => openDeleteModal(u)}
-                        disabled={role === 'System Admin' && adminCount <= 1}
-                        className={`p-1.5 transition-colors ${role === 'System Admin' && adminCount <= 1 ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-400 hover:text-red-600 dark:hover:text-red-400'}`}
-                        title={role === 'System Admin' && adminCount <= 1 ? "Cannot delete the last System Admin" : "Manage User Access"}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {(!users || users.length === 0) && (
-              <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-gray-500 dark:text-gray-400">No local identities registered.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <DataTable
+          data={filteredUsers}
+          keyField="pseudokey"
+          emptyMessage="No identities match the active filter or search query."
+          searchable={true}
+          searchPlaceholder="Search users..."
+          searchFields={['pseudokey']}
+          pagination={true}
+          itemsPerPage={10}
+          containerClassName="border-0 rounded-none shadow-none"
+          columns={[
+            {
+              key: 'pseudokey',
+              label: 'Pseudonym',
+              render: (row) => <span className="font-mono font-medium text-gray-900 dark:text-white">{row.pseudokey}</span>
+            },
+            {
+              key: 'role',
+              label: 'Role',
+              render: (row) => {
+                const role = getRole(row);
+                return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getRoleBadgeClass(role)}`}>{role}</span>;
+              }
+            },
+            {
+              key: 'environment',
+              label: 'Environment',
+              render: (row) => <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{environmentMap[row.authMode || 'AIR_GAPPED'] || 'Unknown'}</span>
+            },
+            {
+              key: 'idp',
+              label: 'Identity Provider',
+              render: (row) => {
+                const idp = getUserIdentityProvider(row);
+                return <span className="px-2 py-1 text-[10px] font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 uppercase tracking-wider">{authMap[idp === 'Public OAuth' ? 'OAUTH' : idp === 'Enterprise SSO' ? 'SSO' : idp === 'LDAP / Active Directory' ? 'LDAP' : 'S2FA'] || 'Standard 2FA'}</span>;
+              }
+            },
+            {
+              key: 'joined',
+              label: 'Joined',
+              render: (row) => <span className="text-gray-500 dark:text-gray-400">{new Date(row.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            },
+            {
+              key: 'status',
+              label: 'Status',
+              render: (row) => {
+                if (row.requiresPinSetup) return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pending Setup</span>;
+                if (row.isActive === false) return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Suspended</span>;
+                return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>;
+              }
+            }
+          ]}
+          actions={[
+            {
+              label: 'Edit Role',
+              icon: <Edit2 size={16} />,
+              onClick: openEditModal,
+              className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+              title: () => 'Edit Role'
+            },
+            {
+              label: 'Manage User Access',
+              icon: <Trash2 size={16} />,
+              onClick: openDeleteModal,
+              disabled: (row) => getRole(row) === 'System Admin' && adminCount <= 1,
+              className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+              title: (row) => getRole(row) === 'System Admin' && adminCount <= 1 ? "Cannot delete the last System Admin" : "Manage User Access"
+            }
+          ]}
+        />
+      </div>
+
+      <div className="mt-4 px-2 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+        <span className="font-semibold uppercase tracking-wider">Federation Status:</span>
+        <div className="flex gap-2">
+          {hasEnterpriseSSO && <span className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-1 rounded font-bold">Enterprise SSO</span>}
+          {hasLDAP && <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-1 rounded font-bold">LDAP</span>}
+          {hasPublicSSO && <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded font-bold">Public OAuth</span>}
+          {!hasEnterpriseSSO && !hasLDAP && !hasPublicSSO && <span className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 px-2 py-1 rounded font-bold">Standard 2FA Only</span>}
+        </div>
       </div>
 
       {/* ── Unified User Modal ───────────────────────────────────────── */}
@@ -537,7 +548,7 @@ export default function UserAccessTab() {
             {/* Option 1: Toggle Deactivation/Reactivation */}
             <div className="mb-6 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-                {userToDelete.isActive === false ? 'Reactivate Account' : 'Status: Soft Deactivation'}
+                {userToDelete.isActive === false ? 'Restore Access' : 'Status: Soft Suspension'}
               </h4>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 tracking-tight">
                 {userToDelete.isActive === false
@@ -551,10 +562,10 @@ export default function UserAccessTab() {
                 className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   userToDelete.isActive === false
                     ? 'border border-green-600 text-green-600 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-500/10'
-                    : 'border border-blue-600 text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-400 dark:hover:bg-blue-500/10'
+                    : 'border border-amber-600 text-amber-600 hover:bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:hover:bg-amber-500/10'
                 }`}
               >
-                {isDeleting ? 'Processing...' : (userToDelete.isActive === false ? 'Reactivate User' : 'Deactivate User')}
+                {isDeleting ? 'Processing...' : (userToDelete.isActive === false ? 'Restore Access' : 'Suspend Access')}
               </button>
             </div>
 

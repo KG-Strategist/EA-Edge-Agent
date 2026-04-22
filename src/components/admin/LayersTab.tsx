@@ -11,22 +11,23 @@ import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { useMasterData } from '../../hooks/useMasterData';
 import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
 export default function LayersTab() {
   const layers = useLiveQuery(() => db.architecture_layers.toArray()) || [];
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ArchitectureLayer | null>(null);
-  
+
   const [selectedCoreLayer, setSelectedCoreLayer] = useState<string>('');
   const [selectedContextLayer, setSelectedContextLayer] = useState<string>('');
   const [selectedAbstractionLevel, setSelectedAbstractionLevel] = useState<string>('');
   const [descriptionValue, setDescriptionValue] = useState('');
-  
+
   const [error, setError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  
+
   const [sortColumn, setSortColumn] = useState<keyof ArchitectureLayer>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -57,7 +58,7 @@ export default function LayersTab() {
 
   const handleStatusChange = async (item: ArchitectureLayer, newStatus: string) => {
     if (item.id) {
-       await db.architecture_layers.update(item.id, { status: newStatus as any });
+      await db.architecture_layers.update(item.id, { status: newStatus as any });
     }
   };
 
@@ -80,7 +81,7 @@ export default function LayersTab() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const name = (formData.get('name') as string).trim();
-    
+
     if (!selectedCoreLayer) {
       setError("Please select or create a Core Layer.");
       return;
@@ -112,7 +113,7 @@ export default function LayersTab() {
     } else {
       await db.architecture_layers.add(validItem);
     }
-    
+
     setIsModalOpen(false);
     setEditingItem(null);
   };
@@ -129,7 +130,7 @@ export default function LayersTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader 
+      <PageHeader
         icon={<Layers className="text-blue-500" />}
         title="Strategic Traceability"
         description="This layered structure ensures that IT implementation is directly traceable to business strategy, allowing for a high degree of traceability, interoperability, and standard-based design."
@@ -137,11 +138,10 @@ export default function LayersTab() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowArchived(!showArchived)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                showArchived
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${showArchived
                   ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
+                }`}
             >
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
@@ -155,84 +155,123 @@ export default function LayersTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('coreLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Core Layer <ArrowUpDown size={14} className={sortColumn === 'coreLayer' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">
-                <button onClick={() => handleSort('contextLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Context <ArrowUpDown size={14} className={sortColumn === 'contextLayer' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium hidden xl:table-cell">Abstraction</th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">Description</th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedLayers.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">{showArchived ? 'No archived layers.' : 'No layers found. Click "Add New" to create one.'}</td></tr>
-            )}
-            {sortedLayers.map(l => (
-              <tr key={l.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium">{l.name}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                  <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
-                    {l.coreLayer || 'None'}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm hidden lg:table-cell">{l.contextLayer || '-'}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm hidden xl:table-cell">{l.abstractionLevels || '-'}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-[200px] truncate hidden lg:table-cell" title={l.description}>{l.description || '-'}</td>
-                <td className="px-4 py-4">
-                  {showArchived ? (
-                    <StatusToggle 
-                      currentStatus="Deprecated" 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={() => {}} 
-                      readonly={true} 
-                    />
-                  ) : (
-                    <StatusToggle 
-                      currentStatus={l.status || 'Active'} 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={(s) => handleStatusChange(l, s)} 
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-right whitespace-nowrap">
-                  {showArchived ? (
-                    <>
-                      <button onClick={() => handleRestore(l.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                      <button onClick={() => setItemToDelete(l.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => openModal(l)} aria-label="Edit layer" className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                      <button onClick={() => handleArchive(l.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={sortedLayers}
+        keyField="id"
+        emptyMessage={showArchived ? 'No archived layers.' : 'No layers found. Click "Add New" to create one.'}
+        searchable={true}
+        searchPlaceholder="Search layers..."
+        searchFields={['name', 'coreLayer', 'contextLayer', 'description']}
+        pagination={true}
+        itemsPerPage={10}
+        containerClassName="flex-1 border-0 shadow-none"
+        columns={[
+          {
+            key: 'name',
+            label: (
+              <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-900 dark:text-gray-200 font-medium"
+          },
+          {
+            key: 'coreLayer',
+            label: (
+              <button onClick={() => handleSort('coreLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Core Layer <ArrowUpDown size={14} className={sortColumn === 'coreLayer' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-600 dark:text-gray-300 text-sm",
+            render: (row) => (
+              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
+                {row.coreLayer || 'None'}
+              </span>
+            )
+          },
+          {
+            key: 'contextLayer',
+            label: (
+              <button onClick={() => handleSort('contextLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Context <ArrowUpDown size={14} className={sortColumn === 'contextLayer' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-600 dark:text-gray-300 text-sm hidden lg:table-cell",
+            render: (row) => <span>{row.contextLayer || '-'}</span>
+          },
+          {
+            key: 'abstractionLevels',
+            label: 'Abstraction',
+            className: "text-gray-600 dark:text-gray-300 text-sm hidden xl:table-cell",
+            render: (row) => <span>{row.abstractionLevels || '-'}</span>
+          },
+          {
+            key: 'description',
+            label: 'Description',
+            className: "text-gray-600 dark:text-gray-300 text-sm max-w-[200px] truncate hidden lg:table-cell",
+            render: (row) => <span title={row.description}>{row.description || '-'}</span>
+          },
+          {
+            key: 'status',
+            label: (
+              <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            render: (row) => (
+              showArchived ? (
+                <StatusToggle
+                  currentStatus="Deprecated"
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={() => { }}
+                  readonly={true}
+                />
+              ) : (
+                <StatusToggle
+                  currentStatus={row.status || 'Active'}
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={(s) => handleStatusChange(row, s)}
+                />
+              )
+            )
+          }
+        ]}
+        actions={
+          showArchived
+            ? [
+              {
+                label: 'Restore',
+                icon: <RotateCcw size={16} />,
+                onClick: (row) => handleRestore(row.id!),
+                className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+                title: () => 'Restore'
+              },
+              {
+                label: 'Delete Permanently',
+                icon: <Trash2 size={16} />,
+                onClick: (row) => setItemToDelete(row.id!),
+                className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+                title: () => 'Delete Permanently'
+              }
+            ]
+            : [
+              {
+                label: 'Edit',
+                icon: <Edit size={16} />,
+                onClick: (row) => openModal(row),
+                className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+                title: () => 'Edit layer'
+              },
+              {
+                label: 'Archive',
+                icon: <Archive size={16} />,
+                onClick: (row) => handleArchive(row.id!),
+                className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+                title: () => 'Archive'
+              }
+            ]
+        }
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -288,12 +327,12 @@ export default function LayersTab() {
                     onResult={(text) => setDescriptionValue(text)}
                   />
                 </div>
-                <textarea 
-                  name="description" 
+                <textarea
+                  name="description"
                   value={descriptionValue}
                   onChange={(e) => setDescriptionValue(e.target.value)}
-                  required 
-                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 min-h-[80px]" 
+                  required
+                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 min-h-[80px]"
                   placeholder="What is the purpose of this layer?"
                 />
               </div>

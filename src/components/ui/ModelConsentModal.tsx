@@ -3,6 +3,7 @@ import { AlertTriangle, DownloadCloud, ShieldAlert } from 'lucide-react';
 import { initAIEngine } from '../../lib/aiEngine';
 import { useStateContext } from '../../context/StateContext';
 import { db } from '../../lib/db';
+import { Logger } from '../../lib/logger';
 
 export default function ModelConsentModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -47,7 +48,7 @@ export default function ModelConsentModal() {
         details: `Consented to network egress for downloading model URL: ${targetModelUrl}`
       });
 
-      console.log('Consent logged, initiating download background task...');
+      Logger.info('Consent logged, initiating download background task...');
       
       // 2. Only upon DB Success, setup background task and close
       setDownloadState({
@@ -86,7 +87,7 @@ export default function ModelConsentModal() {
         }));
       })
       .catch((error) => {
-        console.error('Failed to download model:', error);
+        Logger.info('Failed to download model:', error);
 
         // TASK 3: Enhanced Cache Corruption Handling
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -108,7 +109,7 @@ export default function ModelConsentModal() {
       });
 
     } catch (error) {
-      console.error('Failed to log consent to IDB:', error);
+      Logger.info('Failed to log consent to IDB:', error);
       // DB failed, stay open but alert user
       setIsProcessing(false);
       alert('Security Audit Error: Failed to write to Audit Log. Download aborted to maintain compliance.');

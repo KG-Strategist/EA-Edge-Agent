@@ -60,3 +60,10 @@ AGENTS.md
 architecture.md
 PROJECT_STATUS.md
 features.md
+
+# Local diagnostic outputs
+lint_results.txt
+tsc_res.txt
+tsc_results.txt
+int_res.txt
+ts_errors.txt

@@ -107,7 +107,7 @@ export interface ReviewSession {
   id?: number;
   projectName: string;
   type: string;
-  bianDomainId: number | null;
+  serviceDomainId: number | null;
   tags: string[];
   appTier?: string;
   hostingModel?: string;
@@ -206,7 +206,7 @@ export interface LocalUser {
     roleToken: string; // Tokenized role
   };
   consentHistory?: {
-    type: 'TELEMETRY' | 'OFFLINE_LIMITS' | 'MULTI_UAM' | 'PAM_PIM' | 'HYBRID_LIMITED';
+    type: 'TELEMETRY' | 'OFFLINE_LIMITS' | 'MULTI_UAM' | 'PAM_PIM' | 'HYBRID_LIMITED' | 'EXTERNAL_IDENTITY' | 'HYBRID_NETWORK' | 'AIRGAP_STRICT';
     grantedAt: Date;
     version: string;
     revokedAt?: Date;
@@ -217,7 +217,7 @@ export interface AuditLog {
   id?: number;
   timestamp: Date;
   pseudokey: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'WEBLLM_CACHE_CONSENT';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'WEBLLM_CACHE_CONSENT' | 'SYSTEM_BACKUP_CONFIGURED' | 'SYSTEM_BACKUP_REVOKED' | 'SYSTEM_BACKUP_PERMISSION_RESTORED' | 'SYSTEM_BACKUP_PERMISSION_RESTORE_FAILED' | 'SYSTEM_BACKUP_PERMISSION_ERROR' | 'SYSTEM_BACKUP_SYNC';
   tableName: string;
   recordId?: string | number;
   details?: string;
@@ -256,6 +256,7 @@ export interface NetworkIntegration {
   apiKey?: string; // @deprecated Use encryptedApiKey instead
   encryptedApiKey?: string; // NEW: AES-GCM encrypted API key (hex format)
   isDefault: boolean;
+  status: 'active' | 'inactive';
   createdAt: Date;
   modelName?: string;
 }
@@ -269,6 +270,11 @@ export interface GlobalSetting {
     clientId: string;
     tokenUrl?: string;
   };
+  local_ldap?: {
+    ldapUrl: string;
+    baseDn: string;
+  };
+  authType?: 'S2FA' | 'SSO' | 'LDAP' | 'OAUTH';
   public_sso_enabled: boolean;
 }
 

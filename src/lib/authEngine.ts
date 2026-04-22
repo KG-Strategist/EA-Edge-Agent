@@ -27,7 +27,7 @@ export function logoutUser() {
 }
 
 // Generates a random salt
-function generateSalt(): string {
+export function generateSalt(): string {
   const array = new Uint8Array(16);
   window.crypto.getRandomValues(array);
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -197,6 +197,9 @@ export async function registerLocalUser(
       roleToken
     }
   });
+
+  // FAIL-CLOSED: Air-Gapped users start with network strictly disabled
+  await db.app_settings.put({ key: 'enableNetworkIntegrations', value: false });
 }
 
 export async function createTempUserByAdmin(
@@ -263,6 +266,9 @@ export async function registerHybridUser(
       roleToken
     }
   });
+
+  // HYBRID: User authenticated via external OAuth, network is already trusted
+  await db.app_settings.put({ key: 'enableNetworkIntegrations', value: true });
   
   await initializeVault(pin, salt);
 }

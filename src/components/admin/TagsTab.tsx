@@ -9,6 +9,7 @@ import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
 const TAILWIND_COLORS = [
   { name: 'Red', value: 'bg-red-500/20 text-red-700 dark:text-red-400', bgClass: 'bg-red-500' },
@@ -160,78 +161,100 @@ export default function TagsTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('category')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Category <ArrowUpDown size={14} className={sortColumn === 'category' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedTags.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">
-                {showArchived ? 'No archived tags.' : 'No tags found.'}
-              </td></tr>
-            )}
-            {sortedTags.map(t => (
-              <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${t.colorCode}`}>
-                    {t.name}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                  {t.category}
-                </td>
-                <td className="px-4 py-4">
-                  {showArchived ? (
-                    <StatusToggle 
-                      currentStatus="Deprecated" 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={() => {}} 
-                      readonly={true} 
-                    />
-                  ) : (
-                    <StatusToggle 
-                      currentStatus={t.status || 'Active'} 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={(s) => handleStatusChange(t, s)} 
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-right whitespace-nowrap">
-                  {showArchived ? (
-                    <>
-                      <button onClick={() => handleRestore(t.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                      <button onClick={() => setItemToDelete(t.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => openModal(t)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                      <button onClick={() => handleArchive(t.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={sortedTags}
+        keyField="id"
+        emptyMessage={showArchived ? 'No archived tags.' : 'No tags found.'}
+        searchable={true}
+        searchPlaceholder="Search tags..."
+        searchFields={['name', 'category']}
+        pagination={true}
+        itemsPerPage={10}
+        containerClassName="flex-1 border-0 shadow-none"
+        columns={[
+          {
+            key: 'name',
+            label: (
+              <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            render: (row) => (
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${row.colorCode}`}>
+                {row.name}
+              </span>
+            )
+          },
+          {
+            key: 'category',
+            label: (
+              <button onClick={() => handleSort('category')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Category <ArrowUpDown size={14} className={sortColumn === 'category' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-600 dark:text-gray-300 text-sm"
+          },
+          {
+            key: 'status',
+            label: (
+              <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            render: (row) => (
+              showArchived ? (
+                <StatusToggle 
+                  currentStatus="Deprecated" 
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                  onChange={() => {}} 
+                  readonly={true} 
+                />
+              ) : (
+                <StatusToggle 
+                  currentStatus={row.status || 'Active'} 
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                  onChange={(s) => handleStatusChange(row, s)} 
+                />
+              )
+            )
+          }
+        ]}
+        actions={
+          showArchived 
+            ? [
+                {
+                  label: 'Restore',
+                  icon: <RotateCcw size={16} />,
+                  onClick: (row) => handleRestore(row.id!),
+                  className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+                  title: () => 'Restore'
+                },
+                {
+                  label: 'Delete Permanently',
+                  icon: <Trash2 size={16} />,
+                  onClick: (row) => setItemToDelete(row.id!),
+                  className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+                  title: () => 'Delete Permanently'
+                }
+              ]
+            : [
+                {
+                  label: 'Edit',
+                  icon: <Edit size={16} />,
+                  onClick: (row) => openModal(row),
+                  className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+                  title: () => 'Edit'
+                },
+                {
+                  label: 'Archive',
+                  icon: <Archive size={16} />,
+                  onClick: (row) => handleArchive(row.id!),
+                  className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+                  title: () => 'Archive'
+                }
+              ]
+        }
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -239,8 +262,8 @@ export default function TagsTab() {
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{editingItem ? 'Edit Tag' : 'Add Tag'}</h3>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label>
-                <input name="name" defaultValue={editingItem?.name} onChange={() => setError(null)} required className={`w-full bg-white dark:bg-gray-800 border ${error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 dark:border-gray-700 focus:border-blue-500'} rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none`} />
+                <label htmlFor="tag-name" className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label>
+                <input id="tag-name" name="name" defaultValue={editingItem?.name} onChange={() => setError(null)} required placeholder="e.g., Security, Performance..." className={`w-full bg-white dark:bg-gray-800 border ${error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 dark:border-gray-700 focus:border-blue-500'} rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none`} />
                 {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
               </div>
               <div>

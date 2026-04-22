@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import seedData from '../data/ea_seed_data.json';
+import { Logger } from '../lib/logger';
 
 let db: PGlite | null = null;
 
@@ -38,7 +39,7 @@ self.onmessage = async (e: MessageEvent) => {
         // Check if seeded
         const res = await db.query('SELECT count(*) as count FROM togaf_phases');
         if (Number((res.rows[0] as any).count) === 0) {
-          console.log('[PGLite] Seeding TOGAF and Service data...');
+          Logger.info('[PGLite] Seeding TOGAF and Service data...');
           // Seed TOGAF
           for (const phase of seedData.togaf_phases) {
             await db.query('INSERT INTO togaf_phases (id, name, description) VALUES ($1, $2, $3)', [phase.id, phase.name, phase.description]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, WifiOff, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff } from 'lucide-react';
+import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff } from 'lucide-react';
 import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback } from '../lib/authEngine';
 import Logo from '../components/ui/Logo';
 import { db, GlobalSetting } from '../lib/db';
@@ -54,7 +54,7 @@ const MouseSparkles = () => {
   );
 };
 
-type AuthView = 'LOADING' | 'LOGIN' | 'MODE_SELECT' | 'CONFIG_HYBRID' | 'AIR_GAP_OPTIONS' | 'CONFIG_ENTERPRISE' | 'CONFIG_LDAP' | 'OAUTH_INIT' | 'LOCAL_BINDING' | 'RECOVERY' | 'RECOVERY_SUCCESS' | 'HYBRID_CONSENT' | 'AIRGAP_CONSENT' | 'PIN_SETUP';
+type AuthView = 'LOADING' | 'LOGIN' | 'MODE_SELECT' | 'CONFIG_HYBRID' | 'HYBRID_AUTH_OPTIONS' | 'AIR_GAP_OPTIONS' | 'CONFIG_ENTERPRISE' | 'CONFIG_LDAP' | 'OAUTH_INIT' | 'LOCAL_BINDING' | 'RECOVERY' | 'RECOVERY_SUCCESS' | 'HYBRID_CONSENT' | 'AIRGAP_CONSENT' | 'PIN_SETUP';
 
 const getPasswordStrength = (pass: string) => {
   let score = 0;
@@ -256,7 +256,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     };
     await db.global_settings.put(cfg);
     setGlobalConfig(cfg);
-    setView('OAUTH_INIT');
+    setFlowOrigin('hybrid');
+    setView('HYBRID_AUTH_OPTIONS');
     setIsProcessing(false);
   };
 
@@ -264,10 +265,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     e.preventDefault();
     setIsInSetupWorkflow(true); // Enter setup workflow
     setIsProcessing(true);
+    // Context-aware: preserve HYBRID mode if user came from hybrid flow
+    const mode = flowOrigin === 'hybrid' ? 'HYBRID' : 'AIR_GAPPED';
     const cfg: GlobalSetting = {
       id: 'SSO_CONFIG',
-      connection_mode: 'AIR_GAPPED',
-      public_sso_enabled: false,
+      connection_mode: mode,
+      public_sso_enabled: flowOrigin === 'hybrid',
+      authType: 'SSO',
       local_enterprise_sso: {
         providerName: entProviderName,
         authUrl: entAuthUrl,
@@ -285,10 +289,17 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     e.preventDefault();
     setIsInSetupWorkflow(true); // Enter setup workflow
     setIsProcessing(true);
+    // Context-aware: preserve HYBRID mode if user came from hybrid flow
+    const mode = flowOrigin === 'hybrid' ? 'HYBRID' : 'AIR_GAPPED';
     const cfg: GlobalSetting = {
       id: 'SSO_CONFIG',
-      connection_mode: 'AIR_GAPPED',
-      public_sso_enabled: false,
+      connection_mode: mode,
+      public_sso_enabled: flowOrigin === 'hybrid',
+      authType: 'LDAP',
+      local_ldap: {
+        ldapUrl: entLdapUrl,
+        baseDn: entLdapBaseDn
+      },
       local_enterprise_sso: {
         providerName: `LDAP (${entLdapBaseDn})`,
         authUrl: entLdapUrl,
@@ -516,6 +527,23 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     }
   };
 
+  const handleLDAPLogin = async () => {
+    setError('');
+    setIsProcessing(true);
+    try {
+      // MVP 1.1: LDAP auth routes through the same local identity resolution as SSO
+      const ldapProviderId = `ldap-bind|${globalConfig?.local_ldap?.ldapUrl || 'local'}`;
+      console.info('[AUDIT] LDAP Authentication Attempted:', ldapProviderId);
+      const successPseudonym = await loginWithSSO(ldapProviderId);
+      if (successPseudonym) dispatchAuthSuccess(successPseudonym);
+      else setError('No local identity linked to this LDAP directory.');
+    } catch (err: any) {
+      setError(err.message || 'LDAP Authentication error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (view === 'LOADING') {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex justify-center items-center">
@@ -595,57 +623,67 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
             </p>
           </div>
 
-          {view === 'LOGIN' && (
-            <div className="space-y-4">
-              {/* Login SSO Visibility Rules */}
-              {isInternetEnabled && (
-                <div className="space-y-2.5 mb-4">
-                  <button onClick={() => handleSSOLogin('google-oauth2|mock')} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/15 hover:border-gray-400 dark:hover:border-red-500/50 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-800 dark:text-white rounded-lg text-sm font-semibold transition-all hover:scale-[1.01] dark:hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.4)] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label="Login with Google OAuth">
-                    <Globe className="w-4 h-4 text-red-500 dark:text-red-400" /> Login with Google
-                  </button>
-                  <button onClick={() => handleSSOLogin('microsoft-oauth2|mock')} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/15 hover:border-gray-400 dark:hover:border-blue-500/50 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-800 dark:text-white rounded-lg text-sm font-semibold transition-all hover:scale-[1.01] dark:hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.4)] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label="Login with Microsoft OAuth">
-                    <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Login with Microsoft
-                  </button>
-                  {globalConfig?.local_enterprise_sso && (
-                    <button onClick={() => handleSSOLogin('enterprise-oauth2|mock')} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-purple-50 dark:bg-purple-500/20 border border-purple-300 dark:border-purple-500/30 hover:border-purple-400 dark:hover:border-purple-500/50 hover:bg-purple-100 dark:hover:bg-purple-500/30 text-purple-900 dark:text-white rounded-lg text-sm font-semibold transition-all hover:scale-[1.01] dark:hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.4)]">
-                      <Lock className="w-4 h-4 text-purple-600 dark:text-purple-400" /> {globalConfig.local_enterprise_sso.providerName}
-                    </button>
-                  )}
-                  <div className="flex items-center gap-3 py-2">
-                    <div className="h-px bg-gray-200 dark:bg-white/10 flex-1"></div>
-                    <span className="text-gray-400 dark:text-gray-500 font-medium text-xs uppercase tracking-widest">Or Local Key</span>
-                    <div className="h-px bg-gray-200 dark:bg-white/10 flex-1"></div>
+          {view === 'LOGIN' && (() => {
+            const hasEnterpriseSSO = !!globalConfig?.local_enterprise_sso?.clientId;
+            const hasLDAP = !!globalConfig?.local_ldap?.ldapUrl;
+            const hasPublicSSO = isInternetEnabled && globalConfig?.public_sso_enabled === true;
+
+            return (
+              <div className="space-y-5">
+                <div className="text-center mb-4">
+                  <h2 className="text-2xl font-bold tracking-tight text-white">Secure Login</h2>
+                  <p className="text-sm text-gray-400 mt-1">Authenticate to access the workspace</p>
+                </div>
+
+                {/* Clean Air-Gap Informational Banner */}
+                {!isInternetEnabled && (
+                  <div className="bg-yellow-900/20 border border-yellow-700/50 text-yellow-500 text-xs px-3 py-2 rounded-md flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <span>Air-Gapped Mode: Public SSO Disabled</span>
+                  </div>
+                )}
+
+                {/* ONLY render this block if there is an ACTIVE external provider */}
+                {((isInternetEnabled && hasPublicSSO) || hasEnterpriseSSO || hasLDAP) && (
+                  <div className="space-y-3">
+                    {isInternetEnabled && hasPublicSSO && (
+                      <>
+                        <button onClick={() => handleSSOLogin('google-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Sign in with Google</button>
+                        <button onClick={() => handleSSOLogin('microsoft-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Sign in with Microsoft</button>
+                      </>
+                    )}
+                    {hasEnterpriseSSO && (
+                      <button onClick={() => handleSSOLogin('enterprise-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-blue-500 rounded-md shadow-sm bg-blue-600 text-sm font-medium text-white hover:bg-blue-700">Sign in with Enterprise SSO</button>
+                    )}
+                    {hasLDAP && (
+                      <button onClick={() => handleLDAPLogin()} className="w-full flex items-center justify-center py-2 px-4 border border-purple-500 rounded-md shadow-sm bg-purple-600 text-sm font-medium text-white hover:bg-purple-700">Sign in with LDAP</button>
+                    )}
+                  </div>
+                )}
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-700" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-[#111827] text-gray-400 text-xs uppercase tracking-wider">Local Credentials</span>
                   </div>
                 </div>
-              )}
 
-              {(!isInternetEnabled) && (
-                <div className="mb-4 space-y-2.5">
-                  <div className="flex items-center justify-center gap-2 p-3 bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-semibold text-gray-500 dark:text-blue-200/70 shadow-inner">
-                    <WifiOff size={16} className="text-gray-400 dark:text-blue-400/80" /> Public SSO Hidden (Air-Gapped Active).
-                  </div>
-                  {globalConfig?.local_enterprise_sso && (
-                    <button onClick={() => handleSSOLogin('enterprise-oauth2|mock')} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-purple-50 dark:bg-purple-500/20 border border-purple-300 dark:border-purple-500/30 hover:border-purple-400 dark:hover:border-purple-500/50 hover:bg-purple-100 dark:hover:bg-purple-500/30 text-purple-900 dark:text-white rounded-lg text-sm font-semibold transition-all hover:scale-[1.01] dark:hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.4)]">
-                      <Lock className="w-4 h-4 text-purple-600 dark:text-purple-400" /> {globalConfig.local_enterprise_sso.providerName}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <form onSubmit={handleLogin} className="space-y-3">
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Agent ID (Pseudonym)</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <Fingerprint className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Agent ID (Pseudonym)</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <Fingerprint className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                        </div>
+                        <input type={showAgentId ? "text" : "password"} value={pseudokey} onChange={e => setPseudokey(e.target.value)} required aria-label="Agent ID" title="Agent ID (Pseudonym)" placeholder="Enter Agent ID" className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm" />
+                        <button type="button" onClick={() => setShowAgentId(!showAgentId)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                          {showAgentId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
-                      <input type={showAgentId ? "text" : "password"} value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm" />
-                      <button type="button" onClick={() => setShowAgentId(!showAgentId)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                        {showAgentId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
                     </div>
-                  </div>
                     <div className={isTempLoginMode ? "grid grid-cols-1" : "grid grid-cols-2 gap-3"}>
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Passphrase</label>
@@ -653,7 +691,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                             <KeyRound className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
                           </div>
-                          <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm" />
+                          <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required aria-label="Passphrase" title="Passphrase" placeholder="Enter passphrase" className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm" />
                           <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -666,7 +704,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                               <Lock className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
                             </div>
-                            <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm tracking-widest" />
+                            <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} aria-label="2FA PIN" title="2FA PIN" placeholder="PIN" className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm tracking-widest" />
                             <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                               {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </button>
@@ -674,25 +712,36 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                         </div>
                       )}
                     </div>
-                </div>
-                
-                <div className="flex justify-end">
-                  <button type="button" onClick={() => setView('RECOVERY')} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Forgot Credentials?</button>
-                </div>
-                
-                {error && <p className="text-red-500 dark:text-red-400 text-xs font-bold text-center bg-red-50 dark:bg-red-500/10 py-2 rounded-lg border border-red-200 dark:border-red-500/20">{error}</p>}
-                
-                <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-gradient-to-r dark:from-blue-600 dark:to-blue-500 dark:hover:from-blue-500 dark:hover:to-blue-400 text-white font-bold rounded-lg px-6 py-3 text-sm transition-all hover:scale-[1.01] dark:shadow-[0_0_25px_-5px_rgba(59,130,246,0.5)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label="Decrypt vault and login to EA NITI">
-                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-5 h-5" />} Decrypt Vault & Login
-                </button>
-                <div className="pt-2 text-center">
-                  <button type="button" onClick={() => setIsTempLoginMode(!isTempLoginMode)} className="text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                    {isTempLoginMode ? "Back to Standard Login" : "First time logging in or forgot PIN? Use a Temporary Password"}
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => setView('RECOVERY')} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Forgot Credentials?</button>
+                  </div>
+                  
+                  {error && <p className="text-red-500 dark:text-red-400 text-xs font-bold text-center bg-red-50 dark:bg-red-500/10 py-2 rounded-lg border border-red-200 dark:border-red-500/20">{error}</p>}
+                  
+                  <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-gradient-to-r dark:from-blue-600 dark:to-blue-500 dark:hover:from-blue-500 dark:hover:to-blue-400 text-white font-bold rounded-lg px-6 py-3 text-sm transition-all hover:scale-[1.01] dark:shadow-[0_0_25px_-5px_rgba(59,130,246,0.5)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label="Decrypt vault and login to EA NITI">
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-5 h-5" />} Decrypt Vault & Login
                   </button>
-                </div>
-              </form>
-            </div>
-          )}
+                  <div className="pt-2 text-center">
+                    <button type="button" onClick={() => setIsTempLoginMode(!isTempLoginMode)} className="text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+                      {isTempLoginMode ? "Back to Standard Login" : "First time logging in or forgot PIN? Use a Temporary Password"}
+                    </button>
+                  </div>
+
+                  {(!hasEnterpriseSSO || !hasLDAP) && (
+                    <div className="pt-4 mt-6 border-t border-gray-800 flex flex-col items-center justify-center gap-2">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider">Available Enterprise Integrations</span>
+                      <div className="flex gap-2">
+                        {!hasEnterpriseSSO && <span className="px-2 py-1 bg-gray-800/30 border border-gray-700/50 text-gray-500 text-[10px] rounded-full">Enterprise SSO (Unconfigured)</span>}
+                        {!hasLDAP && <span className="px-2 py-1 bg-gray-800/30 border border-gray-700/50 text-gray-500 text-[10px] rounded-full">LDAP (Unconfigured)</span>}
+                      </div>
+                    </div>
+                  )}
+                </form>
+              </div>
+            );
+          })()}
 
           {view === 'PIN_SETUP' && (
             <div className="space-y-4">
@@ -737,16 +786,16 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
               }} className="space-y-3">
                 <div>
                   <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">New Permanent Passphrase</label>
-                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white outline-none focus:border-blue-500" />
+                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required aria-label="New Permanent Passphrase" title="New Permanent Passphrase" placeholder="Min 8 characters" className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white outline-none focus:border-blue-500" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">New 2FA PIN</label>
-                    <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-center tracking-widest outline-none focus:border-blue-500" />
+                    <input type="password" value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required aria-label="New 2FA PIN" title="New 2FA PIN" placeholder="4-6 digits" className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-center tracking-widest outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Confirm PIN</label>
-                    <input type="password" value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-center tracking-widest outline-none focus:border-blue-500" />
+                    <input type="password" value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required aria-label="Confirm PIN" title="Confirm PIN" placeholder="Repeat PIN" className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-center tracking-widest outline-none focus:border-blue-500" />
                   </div>
                 </div>
                 {error && <p className="text-red-500 dark:text-red-400 text-xs font-bold text-center">{error}</p>}
@@ -818,6 +867,67 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
              </div>
           )}
 
+          {/* ─── HYBRID AUTH OPTIONS: Unified Identity Methods ─── */}
+          {view === 'HYBRID_AUTH_OPTIONS' && (
+             <div className="space-y-4">
+               <BackButton label="Back to Mode Selection" onClick={() => { setIsInSetupWorkflow(false); setView('MODE_SELECT'); }} />
+               <div className="text-center">
+                 <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white tracking-wide">Choose Identity Method</h3>
+                 <p className="text-xs sm:text-sm text-gray-500 dark:text-blue-200/60 mt-1">Select your authentication provider for Hybrid mode</p>
+               </div>
+
+               <div className="grid grid-cols-1 gap-3">
+                 {/* Option 1: Public OAuth (Google/Microsoft) */}
+                 <button onClick={() => setView('OAUTH_INIT')} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-blue-400 dark:hover:border-blue-400/50 bg-gray-50 dark:bg-white/5 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
+                   {isDark && <div className="absolute -inset-24 bg-blue-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
+                   <div className="p-2 bg-blue-100 dark:bg-gradient-to-br dark:from-blue-500 dark:to-cyan-400 text-blue-600 dark:text-white rounded-lg shadow-sm dark:shadow-lg shrink-0 group-hover:scale-110 transition-transform relative z-10">
+                     <Globe size={16} />
+                   </div>
+                   <div className="relative z-10 flex-1 min-w-0">
+                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">Public OAuth (SSO)</h4>
+                     <p className="text-xs text-gray-500 dark:text-blue-100/70 leading-tight font-medium mt-1 truncate">Google, Microsoft via PKCE</p>
+                   </div>
+                 </button>
+
+                 {/* Option 2: Enterprise SSO */}
+                 <button onClick={() => { setAirgapConsentType('enterprise'); setFlowOrigin('hybrid'); setView('AIRGAP_CONSENT'); }} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-purple-400 dark:hover:border-purple-400/50 bg-gray-50 dark:bg-white/5 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
+                   {isDark && <div className="absolute -inset-24 bg-purple-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
+                   <div className="p-2 bg-purple-100 dark:bg-gradient-to-br dark:from-purple-500 dark:to-pink-500 text-purple-600 dark:text-white rounded-lg shadow-sm dark:shadow-lg shrink-0 group-hover:scale-110 transition-transform relative z-10">
+                     <Server size={16} />
+                   </div>
+                   <div className="relative z-10 flex-1 min-w-0">
+                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">Enterprise SSO</h4>
+                     <p className="text-xs text-gray-500 dark:text-purple-100/70 leading-tight font-medium mt-1 truncate">Keycloak, ADFS, Okta</p>
+                   </div>
+                 </button>
+
+                 {/* Option 3: LDAP Binding */}
+                 <button onClick={() => { setAirgapConsentType('ldap'); setFlowOrigin('hybrid'); setView('AIRGAP_CONSENT'); }} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-amber-400 dark:hover:border-amber-400/50 bg-gray-50 dark:bg-white/5 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
+                   {isDark && <div className="absolute -inset-24 bg-amber-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
+                   <div className="p-2 bg-amber-100 dark:bg-gradient-to-br dark:from-amber-500 dark:to-orange-400 text-amber-600 dark:text-white rounded-lg shadow-sm dark:shadow-lg shrink-0 group-hover:scale-110 transition-transform relative z-10">
+                     <FolderKey size={16} />
+                   </div>
+                   <div className="relative z-10 flex-1 min-w-0">
+                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">LDAP Binding</h4>
+                     <p className="text-xs text-gray-500 dark:text-amber-100/70 leading-tight font-medium mt-1 truncate">Corporate directory</p>
+                   </div>
+                 </button>
+
+                 {/* Option 4: Hybrid Limited */}
+                 <button onClick={triggerHybridLimited} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-400/50 bg-gray-50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
+                   {isDark && <div className="absolute -inset-24 bg-emerald-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
+                   <div className="p-2 bg-emerald-100 dark:bg-gradient-to-br dark:from-emerald-500 dark:to-teal-400 text-emerald-600 dark:text-white rounded-lg shadow-sm dark:shadow-lg shrink-0 group-hover:scale-110 transition-transform relative z-10">
+                     <Shield size={16} />
+                   </div>
+                   <div className="relative z-10 flex-1 min-w-0">
+                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">Hybrid Limited</h4>
+                     <p className="text-xs text-gray-500 dark:text-emerald-100/70 leading-tight font-medium mt-1 truncate">No SSO — local caching only</p>
+                   </div>
+                 </button>
+               </div>
+             </div>
+          )}
+
           {/* ─── AIR-GAPPED OPTIONS: 3 Identity Methods ─── */}
           {view === 'AIR_GAP_OPTIONS' && (
              <div className="space-y-4">
@@ -876,7 +986,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
           {/* ─── Enterprise SSO Config Form ─── */}
           {view === 'CONFIG_ENTERPRISE' && (
              <div className="space-y-3">
-               <BackButton label="Back to Auth Methods" onClick={() => setView('AIR_GAP_OPTIONS')} />
+               <BackButton label="Back to Auth Methods" onClick={() => setView(flowOrigin === 'hybrid' ? 'HYBRID_AUTH_OPTIONS' : 'AIR_GAP_OPTIONS')} />
                <form onSubmit={saveEnterpriseConfig} className="space-y-3">
                  <h3 className="text-base sm:text-lg font-bold text-center text-gray-900 dark:text-white">Enterprise SSO Configuration</h3>
                  <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-200/60 text-center -mt-2">OIDC / SAML identity provider</p>
@@ -906,7 +1016,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
           {/* ─── LDAP / Active Directory Config ─── */}
           {view === 'CONFIG_LDAP' && (
              <div className="space-y-3">
-               <BackButton label="Back to Auth Methods" onClick={() => setView('AIR_GAP_OPTIONS')} />
+               <BackButton label="Back to Auth Methods" onClick={() => setView(flowOrigin === 'hybrid' ? 'HYBRID_AUTH_OPTIONS' : 'AIR_GAP_OPTIONS')} />
                <form onSubmit={saveLdapConfig} className="space-y-3">
                  <h3 className="text-base sm:text-lg font-bold text-center text-gray-900 dark:text-white">LDAP / Active Directory</h3>
                  <p className="text-xs sm:text-sm text-gray-500 dark:text-amber-200/60 text-center -mt-2">Bind against corporate directory service</p>
@@ -957,6 +1067,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                              type="checkbox" 
                              checked={telemetryConsent} 
                              onChange={(e) => setTelemetryConsent(e.target.checked)}
+                             aria-label="Telemetry and Analytics Consent"
+                             title="Telemetry and Analytics Consent"
                              className="mt-1 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                            />
                            <div className="text-xs text-blue-900 dark:text-blue-100">
@@ -1029,21 +1141,32 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
           {view === 'AIRGAP_CONSENT' && (
              <div className="space-y-4">
-               <BackButton label="Back" onClick={() => setView('AIR_GAP_OPTIONS')} />
+               <BackButton label="Back" onClick={() => setView(flowOrigin === 'hybrid' ? 'HYBRID_AUTH_OPTIONS' : 'AIR_GAP_OPTIONS')} />
                <div className="text-center">
-                 <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Air-Gap Operations Consent</h3>
-                 <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-200/60 mt-1">Review offline limitations and data handling</p>
+                 <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{flowOrigin === 'hybrid' ? 'Hybrid Operations Consent' : 'Air-Gap Operations Consent'}</h3>
+                 <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-200/60 mt-1">{flowOrigin === 'hybrid' ? 'Review network exposure and data handling' : 'Review offline limitations and data handling'}</p>
                </div>
                
-               <div className="p-4 bg-purple-50 dark:bg-purple-500/10 rounded-lg border border-purple-200 dark:border-purple-500/30 text-xs">
+               <div className={`p-4 rounded-lg border text-xs ${flowOrigin === 'hybrid' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30' : 'bg-purple-50 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/30'}`}>
                  <div className="flex items-start gap-3">
-                   <ServerOff className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5 shrink-0" />
-                   <div className="space-y-2 text-purple-900 dark:text-purple-100/90">
-                     <p className="font-bold text-sm">Offline Mode Acknowledgment</p>
-                     {airgapConsentType === 'standalone' ? (
+                   {flowOrigin === 'hybrid' ? <Wifi className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" /> : <ServerOff className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5 shrink-0" />}
+                   <div className={`space-y-2 ${flowOrigin === 'hybrid' ? 'text-blue-900 dark:text-blue-100/90' : 'text-purple-900 dark:text-purple-100/90'}`}>
+                     <p className="font-bold text-sm">{flowOrigin === 'hybrid' ? 'Hybrid Network Consent' : 'Offline Mode Acknowledgment'}</p>
+                     {flowOrigin === 'hybrid' ? (
                        <>
                          <p>
-                           You are configuring a <strong>Standalone 2FA</strong> identity. This device will operate entirely offline.
+                           I acknowledge that EA-NITI is operating in <strong>Hybrid Mode</strong>. By proceeding, I consent to the local storage of cryptographic keys and authorize explicit network egress required for identity federation, LLM caching, and external enterprise integrations.
+                         </p>
+                         {airgapConsentType !== 'standalone' && (
+                           <p>
+                             <strong>Impact:</strong> Authentication metadata will be exchanged with your configured {airgapConsentType === 'enterprise' ? 'Enterprise SSO provider' : 'LDAP directory server'}. All AI inference remains local.
+                           </p>
+                         )}
+                       </>
+                     ) : airgapConsentType === 'standalone' ? (
+                       <>
+                         <p>
+                           I acknowledge that EA-NITI operates in strict <strong>Zero-Trust mode</strong>. By proceeding, I accept the local storage of cryptographic keys and confirm that <strong>NO data leaves my machine</strong> unless I manually enable external integrations.
                          </p>
                          <p>
                            <strong>Important:</strong> A temporary internet connection (via Settings) is required for the initial local LLM model caching.
@@ -1055,7 +1178,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                      ) : (
                        <>
                          <p>
-                           You are configuring an <strong>Enterprise SSO</strong> identity.
+                           You are configuring an <strong>{airgapConsentType === 'enterprise' ? 'Enterprise SSO' : 'LDAP Binding'}</strong> identity in Air-Gapped mode.
                          </p>
                          <p>
                            <strong>Impact:</strong> This integrates with your organization's Multi-UAM or Centralized PAM/PIM systems. Your local actions may be audited by your enterprise administrators according to internal policies.
@@ -1081,7 +1204,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  } else if (airgapConsentType === 'ldap') {
                    setView('CONFIG_LDAP');
                  }
-               }} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg p-2.5 text-sm transition-all shadow-md">
+               }} className={`w-full font-bold rounded-lg p-2.5 text-sm transition-all shadow-md text-white ${flowOrigin === 'hybrid' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
                  I Understand & Consent
                </button>
              </div>
@@ -1116,7 +1239,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <div className="space-y-3">
                     <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Pseudonym</label>
-                      <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="w-full rounded-xl border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-2 px-3 outline-none font-semibold shadow-inner text-xs" />
+                      <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required aria-label="Pseudonym" title="Pseudonym" placeholder="Your pseudonym" className="w-full rounded-xl border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-2 px-3 outline-none font-semibold shadow-inner text-xs" />
                     </div>
                     <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Local Passphrase</label>
@@ -1164,13 +1287,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Security Questions (Required for Recovery)</p>
                       <div className="space-y-3">
                         <div>
-                          <select value={q1Id} onChange={e => setQ1Id(e.target.value)} className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
+                          <select value={q1Id} onChange={e => setQ1Id(e.target.value)} aria-label="Security Question 1" title="Security Question 1" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
                           <input type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 1" />
                         </div>
                         <div>
-                          <select value={q2Id} onChange={e => setQ2Id(e.target.value)} className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
+                          <select value={q2Id} onChange={e => setQ2Id(e.target.value)} aria-label="Security Question 2" title="Security Question 2" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
                           <input type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 2" />
@@ -1220,12 +1343,12 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Agent ID (Pseudonym)</label>
-                    <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-sm" />
+                    <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required aria-label="Agent ID for recovery" title="Agent ID (Pseudonym)" placeholder="Enter Agent ID" className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">2FA PIN</label>
                     <div className="relative">
-                      <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full pl-4 pr-10 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-sm tracking-widest" />
+                      <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required aria-label="Recovery 2FA PIN" title="Recovery 2FA PIN" placeholder="PIN" className="w-full pl-4 pr-10 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 bg-white dark:bg-black/30 text-gray-900 dark:text-white text-sm tracking-widest" />
                       <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                         {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -1234,13 +1357,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                   <div className="pt-2 border-t border-gray-200 dark:border-white/10">
                     <div className="space-y-3">
                       <div>
-                        <select value={q1Id} onChange={e => setQ1Id(e.target.value)} className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
+                        <select value={q1Id} onChange={e => setQ1Id(e.target.value)} aria-label="Recovery Security Question 1" title="Recovery Security Question 1" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
                           {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                         </select>
                         <input type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 1" />
                       </div>
                       <div>
-                        <select value={q2Id} onChange={e => setQ2Id(e.target.value)} className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
+                        <select value={q2Id} onChange={e => setQ2Id(e.target.value)} aria-label="Recovery Security Question 2" title="Recovery Security Question 2" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
                           {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                         </select>
                         <input type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 2" />

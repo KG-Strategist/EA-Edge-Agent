@@ -174,6 +174,20 @@ export async function unloadAIEngine(): Promise<void> {
   }
 }
 
+export async function purgeWebLLMCache(): Promise<void> {
+  try {
+    const cacheKeys = await caches.keys();
+    for (const key of cacheKeys) {
+      if (key.toLowerCase().includes('webllm') || key.toLowerCase().includes('mlc')) {
+        await caches.delete(key);
+        Logger.log(`[Cache Purge] Deleted orphaned AI cache: ${key}`);
+      }
+    }
+  } catch (e) {
+    Logger.warn('[Cache Purge] Failed to purge WebLLM caches:', e);
+  }
+}
+
 export async function initAIEngine(
   progressCallback: InitProgressCallback,
   forceDownload: boolean = false,
@@ -225,6 +239,22 @@ export async function initAIEngine(
 
   const worker = new Worker(new URL('./aiWorker.ts', import.meta.url), { type: 'module' });
   activeWorker = worker;
+
+  const killSwitchHandler = async () => {
+    Logger.warn("KILL SWITCH ACTIVATED: Terminating AI Worker and purging cache.");
+    if (activeWorker) {
+      activeWorker.terminate();
+      activeWorker = null;
+    }
+    engine = null;
+    currentActiveModelId = null;
+    await purgeWebLLMCache();
+    window.dispatchEvent(new CustomEvent('EA_AI_PROGRESS', { 
+      detail: { text: 'Download aborted by user.', progress: 0 }
+    }));
+    window.removeEventListener('APP_NETWORK_FORCE_KILLED', killSwitchHandler);
+  };
+  window.addEventListener('APP_NETWORK_FORCE_KILLED', killSwitchHandler);
   
   currentActiveModelId = targetModelId;
   const interceptProgress: InitProgressCallback = (progress) => {

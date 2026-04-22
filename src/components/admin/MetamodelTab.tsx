@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ContentMetamodel } from '../../lib/db';
-import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw, Box } from 'lucide-react';
+import { Plus, Edit, Trash2, Archive, RotateCcw, Box } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
@@ -11,8 +11,7 @@ import { useDataPortability } from '../../hooks/useDataPortability';
 import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import PageHeader from '../ui/PageHeader';
-
-type SortableColumn = keyof ContentMetamodel;
+import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
 
 export default function MetamodelTab() {
   const metamodels = useLiveQuery(() => db.content_metamodel.toArray()) || [];
@@ -20,8 +19,6 @@ export default function MetamodelTab() {
   const [editingItem, setEditingItem] = useState<ContentMetamodel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
-  const [sortColumn, setSortColumn] = useState<SortableColumn>('admPhase');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   const [selectedPhase, setSelectedPhase] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
@@ -35,35 +32,9 @@ export default function MetamodelTab() {
   const [descriptionValue, setDescriptionValue] = useState('');
   const { handleExport, handleImport } = useDataPortability({ tableName: 'content_metamodel', filename: 'content_metamodel' });
 
-  const handleSort = (column: SortableColumn) => {
-    if (sortColumn === column) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
-
   const filteredMetamodels = showArchived
     ? metamodels.filter(m => m.status === 'Deprecated')
     : metamodels.filter(m => m.status !== 'Deprecated');
-
-  const sortedMetamodels = useMemo(() => {
-    const phaseOrder = ['Preliminary', 'Phase A', 'Phase B: Business Architecture', 'Phase C: Information Systems', 'Phase D: Technology Architecture', 'Phases E-F', 'Phase G: Implementation Governance', 'Phase H: Architecture Change Management'];
-    return [...filteredMetamodels].sort((a, b) => {
-      if (sortColumn === 'admPhase') {
-        let indexA = phaseOrder.indexOf(a.admPhase);
-        let indexB = phaseOrder.indexOf(b.admPhase);
-        if (indexA === -1) indexA = 99;
-        if (indexB === -1) indexB = 99;
-        return sortDirection === 'asc' ? indexA - indexB : indexB - indexA;
-      }
-      
-      const aVal = String(a[sortColumn] || '');
-      const bVal = String(b[sortColumn] || '');
-      return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-  }, [filteredMetamodels, sortColumn, sortDirection]);
 
   const openModal = (item: ContentMetamodel | null = null) => {
     setEditingItem(item);
@@ -126,15 +97,101 @@ export default function MetamodelTab() {
     }
   };
 
+  const columns: DataTableColumn<ContentMetamodel>[] = [
+    {
+      key: 'name',
+      label: 'Name',
+      sortable: true,
+      render: (row) => <span className="font-medium text-gray-900 dark:text-gray-200">{row.name}</span>,
+    },
+    {
+      key: 'admPhase',
+      label: 'ADM Phase',
+      sortable: true,
+      render: (row) => <span className="text-gray-600 dark:text-gray-300 text-sm">{row.admPhase}</span>,
+    },
+    {
+      key: 'artifactType',
+      label: 'Artifact Type',
+      sortable: true,
+      render: (row) => (
+        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getArtifactTypeBadge(row.artifactType)}`}>
+          {row.artifactType}
+        </span>
+      ),
+    },
+    {
+      key: 'description',
+      label: 'Description',
+      className: 'hidden lg:table-cell max-w-[200px]',
+      headerClassName: 'hidden lg:table-cell',
+      render: (row) => (
+        <span className="block truncate text-gray-600 dark:text-gray-300 text-sm" title={row.description}>
+          {row.description}
+        </span>
+      ),
+    },
+    {
+      key: 'ownerRole',
+      label: 'Owner',
+      className: 'hidden xl:table-cell',
+      headerClassName: 'hidden xl:table-cell',
+      render: (row) => <span className="text-gray-600 dark:text-gray-300 text-sm">{row.ownerRole}</span>,
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (row) => (
+        showArchived ? (
+          <StatusToggle 
+            currentStatus="Deprecated" 
+            statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+            onChange={() => {}} 
+            readonly={true} 
+          />
+        ) : (
+          <StatusToggle 
+            currentStatus={row.status || 'Active'} 
+            statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+            onChange={async (s) => { if (row.id) await db.content_metamodel.update(row.id, { status: s as any }); }} 
+          />
+        )
+      ),
+    },
+  ];
 
-
-  const SortHeader = ({ column, label }: { column: SortableColumn; label: string }) => (
-    <th className="px-4 py-3 font-medium">
-      <button onClick={() => handleSort(column)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-        {label} <ArrowUpDown size={14} className={sortColumn === column ? 'text-blue-500' : 'opacity-50'} />
-      </button>
-    </th>
-  );
+  const actions: DataTableAction<ContentMetamodel>[] = showArchived ? [
+    {
+      label: 'Restore',
+      icon: <RotateCcw size={16} />,
+      onClick: async (row) => { if (row.id) await db.content_metamodel.update(row.id, { status: 'Active' }); },
+      className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+      title: () => 'Restore',
+    },
+    {
+      label: 'Delete Permanently',
+      icon: <Trash2 size={16} />,
+      onClick: (row) => setItemToDelete(row.id!),
+      className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+      title: () => 'Delete Permanently',
+    }
+  ] : [
+    {
+      label: 'Edit',
+      icon: <Edit size={16} />,
+      onClick: (row) => openModal(row),
+      className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+      title: () => 'Edit',
+    },
+    {
+      label: 'Archive',
+      icon: <Archive size={16} />,
+      onClick: async (row) => { if (row.id) await db.content_metamodel.update(row.id, { status: 'Deprecated' }); },
+      className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+      title: () => 'Archive',
+    }
+  ];
 
   return (
     <div className="flex flex-col h-full">
@@ -155,65 +212,15 @@ export default function MetamodelTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <SortHeader column="name" label="Name" />
-              <SortHeader column="admPhase" label="ADM Phase" />
-              <SortHeader column="artifactType" label="Artifact Type" />
-              <th className="px-4 py-3 font-medium hidden lg:table-cell"><button onClick={() => handleSort('description')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Description <ArrowUpDown size={14} className={sortColumn === 'description' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="px-4 py-3 font-medium hidden xl:table-cell"><button onClick={() => handleSort('ownerRole')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Owner <ArrowUpDown size={14} className={sortColumn === 'ownerRole' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <SortHeader column="status" label="Status" />
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedMetamodels.map(m => (
-              <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium">{m.name}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">{m.admPhase}</td>
-                <td className="px-4 py-4 text-sm">
-                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getArtifactTypeBadge(m.artifactType)}`}>{m.artifactType}</span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-[200px] hidden lg:table-cell" title={m.description}>
-                  <span className="block truncate">{m.description}</span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm hidden xl:table-cell">{m.ownerRole}</td>
-                <td className="px-4 py-4">
-                  {showArchived ? (
-                    <StatusToggle 
-                      currentStatus="Deprecated" 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={() => {}} 
-                      readonly={true} 
-                    />
-                  ) : (
-                    <StatusToggle 
-                      currentStatus={m.status || 'Active'} 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={async (s) => { if (m.id) await db.content_metamodel.update(m.id, { status: s as any }); }} 
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-right whitespace-nowrap">
-                  {showArchived ? (
-                    <>
-                      <button onClick={async () => { if (m.id) await db.content_metamodel.update(m.id, { status: 'Active' }); }} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                      <button onClick={() => setItemToDelete(m.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => openModal(m)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                      <button onClick={async () => { if (m.id) await db.content_metamodel.update(m.id, { status: 'Deprecated' }); }} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={filteredMetamodels}
+        columns={columns}
+        actions={actions}
+        keyField="id"
+        pagination={true}
+        searchable={true}
+        searchFields={['name', 'admPhase', 'artifactType', 'description', 'ownerRole']}
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

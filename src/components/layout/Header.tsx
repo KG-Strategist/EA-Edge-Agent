@@ -40,6 +40,7 @@ const subViewLabels: Record<string, string> = {
   'users': 'User Access Management',
   'audit': 'Audit Workspace',
   'dpdp': 'Global Guardrails',
+  'web-providers': 'Web Trainings',
 };
 
 const adminSubViewToParent: Record<string, string> = {
@@ -60,6 +61,7 @@ const adminSubViewToParent: Record<string, string> = {
   'models': 'system-pref',
   'system': 'system-pref',
   'knowledge': 'knowledge-mgmt',
+  'web-providers': 'knowledge-mgmt',
 };
 
 export default function Header({ currentView, setCurrentView, adminSubView }: HeaderProps) {
@@ -165,7 +167,7 @@ export default function Header({ currentView, setCurrentView, adminSubView }: He
                         {downloadState.status === 'Downloading' ? 'Caching Model...' : downloadState.status}
                      </span>
                    </div>
-                   <button onClick={() => setIsDropdownOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={16}/></button>
+                   <button onClick={() => setIsDropdownOpen(false)} aria-label="Close download status" title="Close download status" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={16}/></button>
                 </div>
                 <div className="p-4">
                   <div className="flex justify-between items-center mb-2">

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { db, ServiceDomain } from '../../lib/db';
 import { ServiceDomainSchema } from '../../lib/validation';
-import { Plus, Edit, Trash2, ArrowUpDown, Search, Archive, RotateCcw, Layers } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw, Layers } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
@@ -12,12 +12,12 @@ import { useDataPortability } from '../../hooks/useDataPortability';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import StatusSelect from '../ui/StatusSelect';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
 type SortableColumn = keyof ServiceDomain;
 
 export default function ServiceDomainsTab() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const { domains, isLoading } = useServiceDomains(searchTerm);
+  const { domains } = useServiceDomains();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ServiceDomain | null>(null);
@@ -126,14 +126,6 @@ export default function ServiceDomainsTab() {
     setEditingItem(null);
   };
 
-  const SortHeader = ({ column, label }: { column: SortableColumn; label: string }) => (
-    <th className="px-4 py-3 font-medium">
-      <button onClick={() => handleSort(column)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-        {label} <ArrowUpDown size={14} className={sortColumn === column ? 'text-blue-500' : 'opacity-50'} />
-      </button>
-    </th>
-  );
-
   return (
     <div className="flex flex-col h-full">
       <PageHeader 
@@ -142,13 +134,7 @@ export default function ServiceDomainsTab() {
         description="Industry-agnostic service domains define standard business capabilities. Use this to formally align your application capabilities with standardized taxonomy across any industry framework (e.g., BIAN, custom)."
         action={
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-48 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input 
-                type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-blue-500 text-gray-900 dark:text-white"
-              />
-            </div>
+
             <button onClick={() => setShowArchived(!showArchived)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${showArchived ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
               <Archive size={14} />{showArchived ? 'Exit Archive' : 'Archive'}
             </button>
@@ -160,95 +146,114 @@ export default function ServiceDomainsTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900/50">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <SortHeader column="name" label="Service Domain" />
-              <SortHeader column="frameworkTag" label="Framework" />
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">Business Hierarchy</th>
-              <th className="px-4 py-3 font-medium hidden xl:table-cell">Metamodel</th>
-              <SortHeader column="status" label="Status" />
-              <th className="px-4 py-3 font-medium text-right w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-500 text-sm">Loading domains...</td></tr>
-            ) : sortedDomains.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-500 text-sm">{showArchived ? 'No deprecated domains.' : 'No domains found.'}</td></tr>
-            ) : (
-              sortedDomains.map(d => (
-                <tr key={d.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 group">
-                  <td className="px-4 py-4 min-w-[160px]">
-                    <div className="font-semibold text-gray-900 dark:text-white mb-1">{d.name}</div>
-                    <div className="text-xs text-gray-500 line-clamp-2" title={d.description}>{d.description}</div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-wider">
-                      {d.frameworkTag}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 hidden lg:table-cell">
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex space-x-1 items-center">
-                        <span className="text-[10px] uppercase font-semibold text-gray-400 w-12 text-right">Area</span>
-                        <span className="px-2 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900 text-xs truncate max-w-[180px]" title={d.businessArea}>{d.businessArea}</span>
-                      </div>
-                      <div className="flex space-x-1 items-center">
-                        <span className="text-[10px] uppercase font-semibold text-gray-400 w-12 text-right">Domain</span>
-                        <span className="px-2 py-0.5 rounded-sm bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 text-xs truncate max-w-[180px]" title={d.businessDomain}>{d.businessDomain}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 hidden xl:table-cell">
-                    <div className="flex flex-col gap-1 text-sm">
-                      <div className="flex items-center">
-                        <span className="text-gray-500 dark:text-gray-400 w-10 text-xs">CR:</span>
-                        <span className="text-gray-900 dark:text-gray-200 text-xs truncate max-w-[140px] font-medium" title={d.controlRecord}>{d.controlRecord}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <span className="text-gray-500 dark:text-gray-400 w-10 text-xs">FP:</span>
-                        <span className="text-gray-600 dark:text-gray-300 text-xs italic truncate max-w-[140px]" title={d.functionalPattern}>{d.functionalPattern}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    {showArchived ? (
-                      <StatusToggle 
-                        currentStatus="Deprecated" 
-                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                        onChange={() => {}} 
-                        readonly={true} 
-                      />
-                    ) : (
-                      <StatusToggle 
-                        currentStatus={d.status || 'Active'} 
-                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                        onChange={(s) => handleStatusChange(d, s)} 
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {showArchived ? (
-                        <>
-                          <button onClick={() => handleRestore(d.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700"><RotateCcw size={14} /></button>
-                          <button onClick={() => setItemToDelete(d.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700"><Trash2 size={14} /></button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => openModal(d)} aria-label="Edit service domain" className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700"><Edit size={14} /></button>
-                          <button onClick={() => handleArchive(d.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700"><Archive size={14} /></button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="flex-1 overflow-auto">
+        <DataTable<ServiceDomain>
+          data={sortedDomains}
+          keyField="id"
+          pagination={true}
+          searchable={true}
+          searchPlaceholder="Filter domains by name, area, or framework..."
+          searchFields={['name', 'businessArea', 'businessDomain', 'frameworkTag']}
+          columns={[
+            {
+              key: 'name',
+              label: <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Service Domain <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+              </button>,
+              render: (row) => (
+                <div className="min-w-[160px]">
+                  <div className="font-semibold text-gray-900 dark:text-white mb-1">{row.name}</div>
+                  <div className="text-xs text-gray-500 line-clamp-2" title={row.description}>{row.description}</div>
+                </div>
+              )
+            },
+            {
+              key: 'frameworkTag',
+              label: <button onClick={() => handleSort('frameworkTag')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Framework <ArrowUpDown size={14} className={sortColumn === 'frameworkTag' ? 'text-blue-500' : 'opacity-50'} />
+              </button>,
+              render: (row) => (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-wider">
+                  {row.frameworkTag}
+                </span>
+              )
+            },
+            {
+              key: 'businessArea',
+              label: 'Business Hierarchy',
+              className: 'hidden lg:table-cell',
+              headerClassName: 'hidden lg:table-cell',
+              render: (row) => (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex space-x-1 items-center">
+                    <span className="text-[10px] uppercase font-semibold text-gray-400 w-12 text-right">Area</span>
+                    <span className="px-2 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900 text-xs truncate max-w-[180px]" title={row.businessArea}>{row.businessArea}</span>
+                  </div>
+                  <div className="flex space-x-1 items-center">
+                    <span className="text-[10px] uppercase font-semibold text-gray-400 w-12 text-right">Domain</span>
+                    <span className="px-2 py-0.5 rounded-sm bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 text-xs truncate max-w-[180px]" title={row.businessDomain}>{row.businessDomain}</span>
+                  </div>
+                </div>
+              )
+            },
+            {
+              key: 'controlRecord',
+              label: 'Metamodel',
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell',
+              render: (row) => (
+                <div className="flex flex-col gap-1 text-sm">
+                  <div className="flex items-center">
+                    <span className="text-gray-500 dark:text-gray-400 w-10 text-xs">CR:</span>
+                    <span className="text-gray-900 dark:text-gray-200 text-xs truncate max-w-[140px] font-medium" title={row.controlRecord}>{row.controlRecord}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-gray-500 dark:text-gray-400 w-10 text-xs">FP:</span>
+                    <span className="text-gray-600 dark:text-gray-300 text-xs italic truncate max-w-[140px]" title={row.functionalPattern}>{row.functionalPattern}</span>
+                  </div>
+                </div>
+              )
+            },
+            {
+              key: 'status',
+              label: <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} />
+              </button>,
+              render: (row) => (
+                showArchived ? (
+                  <StatusToggle 
+                    currentStatus="Deprecated" 
+                    statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                    onChange={() => {}} 
+                    readonly={true} 
+                  />
+                ) : (
+                  <StatusToggle 
+                    currentStatus={row.status || 'Active'} 
+                    statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+                    onChange={(s) => handleStatusChange(row, s)} 
+                  />
+                )
+              )
+            }
+          ]}
+          actions={[
+            {
+              label: showArchived ? 'Restore' : 'Edit',
+              icon: showArchived ? <RotateCcw size={14} /> : <Edit size={14} />,
+              onClick: (row) => showArchived ? handleRestore(row.id!) : openModal(row),
+              className: showArchived ? 'text-gray-400 hover:text-green-600 dark:hover:text-green-400' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'
+            },
+            {
+              label: showArchived ? 'Delete' : 'Archive',
+              icon: showArchived ? <Trash2 size={14} /> : <Archive size={14} />,
+              onClick: (row) => showArchived ? setItemToDelete(row.id!) : handleArchive(row.id!),
+              className: showArchived ? 'text-gray-400 hover:text-red-600 dark:hover:text-red-400' : 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'
+            }
+          ]}
+          emptyMessage={showArchived ? 'No deprecated domains.' : 'No domains found.'}
+          containerClassName="flex flex-col"
+        />
       </div>
 
       {isModalOpen && (

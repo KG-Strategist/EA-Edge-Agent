@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../../lib/db';
-import { Download, Upload, Loader2, History, Search, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, HardDriveDownload, RefreshCw } from 'lucide-react';
+import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw } from 'lucide-react';
 import { requestDirectoryPermission } from '../../lib/fileSystemPermissions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 import { useStateContext } from '../../context/StateContext';
 import { logoutUser } from '../../lib/authEngine';
 import { useLocalBackupState } from '../../hooks/useLocalBackupState';
@@ -16,19 +17,15 @@ export default function SystemTab() {
   const [importError, setImportError] = useState<string | null>(null);
 
   // ── Local Backup State ─────────────────────────────────────────────
-  const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [isRestoringPermission, setIsRestoringPermission] = useState(false);
 
-  const { isConfigured, backupPath, backupDirectoryHandle, isPermissionSuspended, permissionStatus } = useLocalBackupState();
+  const { isConfigured, backupPath, backupDirectoryHandle, isPermissionSuspended } = useLocalBackupState();
 
   // ── Listen for Consent Modal Events ────────────────────────────────
   useEffect(() => {
-    const handleConsentAccepted = async (e: Event) => {
-      const event = e as CustomEvent;
-      const { mode } = event.detail;
-      
+    const handleConsentAccepted = async () => {
       try {
         if ('showDirectoryPicker' in window) {
           const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
@@ -85,20 +82,18 @@ export default function SystemTab() {
           // ── RECONFIGURE FLOW: Consent already given, skip modal ──
           try {
             const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-            setDirHandle(handle);
             
             // Store handle and metadata directly
             await db.app_settings.put({ key: 'backupDirectoryHandle', value: handle });
             await db.app_settings.put({ key: 'backupPath', value: handle.name });
             await db.app_settings.put({ key: 'backupStatus', value: 'active' });
             
-            // Log reconfiguration event
             await db.audit_logs.add({
-              timestamp: new Date().toISOString(),
+              timestamp: new Date(),
               action: 'SYSTEM_BACKUP_CONFIGURED',
               tableName: 'app_settings',
-              pseudokey: identity?.pseudokey || 'SYSTEM',
-              details: { path: handle.name, mode: 'reconfigure' }
+              pseudokey: (identity as any)?.pseudokey || (identity as any)?.username || 'SYSTEM',
+              details: JSON.stringify({ path: handle.name, mode: 'reconfigure' })
             });
             
             setBackupError(null);
@@ -165,33 +160,33 @@ export default function SystemTab() {
         // Update backup status to active after permission restored
         await db.app_settings.put({ key: 'backupStatus', value: 'active' });
         await db.audit_logs.add({
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(),
           action: 'SYSTEM_BACKUP_PERMISSION_RESTORED',
           tableName: 'app_settings',
-          pseudokey: identity?.pseudokey || 'SYSTEM',
-          details: { path: backupPath || '(Restored)', status: 'permission_granted' }
+          pseudokey: (identity as any)?.pseudokey || (identity as any)?.username || 'SYSTEM',
+          details: JSON.stringify({ path: backupPath || '(Restored)', status: 'permission_granted' })
         });
         setSyncToast('Backup access restored successfully!');
         setTimeout(() => setSyncToast(null), 3000);
       } else {
         setBackupError('Permission request denied. Please try again or reconfigure your backup directory.');
         await db.audit_logs.add({
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(),
           action: 'SYSTEM_BACKUP_PERMISSION_RESTORE_FAILED',
           tableName: 'app_settings',
-          pseudokey: identity?.pseudokey || 'SYSTEM',
-          details: { path: backupPath || '(Unknown)', status: 'permission_denied' }
+          pseudokey: (identity as any)?.pseudokey || (identity as any)?.username || 'SYSTEM',
+          details: JSON.stringify({ path: backupPath || '(Unknown)', status: 'permission_denied' })
         });
       }
     } catch (err) {
       console.error('Failed to restore backup access:', err);
       setBackupError('Failed to restore backup access. Please try again.');
       await db.audit_logs.add({
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(),
         action: 'SYSTEM_BACKUP_PERMISSION_ERROR',
         tableName: 'app_settings',
-        pseudokey: identity?.pseudokey || 'SYSTEM',
-        details: { path: backupPath || '(Error)', error: err instanceof Error ? err.message : 'Unknown error' }
+        pseudokey: (identity as any)?.pseudokey || (identity as any)?.username || 'SYSTEM',
+        details: JSON.stringify({ path: backupPath || '(Error)', error: err instanceof Error ? err.message : 'Unknown error' })
       });
     } finally {
       setIsRestoringPermission(false);
@@ -240,47 +235,7 @@ export default function SystemTab() {
     }
   }, [isConfirmValid, setIdentity]);
 
-  const handleSyncAndPurge = async () => {
-    if (!dirHandle) {
-      setBackupError("No backup directory selected.");
-      return;
-    }
-    
-    setIsSyncing(true);
-    setSyncToast(null);
-    setBackupError(null);
-    
-    try {
-      // Get all audit logs
-      const logs = await db.audit_logs.toArray();
-      
-      // Export logs to directory
-      const logsFileName = `audit_logs_${new Date().toISOString().split('T')[0]}.json`;
-      const logsFileHandle = await dirHandle.getFileHandle(logsFileName, { create: true });
-      const logsWritable = await logsFileHandle.createWritable();
-      await logsWritable.write(JSON.stringify(logs, null, 2));
-      await logsWritable.close();
-      
-      setSyncToast(`Successfully backed up ${logs.length} audit logs to ${logsFileName}`);
-      
-      // Note: Actual purging logic would go here once configured
-      // For now, just log the sync event
-      await db.audit_logs.add({
-        timestamp: new Date().toISOString(),
-        action: 'SYSTEM_BACKUP_SYNC',
-        tableName: 'app_settings',
-        pseudokey: identity?.pseudokey || 'SYSTEM',
-        details: { records: logs.length, status: 'success' }
-      });
-      
-      setTimeout(() => setSyncToast(null), 4000);
-    } catch (err) {
-      console.error("Sync and purge failed:", err);
-      setBackupError(err instanceof Error ? err.message : "Sync and purge operation failed");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+
 
   const handleCloseWipeModal = () => {
     setShowWipeModal(false);
@@ -297,31 +252,10 @@ export default function SystemTab() {
       .toArray()
   ) || [];
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
   const filteredLogs = syncLogs.filter(log => {
-      let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
-      try {
-        if (log.details) parsedDetails = JSON.parse(log.details);
-      } catch (e) {
-        // Ignore parse error
-      }
-
-      const q = searchQuery.toLowerCase();
-      const timestamp = new Date(log.timestamp).toLocaleString().toLowerCase();
-      const action = parsedDetails.event.toLowerCase();
-      const status = parsedDetails.status.toLowerCase();
-      const alias = log.pseudokey.toLowerCase();
-
-      const matchesSearch = timestamp.includes(q) || 
-                            action.includes(q) || 
-                            status.includes(q) || 
-                            alias.includes(q);
-      
-      if (!matchesSearch) return false;
-
       const logDate = new Date(log.timestamp);
       if (startDate && logDate < new Date(startDate)) return false;
       if (endDate) {
@@ -561,16 +495,6 @@ export default function SystemTab() {
           </h3>
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
             <div className="flex flex-wrap items-center gap-3">
-               <div className="relative">
-                 <Search size={14} className="absolute left-2.5 top-2 text-gray-400" />
-                 <input 
-                   type="text" 
-                   value={searchQuery}
-                   onChange={e => setSearchQuery(e.target.value)}
-                   placeholder="Search logs..." 
-                   className="pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md focus:border-indigo-500 outline-none w-48 text-gray-800 dark:text-gray-200"
-                 />
-               </div>
                <div className="flex items-center gap-2 relative">
                  <Calendar size={14} className="absolute left-2.5 top-2 text-gray-400" />
                  <input 
@@ -603,61 +527,62 @@ export default function SystemTab() {
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-100 dark:bg-gray-900/50">
-              <tr>
-                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Timestamp</th>
-                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Action</th>
-                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
-                <th className="px-5 py-3 font-medium text-gray-500 dark:text-gray-400">User Alias</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredLogs.length > 0 ? (
-                filteredLogs.map(log => {
+        <DataTable
+            data={filteredLogs}
+            keyField="id"
+            pagination={true}
+            searchable={true}
+            searchPlaceholder="Filter sync history..."
+            searchFields={['pseudokey', 'details']}
+            columns={[
+              {
+                key: 'timestamp',
+                label: 'Timestamp',
+                render: (row) => <span className="text-gray-500 dark:text-gray-400">{new Date(row.timestamp).toLocaleString()}</span>
+              },
+              {
+                key: 'details',
+                label: 'Action',
+                render: (row) => {
                   let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
                   try {
-                    if (log.details) parsedDetails = JSON.parse(log.details);
+                    if (row.details) parsedDetails = JSON.parse(row.details);
                   } catch (e) {
                     // Ignore parse error
                   }
-
+                  return <span className="font-medium text-gray-900 dark:text-gray-200">{parsedDetails.event}</span>;
+                }
+              },
+              {
+                key: 'pseudokey',
+                label: 'Status',
+                render: (row) => {
+                  let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
+                  try {
+                    if (row.details) parsedDetails = JSON.parse(row.details);
+                  } catch (e) {
+                    // Ignore parse error
+                  }
                   return (
-                    <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{new Date(log.timestamp).toLocaleString()}</td>
-                      <td className="px-5 py-3 font-medium text-gray-900 dark:text-gray-200">{parsedDetails.event}</td>
-                      <td className="px-5 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          parsedDetails.status === 'Success' 
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        }`}>
-                          {parsedDetails.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 font-mono text-gray-600 dark:text-gray-400">{log.pseudokey}</td>
-                    </tr>
+                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      parsedDetails.status === 'Success' 
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    }`}>
+                      {parsedDetails.status}
+                    </span>
                   );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-5 py-12 text-center text-gray-500 dark:text-gray-400">
-                    <History className="w-8 h-8 text-gray-400 mb-2 mx-auto" />
-                    No portability sync history recorded locally.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
-          <span className="text-xs text-gray-500 dark:text-gray-400">Page 1 of 1</span>
-          <div className="flex gap-2">
-            <button disabled className="px-3 py-1 text-xs font-medium text-gray-500 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md opacity-50 cursor-not-allowed">Previous</button>
-            <button disabled className="px-3 py-1 text-xs font-medium text-gray-500 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md opacity-50 cursor-not-allowed">Next</button>
-          </div>
-        </div>
+                }
+              },
+              {
+                key: 'pseudokey',
+                label: 'User Alias',
+                render: (row) => <span className="font-mono text-gray-600 dark:text-gray-400">{row.pseudokey}</span>
+              }
+            ]}
+            emptyMessage="No portability sync history recorded locally."
+            containerClassName="flex flex-col"
+          />
       </div>
 
       {/* ── Continuous Local Backup ─────────────────────────────────── */}

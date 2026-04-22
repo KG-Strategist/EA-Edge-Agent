@@ -1,11 +1,12 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, AuditLog } from '../../lib/db';
-import { Search, Download, CalendarDays, ClipboardList, Eye, X, RefreshCw } from 'lucide-react';
+import { Download, CalendarDays, ClipboardList, Eye, X, RefreshCw } from 'lucide-react';
 import PageHeader from '../ui/PageHeader';
 import ConfirmModal from '../ui/ConfirmModal';
-import { importJsonToTable } from '../../utils/importUtils';
+import DataTable from '../ui/DataTable';
 import { useLocalBackupState } from '../../hooks/useLocalBackupState';
+import { useStateContext } from '../../context/StateContext';
 
 /** Convert a Date to a local YYYY-MM-DD string for date input comparison. */
 function toLocalDateString(date: Date): string {
@@ -15,56 +16,42 @@ function toLocalDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+const getActionBadgeColor = (action: string): string => {
+  const map: Record<string, string> = {
+    'CREATE': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    'UPDATE': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    'DELETE': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    'LOGIN': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    'SYSTEM_BACKUP_CONFIGURED': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    'SYSTEM_BACKUP_REVOKED': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    'WEBLLM_CACHE_CONSENT': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+  };
+  return map[action] || 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+};
+
 export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView?: (v: string) => void }) {
   const logs = useLiveQuery(() => db.audit_logs.reverse().limit(500).toArray());
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const { isConfigured, lastBackupDate, backupPath } = useLocalBackupState();
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
+  const { identity } = useStateContext();
 
-  // ── Filtered logs (text + date range) ──────────────────────────────
+  // ── Date Range Filtering (Text search moved to DataTable) ────────────────────
   const filteredLogs = useMemo(() => {
     if (!logs) return [];
 
-    const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
-
     return logs.filter(log => {
-      // Text filter: Tokenized Omni-Search
-      if (tokens.length > 0) {
-        const formattedTime = new Date(log.timestamp).toLocaleString().toLowerCase();
-        const detailsStr = log.details 
-          ? (typeof log.details === 'string' ? log.details : JSON.stringify(log.details)).toLowerCase() 
-          : '';
-        
-        const searchableString = `${formattedTime} ${log.action.toLowerCase()} ${log.tableName.toLowerCase()} ${log.pseudokey.toLowerCase()} ${detailsStr}`;
-        
-        const matchesText = tokens.every(token => searchableString.includes(token));
-        if (!matchesText) return false;
-      }
-
-      // Date range filter
       const logDate = toLocalDateString(new Date(log.timestamp));
       if (startDate && logDate < startDate) return false;
       if (endDate && logDate > endDate) return false;
 
       return true;
     });
-  }, [logs, searchQuery, startDate, endDate]);
-
-  // ── Pagination ─────────────────────────────────────────────────────
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 15;
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, startDate, endDate]);
-
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage) || 1;
-  const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [logs, startDate, endDate]);
 
   // ── CSV Export ─────────────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
@@ -107,14 +94,28 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
 
   const handleImportLogs = async () => {
     try {
-      const [fileHandle] = await window.showOpenFilePicker({
+      const [fileHandle] = await (window as any).showOpenFilePicker({
         types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
       });
       const file = await fileHandle.getFile();
       const text = await file.text();
       const data = JSON.parse(text);
-      if (data.audit_logs && Array.isArray(data.audit_logs)) {
-        await db.audit_logs.bulkPut(data.audit_logs);
+      const logsToImport = Array.isArray(data) ? data : (data.audit_logs || []);
+
+      if (logsToImport.length > 0) {
+        await db.audit_logs.bulkPut(logsToImport);
+        // Optional: Add a success toast here
+
+        // Audit the Import Action
+        await db.audit_logs.add({
+          timestamp: new Date(),
+          action: 'CREATE',
+          tableName: 'audit_logs',
+          pseudokey: (identity as any)?.pseudokey || 'SYSTEM',
+          details: JSON.stringify({ fileName: file.name, recordsImported: logsToImport.length })
+        });
+      } else {
+        console.error("Import failed: No valid audit logs found in the selected file.");
       }
     } catch (err) {
       console.error('Import failed:', err);
@@ -126,15 +127,44 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
     const activeConfig = await db.app_settings.get('backupDirectoryHandle');
     if (!activeConfig || !activeConfig.value) {
       console.error("Sync aborted: No valid local backup configuration found in database.");
-      // TODO: Optionally trigger a UI toast error here
+      // ROADMAP (MVP 2.0): Optionally trigger a UI toast error here
       return;
     }
 
-    // Trigger backup sync - this is a placeholder that would integrate with
-    // the actual backup sync engine (sideloadEngine, exportEngine, etc.)
-    console.log('Backup sync initiated for path:', backupPath);
-    // TODO: Integrate with actual backup export/sync logic
-  }, [backupPath]);
+    try {
+      const dirHandle = activeConfig.value as FileSystemDirectoryHandle;
+
+      // Fetch all logs
+      const logsToExport = await db.audit_logs.toArray();
+
+      // Serialize
+      const fileContent = JSON.stringify(logsToExport, null, 2);
+
+      // Generate filename
+      const fileName = `ea_niti_audit_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+
+      // Execute OS Write
+      const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+      const writable = await (fileHandle as any).createWritable();
+      await writable.write(fileContent);
+      await writable.close();
+
+      // Update state
+      await db.app_settings.put({ key: 'lastBackupDate', value: new Date().toISOString() });
+
+      // Log the action (Sanitized payload ONLY)
+      await db.audit_logs.add({
+        timestamp: new Date(),
+        action: 'SYSTEM_BACKUP_SYNC',
+        tableName: 'audit_logs',
+        pseudokey: (identity as any)?.pseudokey || 'SYSTEM',
+        details: JSON.stringify({ path: backupPath, filesExported: 1 }) // NO raw dirHandle
+      });
+    } catch (err) {
+      console.error('Sync backup failed:', err);
+      // ROADMAP: Add toast notification for user feedback
+    }
+  }, [backupPath, identity]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -147,18 +177,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden flex-1 flex flex-col">
         {/* Toolbar: Search + Date Range + Export */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex flex-wrap gap-3 items-center shrink-0">
-          {/* Text Search */}
-          <div className="relative w-56">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input
-              id="audit-search-input"
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search action, table, user…"
-              className="w-full pl-9 pr-4 py-1.5 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-500 text-gray-900 dark:text-white"
-            />
-          </div>
+
 
           {/* Date Range */}
           <div className="flex items-center gap-2">
@@ -219,77 +238,64 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
 
         {/* Table */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead className="bg-gray-100 dark:bg-gray-800/80 sticky top-0 z-10">
-              <tr className="text-xs uppercase text-gray-500 dark:text-gray-400">
-                <th className="px-4 py-3 font-medium">Timestamp</th>
-                <th className="px-4 py-3 font-medium">Action</th>
-                <th className="px-4 py-3 font-medium">Table</th>
-                <th className="px-4 py-3 font-medium">User Alias</th>
-                <th className="px-4 py-3 font-medium">Inspect</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-              {paginatedLogs.map((l) => (
-                <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{new Date(l.timestamp).toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
-                      (l.action === 'CREATE' || l.action === 'INSERT') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      l.action === 'UPDATE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      l.action === 'DELETE' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                    }`}>
-                      {l.action}
+          <DataTable<AuditLog>
+            data={filteredLogs}
+            keyField="id"
+            pagination={true}
+            itemsPerPage={15}
+            searchable={true}
+            searchPlaceholder="Filter by action, table, user..."
+            searchFields={['action', 'tableName', 'pseudokey', 'details']}
+            columns={[
+              {
+                key: 'timestamp',
+                label: 'Timestamp',
+                render: (row) => new Date(row.timestamp).toLocaleString()
+              },
+              {
+                key: 'action',
+                label: 'Action',
+                render: (row) => (
+                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${getActionBadgeColor(row.action)}`}>
+                    {row.action}
+                  </span>
+                )
+              },
+              {
+                key: 'tableName',
+                label: 'Table',
+                render: (row) => (
+                  <span className="font-mono text-gray-900 dark:text-white uppercase text-xs">
+                    {row.tableName}
+                  </span>
+                )
+              },
+              {
+                key: 'pseudokey',
+                label: 'User Alias',
+                render: (row) => (
+                  row.pseudokey === 'DELETED_USER' ? (
+                    <span className="italic text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
+                      Deleted User
                     </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-gray-900 dark:text-white uppercase text-xs">{l.tableName}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">
-                    {l.pseudokey === 'DELETED_USER' ? (
-                      <span className="italic text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">Deleted User</span>
-                    ) : (
-                      l.pseudokey
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => setSelectedLog(l)} className="text-gray-400 hover:text-blue-500 transition-colors" title="View Details">
-                      <Eye size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredLogs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    {logs && logs.length > 0 ? 'No logs match your current filters.' : 'No audit logs recorded yet.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination UI */}
-        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between shrink-0">
-          <span className="text-[10px] text-gray-500 dark:text-gray-400">
-            Page {currentPage} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              Previous
-            </button>
-            <button 
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              Next
-            </button>
-          </div>
+                  ) : (
+                    <span className="font-mono text-xs text-gray-600 dark:text-gray-300">
+                      {row.pseudokey}
+                    </span>
+                  )
+                )
+              }
+            ]}
+            actions={[
+              {
+                label: 'View Details',
+                icon: <Eye size={16} />,
+                onClick: (row) => setSelectedLog(row)
+              }
+            ]}
+            emptyMessage={logs && logs.length > 0 ? 'No logs match your current filters.' : 'No audit logs recorded yet.'}
+            containerClassName="flex flex-col"
+          />
         </div>
       </div>
 
@@ -310,9 +316,10 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
             </button>
             <button
               onClick={() => setShowPurgeModal(true)}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors"
+              disabled={!lastBackupDate || isPurging}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-medium transition-colors"
             >
-              Purge Logs
+              {isPurging ? 'Purging...' : 'Purge Logs'}
             </button>
             <button
               onClick={handleImportLogs}

@@ -1,9 +1,10 @@
 import { WebWorkerMLCEngineHandler } from '@mlc-ai/web-llm';
+import { Logger } from '../lib/logger';
 
 // SWARM_COMMS (Prep): Initialize BroadcastChannel for future agent-to-agent cross-worker queries
 const swarmChannel = new BroadcastChannel('ea-niti-swarm');
 swarmChannel.onmessage = (event) => {
-  console.log('[Swarm Comms] Received message:', event.data);
+  Logger.info('[Swarm Comms] Received message:', event.data);
   // Future: Handle cross-worker agent queries
   if (event.data.type === 'PING') {
     // Mock security worker response

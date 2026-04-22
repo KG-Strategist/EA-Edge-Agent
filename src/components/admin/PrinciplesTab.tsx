@@ -14,6 +14,7 @@ import { initAIEngine, analyzeWithHybridProvider } from '../../lib/aiEngine';
 import { useDataPortability } from '../../hooks/useDataPortability';
 import StatusSelect from '../ui/StatusSelect';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
 export default function PrinciplesTab() {
   const principles = useLiveQuery(() => db.architecture_principles.toArray()) || [];
@@ -263,73 +264,125 @@ export default function PrinciplesTab() {
         }
       />
       
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <th className="px-4 py-3 font-medium w-8"></th>
-              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="px-4 py-3 font-medium hidden md:table-cell"><button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="px-4 py-3 font-medium"><button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} /></button></th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedPrinciples.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">{showArchived ? 'No deprecated principles.' : 'No principles found.'}</td></tr>
-            )}
-            {sortedPrinciples.map(p => (
-              <React.Fragment key={p.id}>
-                <tr className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                  <td className="py-4 pl-4"><button aria-label={expandedId === p.id ? 'Collapse details' : 'Expand details'} onClick={() => setExpandedId(expandedId === p.id ? null : (p.id || null))} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{expandedId === p.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button></td>
-                  <td className="py-4 text-gray-900 dark:text-gray-200"><div className="font-medium">{p.name}</div><div className="text-xs text-gray-500 truncate max-w-xs">{p.statement}</div></td>
-                  <td className="py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">{getLayerName(p.layerId)}</td>
-                  <td className="py-4">
-                    {showArchived ? (
-                      <StatusToggle
-                        currentStatus="Deprecated"
-                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                        onChange={() => {}}
-                        readonly={true}
-                      />
-                    ) : (
-                      <StatusToggle
-                        currentStatus={p.status}
-                        statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                        onChange={(s) => handleStatusChange(p, s)}
-                      />
-                    )}
-                  </td>
-                  <td className="py-4 text-right pr-4 whitespace-nowrap">
-                    {showArchived ? (
-                      <>
-                        <button onClick={() => handleRestore(p.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                        <button onClick={() => setItemToDelete(p.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-                      </>
-                    ) : (
-                      <>
-                        <button onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                        <button onClick={() => handleArchive(p.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-                {expandedId === p.id && (
-                  <tr className="bg-gray-50 dark:bg-gray-800/20 border-b border-gray-100 dark:border-gray-800/50">
-                    <td colSpan={5} className="py-4 px-10 text-sm text-gray-600 dark:text-gray-300">
-                      <div className="grid grid-cols-1 gap-4">
-                        <div><strong className="block text-gray-900 dark:text-white mb-1">Statement:</strong><p>{p.statement}</p></div>
-                        <div><strong className="block text-gray-900 dark:text-white mb-1">Rationale:</strong><p>{p.rationale}</p></div>
-                        <div><strong className="block text-gray-900 dark:text-white mb-1">Implications:</strong><p>{p.implications}</p></div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={sortedPrinciples}
+        keyField="id"
+        emptyMessage={showArchived ? 'No deprecated principles.' : 'No principles found.'}
+        searchable={true}
+        searchPlaceholder="Search principles..."
+        searchFields={['name', 'statement', 'rationale', 'implications']}
+        pagination={true}
+        itemsPerPage={10}
+        containerClassName="flex-1 border-0 shadow-none"
+        columns={[
+          {
+            key: 'expand',
+            label: '',
+            width: '8',
+            render: (row) => (
+              <button 
+                aria-label={expandedId === row.id ? 'Collapse details' : 'Expand details'} 
+                onClick={() => setExpandedId(expandedId === row.id ? null : (row.id || null))} 
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                {expandedId === row.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
+            )
+          },
+          {
+            key: 'name',
+            label: (
+              <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            render: (row) => (
+              <div className="py-1">
+                <div className="font-medium text-gray-900 dark:text-gray-200">{row.name}</div>
+                <div className="text-xs text-gray-500 truncate max-w-xs">{row.statement}</div>
+              </div>
+            )
+          },
+          {
+            key: 'layerId',
+            label: (
+              <button onClick={() => handleSort('layerName')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Layer <ArrowUpDown size={14} className={sortColumn === 'layerName' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "hidden md:table-cell",
+            render: (row) => getLayerName(row.layerId)
+          },
+          {
+            key: 'status',
+            label: (
+              <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            render: (row) => (
+              showArchived ? (
+                <StatusToggle
+                  currentStatus="Deprecated"
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={() => {}}
+                  readonly={true}
+                />
+              ) : (
+                <StatusToggle
+                  currentStatus={row.status}
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={(s) => handleStatusChange(row, s)}
+                />
+              )
+            )
+          }
+        ]}
+        renderExpandedRow={(row) => expandedId === row.id && (
+          <div className="py-4 px-10 text-sm text-gray-600 dark:text-gray-300">
+            <div className="grid grid-cols-1 gap-4">
+              <div><strong className="block text-gray-900 dark:text-white mb-1">Statement:</strong><p>{row.statement}</p></div>
+              <div><strong className="block text-gray-900 dark:text-white mb-1">Rationale:</strong><p>{row.rationale}</p></div>
+              <div><strong className="block text-gray-900 dark:text-white mb-1">Implications:</strong><p>{row.implications}</p></div>
+            </div>
+          </div>
+        )}
+        actions={
+          showArchived 
+            ? [
+                {
+                  label: 'Restore',
+                  icon: <RotateCcw size={16} />,
+                  onClick: (row) => handleRestore(row.id!),
+                  className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+                  title: () => 'Restore'
+                },
+                {
+                  label: 'Delete Permanently',
+                  icon: <Trash2 size={16} />,
+                  onClick: (row) => setItemToDelete(row.id!),
+                  className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+                  title: () => 'Delete Permanently'
+                }
+              ]
+            : [
+                {
+                  label: 'Edit',
+                  icon: <Edit size={16} />,
+                  onClick: (row) => openModal(row),
+                  className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+                  title: () => 'Edit'
+                },
+                {
+                  label: 'Archive',
+                  icon: <Archive size={16} />,
+                  onClick: (row) => handleArchive(row.id!),
+                  className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+                  title: () => 'Archive'
+                }
+              ]
+        }
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

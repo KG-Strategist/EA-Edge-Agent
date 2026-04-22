@@ -14,7 +14,7 @@ interface DashboardProps {
   setCurrentSessionId: (id: number) => void;
 }
 
-export default function Dashboard({ setCurrentView: _setCurrentView, setCurrentSessionId: _setCurrentSessionId }: DashboardProps) {
+export default function Dashboard(_props: DashboardProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [boardName, setBoardName] = useState('Default View');
   const [activeWidgets, setActiveWidgets] = useState<string[]>(DEFAULT_WIDGETS);
@@ -23,8 +23,11 @@ export default function Dashboard({ setCurrentView: _setCurrentView, setCurrentS
   const savedBoards = useLiveQuery(() => db.dashboard_states.toArray());
   
   // Real-time Metrics Queries
-  const allSessions = useLiveQuery(() => db.review_sessions.toArray()) || [];
-  const threatModels = useLiveQuery(() => db.threat_models.toArray()) || [];
+  const allSessionsRaw = useLiveQuery(() => db.review_sessions.toArray());
+  const allSessions = useMemo(() => allSessionsRaw || [], [allSessionsRaw]);
+  
+  const threatModelsRaw = useLiveQuery(() => db.threat_models.toArray());
+  const threatModels = useMemo(() => threatModelsRaw || [], [threatModelsRaw]);
   
   const draftCount = useMemo(() => {
     return allSessions.filter(s => s.status === 'Draft').length;

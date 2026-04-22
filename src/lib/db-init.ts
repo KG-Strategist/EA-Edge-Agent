@@ -6,45 +6,46 @@
 
 import { db } from './db';
 import { encryptString } from './cryptoVault';
+import { Logger } from '../lib/logger';
 
 // Current schema version (increment on any breaking schema changes)
 const CURRENT_SCHEMA_VERSION = 31;
 
 export async function initDatabase() {
   try {
-    console.log('[DB] Initializing database (Schema v%d)...', CURRENT_SCHEMA_VERSION);
+    Logger.info('[DB] Initializing database (Schema v%d)...', CURRENT_SCHEMA_VERSION);
     
     // 1. Validate schema version from Dexie
     const actualVersion = db.verno;
     if (actualVersion === undefined || actualVersion === 0) {
-      console.log('[DB] Fresh database detected; will auto-initialize on first seed');
+      Logger.info('[DB] Fresh database detected; will auto-initialize on first seed');
       return Promise.resolve();
     }
     
     if (actualVersion > CURRENT_SCHEMA_VERSION) {
-      console.warn('[DB] WARNING: Database schema version (%d) is newer than code version (%d). Downgrade risk.', actualVersion, CURRENT_SCHEMA_VERSION);
+      Logger.info('[DB] WARNING: Database schema version (%d) is newer than code version (%d). Downgrade risk.', actualVersion, CURRENT_SCHEMA_VERSION);
       return Promise.resolve(); // Gracefully proceed; let app handle
     }
     
     if (actualVersion < CURRENT_SCHEMA_VERSION) {
-      console.log('[DB] Detected schema version upgrade: %d → %d. Migrations would be applied here.', actualVersion, CURRENT_SCHEMA_VERSION);
-      // TODO: Implement schema migrations as needed
+      Logger.info('[DB] Detected schema version upgrade: %d → %d. Migrations would be applied here.', actualVersion, CURRENT_SCHEMA_VERSION);
+      // ROADMAP (MVP 2.0): Implement schema migrations as needed
     }
     
     // 2. Validate table existence and indexes
     const validationResults = await validateDatabaseSchema();
     if (!validationResults.isValid) {
-      console.error('[DB] Schema validation failed:', validationResults.errors);
+      Logger.info('[DB] Schema validation failed:', validationResults.errors);
       // In production, could trigger a reset or alert; for now, log and continue
     }
 
     // 3. Run data migrations
     await migrateApiKeysToEncrypted();
 
-    console.log('[DB] Database initialization complete. Ready for operation.');
+    Logger.info('[DB] Database initialization complete. Ready for operation.');
     return Promise.resolve();
   } catch (error) {
-    console.error('[DB] Fatal initialization error:', error);
+    Logger.info('[DB] Fatal initialization error:', error);
     throw error;
   }
 }
@@ -80,7 +81,7 @@ async function validateDatabaseSchema(): Promise<{ isValid: boolean; errors: str
       }
       
       const count = await table.count();
-      console.log(`  [TABLE] ${tableName}: ${count} records`);
+      Logger.info(`  [TABLE] ${tableName}: ${count} records`);
     } catch (err) {
       errors.push(`Failed to validate table '${tableName}': ${String(err)}`);
     }
@@ -100,7 +101,7 @@ export async function getArchitecturePrinciples() {
   try {
     return await db.architecture_principles.where('status').equals('Active').toArray();
   } catch (err) {
-    console.error('[DB] Error fetching architecture principles:', err);
+    Logger.info('[DB] Error fetching architecture principles:', err);
     return [];
   }
 }
@@ -113,7 +114,7 @@ export async function getServiceDomains() {
   try {
     return await db.service_domains.where('status').equals('Active').toArray();
   } catch (err) {
-    console.error('[DB] Error fetching Service domains:', err);
+    Logger.info('[DB] Error fetching Service domains:', err);
     return [];
   }
 }
@@ -126,7 +127,7 @@ export async function getTags() {
   try {
     return await db.bespoke_tags.where('status').equals('Active').toArray();
   } catch (err) {
-    console.error('[DB] Error fetching tags:', err);
+    Logger.info('[DB] Error fetching tags:', err);
     return [];
   }
 }
@@ -151,7 +152,7 @@ export async function getDatabaseHealth() {
       schemaVersion: db.verno || CURRENT_SCHEMA_VERSION
     };
   } catch (err) {
-    console.error('[DB] Health check failed:', err);
+    Logger.info('[DB] Health check failed:', err);
     return {
       healthy: false,
       recordCount: { masters: 0, sessions: 0, threats: 0 },
@@ -182,9 +183,9 @@ export async function migrateApiKeysToEncrypted() {
           });
 
           migratedCount++;
-          console.log(`[DB] Migrated API key for provider: ${provider.displayName}`);
+          Logger.info(`[DB] Migrated API key for provider: ${provider.displayName}`);
         } catch (e) {
-          console.error(
+          Logger.info(
             `[DB] Failed to migrate API key for provider ${provider.displayName}:`,
             e instanceof Error ? e.message : String(e)
           );
@@ -205,9 +206,9 @@ export async function migrateApiKeysToEncrypted() {
           });
 
           migratedCount++;
-          console.log(`[DB] Migrated API key for BYOM model: ${model.name}`);
+          Logger.info(`[DB] Migrated API key for BYOM model: ${model.name}`);
         } catch (e) {
-          console.error(
+          Logger.info(
             `[DB] Failed to migrate API key for BYOM model ${model.name}:`,
             e instanceof Error ? e.message : String(e)
           );
@@ -216,10 +217,10 @@ export async function migrateApiKeysToEncrypted() {
     }
 
     if (migratedCount > 0) {
-      console.log(`[DB] Successfully migrated ${migratedCount} API key(s) to encrypted format`);
+      Logger.info(`[DB] Successfully migrated ${migratedCount} API key(s) to encrypted format`);
     }
   } catch (err) {
-    console.error('[DB] API key migration failed:', err);
+    Logger.info('[DB] API key migration failed:', err);
     // Do not throw - allow app to continue even if migration fails
     // (the app can still function with legacy plaintext keys as fallback)
   }

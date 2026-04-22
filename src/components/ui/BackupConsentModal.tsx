@@ -47,11 +47,11 @@ export default function BackupConsentModal() {
       };
 
       await db.audit_logs.add({
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(),
         action: actionType,
         tableName: 'app_settings',
-        pseudokey: identity?.pseudokey || 'SYSTEM',
-        details: auditDetails
+        pseudokey: (identity as any)?.pseudokey || (identity as any)?.username || 'SYSTEM',
+        details: JSON.stringify(auditDetails)
       });
 
       if (mode === 'revoke') {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initializeVault,
   getVaultKey,
@@ -8,7 +8,6 @@ import {
   encryptBlob,
   decryptBlob,
 } from '../lib/cryptoVault';
-import { hashSecret } from '../lib/authEngine';
 
 describe('CryptoVault Security Tests', () => {
   const testPin = 'test-pin-12345';

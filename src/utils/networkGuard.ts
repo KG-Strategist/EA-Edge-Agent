@@ -16,10 +16,11 @@ export class NetworkDisabledError extends Error {
  * @throws {NetworkDisabledError} If external network access is disabled.
  */
 export async function checkNetworkConsent(): Promise<boolean> {
-  const settings = await db.app_settings.toArray();
-  const networkEnabled = settings.find(s => s.key === 'enableNetworkIntegrations')?.value;
+  const setting = await db.app_settings.get('enableNetworkIntegrations');
 
-  if (networkEnabled === false) {
+  // FAIL-CLOSED: Only an explicit `true` permits network access.
+  // undefined, null, or false are all treated as denied.
+  if (setting?.value !== true) {
     throw new NetworkDisabledError();
   }
 

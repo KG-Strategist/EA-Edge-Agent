@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StateProvider, useStateContext } from './context/StateContext';
+import { NotificationProvider } from './context/NotificationContext';
 import AuthGate from './views/AuthGate';
 import Dashboard from './views/Dashboard';
 import ArchitectureReviews from './views/ArchitectureReviews';
@@ -29,7 +30,7 @@ function AppContent() {
       setAdminSubView('prompts');
     } else if (currentView === 'system-pref' && !['network', 'users', 'audit', 'dpdp', 'models', 'system'].includes(adminSubView)) {
       setAdminSubView('network');
-    } else if (currentView === 'knowledge-mgmt' && !['knowledge'].includes(adminSubView)) {
+    } else if (currentView === 'knowledge-mgmt' && !['knowledge', 'web-providers'].includes(adminSubView)) {
       setAdminSubView('knowledge');
     }
   }, [currentView, adminSubView]);
@@ -115,7 +116,9 @@ function App() {
   return (
     <ErrorBoundary>
       <StateProvider>
-        <AppContent />
+        <NotificationProvider>
+          <AppContent />
+        </NotificationProvider>
       </StateProvider>
     </ErrorBoundary>
   );

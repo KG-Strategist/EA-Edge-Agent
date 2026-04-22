@@ -14,7 +14,7 @@ export async function queryDirectoryPermission(
   handle: FileSystemDirectoryHandle
 ): Promise<PermissionStatus> {
   try {
-    const permission = await handle.queryPermission({ mode: 'readwrite' });
+    const permission = await (handle as any).queryPermission({ mode: 'readwrite' });
     return permission as PermissionStatus;
   } catch (err) {
     console.warn('Failed to query directory permission:', err);
@@ -33,7 +33,7 @@ export async function requestDirectoryPermission(
   handle: FileSystemDirectoryHandle
 ): Promise<boolean> {
   try {
-    const permission = await handle.requestPermission({ mode: 'readwrite' });
+    const permission = await (handle as any).requestPermission({ mode: 'readwrite' });
     return permission === 'granted';
   } catch (err) {
     console.error('Failed to request directory permission:', err);

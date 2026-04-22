@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PromptTemplate } from '../../lib/db';
-import { Plus, Edit, ArrowUpDown, Sparkles, Copy, Archive, RotateCcw, MessageSquareCode } from 'lucide-react';
+import { Plus, Edit, Sparkles, Copy, Archive, RotateCcw, MessageSquareCode } from 'lucide-react';
 import StatusToggle from '../ui/StatusToggle';
 import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import { useMasterData } from '../../hooks/useMasterData';
 import { useDataPortability } from '../../hooks/useDataPortability';
+import { useNotification } from '../../context/NotificationContext';
 import PageHeader from '../ui/PageHeader';
+import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
 
 export default function PromptsTab() {
   const prompts = useLiveQuery(() => db.prompt_templates.toArray()) || [];
   const promptCategories = useMasterData('Prompt Category');
+  const { addNotification } = useNotification();
 
   useEffect(() => {
     const seedPrompts = async () => {
@@ -49,25 +52,13 @@ export default function PromptsTab() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PromptTemplate | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
-  const [sortColumn, setSortColumn] = useState<'name' | 'category' | 'status'>('category');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
 
   const { handleExport, handleImport } = useDataPortability({ tableName: 'prompt_templates', filename: 'prompt_templates' });
-
-  const handleSort = (column: 'name' | 'category' | 'status') => {
-    if (sortColumn === column) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
 
   const filteredPrompts = prompts.filter(p => {
     if (showArchived) {
@@ -77,12 +68,6 @@ export default function PromptsTab() {
     }
     if (filterCategory && p.category !== filterCategory) return false;
     return true;
-  });
-
-  const sortedPrompts = [...filteredPrompts].sort((a, b) => {
-    const aVal = String(a[sortColumn] || '');
-    const bVal = String(b[sortColumn] || '');
-    return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
   });
 
   const openModal = (item: PromptTemplate | null = null) => {
@@ -111,8 +96,7 @@ export default function PromptsTab() {
 
   const handleCopy = (item: PromptTemplate) => {
     navigator.clipboard.writeText(item.promptText);
-    setCopiedId(item.id!);
-    setTimeout(() => setCopiedId(null), 2000);
+    addNotification('Prompt copied to clipboard!', 'success', 3000);
   };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -159,6 +143,98 @@ export default function PromptsTab() {
     setEditingItem(null);
   };
 
+  const columns: DataTableColumn<PromptTemplate>[] = [
+    {
+      key: 'name',
+      label: 'Name',
+      render: (row) => (
+        <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-200 whitespace-nowrap">
+          <Sparkles size={14} className="text-purple-500" />
+          {row.name}
+        </div>
+      )
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      render: (row) => (
+        <div className="whitespace-nowrap">
+          <span className="px-2 py-1 bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-md text-xs font-medium border border-purple-200 dark:border-purple-500/30">
+            {row.category}
+          </span>
+          <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
+            v{row.version || '1.0.0'}
+          </span>
+        </div>
+      )
+    },
+    {
+      key: 'promptText',
+      label: 'Prompt Preview',
+      render: (row) => (
+        <span className="text-gray-600 dark:text-gray-400 text-sm max-w-[300px] block truncate" title={row.promptText}>
+          {row.promptText}
+        </span>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (row) => (
+        showArchived ? (
+          <StatusToggle 
+            currentStatus="Deprecated" 
+            statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+            onChange={() => {}} 
+            readonly={true} 
+          />
+        ) : (
+          <StatusToggle 
+            currentStatus={row.status || 'Active'} 
+            statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
+            onChange={(s) => handleStatusChange(row, s)} 
+          />
+        )
+      )
+    }
+  ];
+
+  const actions: DataTableAction<PromptTemplate>[] = showArchived ? [
+    {
+      label: 'Restore',
+      icon: <RotateCcw size={16} />,
+      onClick: handleRestore,
+      className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+      title: () => 'Restore'
+    }
+  ] : [
+    {
+      label: 'Copy',
+      icon: (
+        <div className="relative inline-flex items-center">
+          <Copy size={16} />
+        </div>
+      ),
+      onClick: handleCopy,
+      className: 'text-gray-400 hover:text-purple-600 dark:hover:text-purple-400',
+      title: () => 'Copy prompt to clipboard'
+    },
+    {
+      label: 'Edit',
+      icon: <Edit size={16} />,
+      onClick: openModal,
+      className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+      title: () => 'Edit Prompt'
+    },
+    {
+      label: 'Archive',
+      icon: <Archive size={16} />,
+      onClick: handleArchive,
+      className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+      title: () => 'Archive'
+    }
+  ];
+
   return (
     <div className="flex flex-col h-full">
       <PageHeader 
@@ -199,97 +275,16 @@ export default function PromptsTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('category')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Category <ArrowUpDown size={14} className={sortColumn === 'category' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">Prompt Preview</th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Status <ArrowUpDown size={14} className={sortColumn === 'status' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedPrompts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
-                  No prompt templates found. Click "Add Prompt" to create your first one.
-                </td>
-              </tr>
-            )}
-            {sortedPrompts.map(p => (
-              <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={14} className="text-purple-500" />
-                    {p.name}
-                  </div>
-                </td>
-                <td className="px-4 py-4 whitespace-nowrap">
-                  <span className="px-2 py-1 bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-md text-xs font-medium border border-purple-200 dark:border-purple-500/30">
-                    {p.category}
-                  </span>
-                  <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
-                    v{p.version || '1.0.0'}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-400 text-sm max-w-[300px] truncate" title={p.promptText}>
-                  {p.promptText.substring(0, 80)}{p.promptText.length > 80 ? '...' : ''}
-                </td>
-                <td className="px-4 py-4">
-                  {showArchived ? (
-                    <StatusToggle 
-                      currentStatus="Deprecated" 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={() => {}} 
-                      readonly={true} 
-                    />
-                  ) : (
-                    <StatusToggle 
-                      currentStatus={p.status || 'Active'} 
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']} 
-                      onChange={(s) => handleStatusChange(p, s)} 
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-right whitespace-nowrap">
-                  {showArchived ? (
-                    <>
-                      <button onClick={() => handleRestore(p)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button 
-                        onClick={() => handleCopy(p)} 
-                        className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
-                        title="Copy prompt to clipboard"
-                      >
-                        <Copy size={16} />
-                      </button>
-                      {copiedId === p.id && <span className="text-xs text-green-500 mr-1">Copied!</span>}
-                      <button onClick={() => openModal(p)} className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" aria-label="Edit Prompt" title="Edit Prompt"><Edit size={16} /></button>
-                      <button onClick={() => handleArchive(p)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={filteredPrompts}
+        columns={columns}
+        actions={actions}
+        keyField="id"
+        pagination={true}
+        searchable={true}
+        searchFields={['name', 'category', 'promptText', 'version', 'status']}
+        emptyMessage="No prompt templates found. Click 'Add Prompt' to create your first one."
+      />
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
@@ -384,4 +379,3 @@ export default function PromptsTab() {
     </div>
   );
 }
-

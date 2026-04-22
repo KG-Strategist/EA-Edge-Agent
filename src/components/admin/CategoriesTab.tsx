@@ -10,6 +10,7 @@ import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { MASTER_CATEGORY_TYPES } from '../../lib/constants';
 import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
 
 export default function CategoriesTab() {
   const categories = useLiveQuery(() => db.master_categories.toArray()) || [];
@@ -146,74 +147,103 @@ export default function CategoriesTab() {
         }
       />
 
-      <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-700 rounded-md">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_0_0_theme(colors.gray.200)] dark:shadow-[0_1px_0_0_theme(colors.gray.700)]">
-            <tr className="text-gray-500 dark:text-gray-400 text-sm">
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium">
-                <button onClick={() => handleSort('type')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Type <ArrowUpDown size={14} className={sortColumn === 'type' ? 'text-blue-500' : 'opacity-50'} />
-                </button>
-              </th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">Description</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedCategories.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 text-sm">
-                {showArchived ? 'No inactive categories.' : 'No categories found.'}
-              </td></tr>
-            )}
-            {sortedCategories.map(c => (
-              <tr key={c.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-4 py-4 text-gray-900 dark:text-gray-200 font-medium">{c.name}</td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                  <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
-                    {MASTER_CATEGORY_TYPES[c.type as keyof typeof MASTER_CATEGORY_TYPES] || c.type}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-gray-600 dark:text-gray-300 text-sm max-w-xs truncate hidden lg:table-cell" title={c.description}>{c.description || '-'}</td>
-                <td className="px-4 py-4">
-                  {showArchived ? (
-                    <StatusToggle
-                      currentStatus={c.status || 'Deprecated'}
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                      onChange={() => {}}
-                      readonly={true}
-                    />
-                  ) : (
-                    <StatusToggle
-                      currentStatus={c.status || 'Active'}
-                      statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                      onChange={(s) => handleStatusToggle(c, s)}
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-right whitespace-nowrap">
-                  {showArchived ? (
-                    <>
-                      <button onClick={() => handleRestore(c.id!)} title="Restore" className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"><RotateCcw size={16} /></button>
-                      <button onClick={() => setItemToDelete(c.id!)} title="Delete Permanently" className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => openModal(c)} aria-label="Edit category" className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Edit size={16} /></button>
-                      <button onClick={() => handleArchive(c.id!)} title="Archive" className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"><Archive size={16} /></button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={sortedCategories}
+        keyField="id"
+        emptyMessage={showArchived ? 'No inactive categories.' : 'No categories found.'}
+        searchable={true}
+        searchPlaceholder="Search categories..."
+        searchFields={['name', 'type', 'description']}
+        pagination={true}
+        itemsPerPage={10}
+        containerClassName="flex-1 border-0 shadow-none"
+        columns={[
+          {
+            key: 'name',
+            label: (
+              <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-900 dark:text-gray-200 font-medium"
+          },
+          {
+            key: 'type',
+            label: (
+              <button onClick={() => handleSort('type')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Type <ArrowUpDown size={14} className={sortColumn === 'type' ? 'text-blue-500' : 'opacity-50'} />
+              </button>
+            ),
+            className: "text-gray-600 dark:text-gray-300 text-sm",
+            render: (row) => (
+              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
+                {MASTER_CATEGORY_TYPES[row.type as keyof typeof MASTER_CATEGORY_TYPES] || row.type}
+              </span>
+            )
+          },
+          {
+            key: 'description',
+            label: 'Description',
+            className: "text-gray-600 dark:text-gray-300 text-sm max-w-xs truncate hidden lg:table-cell",
+            render: (row) => <span title={row.description}>{row.description || '-'}</span>
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            render: (row) => (
+              showArchived ? (
+                <StatusToggle
+                  currentStatus={row.status || 'Deprecated'}
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={() => {}}
+                  readonly={true}
+                />
+              ) : (
+                <StatusToggle
+                  currentStatus={row.status || 'Active'}
+                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+                  onChange={(s) => handleStatusToggle(row, s)}
+                />
+              )
+            )
+          }
+        ]}
+        actions={
+          showArchived
+            ? [
+                {
+                  label: 'Restore',
+                  icon: <RotateCcw size={16} />,
+                  onClick: (row) => handleRestore(row.id!),
+                  className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+                  title: () => 'Restore'
+                },
+                {
+                  label: 'Delete Permanently',
+                  icon: <Trash2 size={16} />,
+                  onClick: (row) => setItemToDelete(row.id!),
+                  className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+                  title: () => 'Delete Permanently'
+                }
+              ]
+            : [
+                {
+                  label: 'Edit',
+                  icon: <Edit size={16} />,
+                  onClick: (row) => openModal(row),
+                  className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+                  title: () => 'Edit category'
+                },
+                {
+                  label: 'Archive',
+                  icon: <Archive size={16} />,
+                  onClick: (row) => handleArchive(row.id!),
+                  className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+                  title: () => 'Archive'
+                }
+              ]
+        }
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

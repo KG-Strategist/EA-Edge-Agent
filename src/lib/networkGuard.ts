@@ -56,7 +56,7 @@ export function validateEndpointUrl(url: string): boolean {
   const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
   const ipv4Match = hostname.match(ipv4Regex);
   if (ipv4Match) {
-    const [, octet1Str, octet2Str, octet3Str] = ipv4Match;
+    const [, octet1Str, octet2Str] = ipv4Match;
     const octet1 = parseInt(octet1Str, 10);
     const octet2 = parseInt(octet2Str, 10);
 

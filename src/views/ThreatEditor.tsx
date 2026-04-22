@@ -10,6 +10,7 @@ import {
 import { generateReview } from '../lib/aiEngine';
 import SafeMermaid from '../components/ui/SafeMermaid';
 import { Plus, Trash2, Shield, BrainCircuit, Save, Download, Loader2, Link2, AlertTriangle, X, ArrowLeft, Wand2 } from 'lucide-react';
+import { Logger } from '../lib/logger';
 
 const COMPONENT_TYPES: ComponentType[] = ['External Entity', 'Process', 'Data Store', 'Data Flow', 'Trust Boundary'];
 const TYPE_ICONS: Record<ComponentType, string> = {
@@ -49,7 +50,7 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
               if (data.networkPosture) setNetworkPosture(data.networkPosture);
               if (data.hostingModel) setHostingModel(data.hostingModel);
             } catch (e) {
-              console.error('Failed to decrypt threat model', e);
+              Logger.error('Failed to decrypt threat model', e);
             }
           } else {
             setComponents(model.components || []);
@@ -201,7 +202,7 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
       await generateReview(prompt, (text) => setEnrichedReport(text), 'Primary EA Agent');
     } catch (error: any) {
       if (!error.message?.includes('CONSENT_REQUIRED')) {
-        console.error('AI Enrichment error:', error);
+        Logger.error('AI Enrichment error:', error);
       }
     } finally {
       setIsEnriching(false);
@@ -215,7 +216,7 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
       hostingModel,
       components
     };
-    console.log('Synthesizing Threat Matrix with payload:', payload);
+    Logger.info('Synthesizing Threat Matrix with payload:', payload);
     // In a future MVP, this will trigger the WebLLM engine
   };
 

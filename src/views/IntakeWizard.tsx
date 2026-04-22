@@ -21,7 +21,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
     type: '',
     appTier: '',
     hostingModel: '',
-    bianDomainId: '',
+    serviceDomainId: '',
     tags: [] as string[],
     humanThoughts: '',
     reportTemplateId: '',
@@ -123,7 +123,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         type: formData.type,
         workflowId: activeWorkflow?.id,
         currentStageIndex: 0,
-        bianDomainId: formData.bianDomainId ? parseInt(formData.bianDomainId) : null,
+        serviceDomainId: formData.serviceDomainId ? parseInt(formData.serviceDomainId) : null,
         tags: formData.tags,
         status: 'Draft',
         ddqBlobs: encryptedDdqBlobs,
@@ -150,7 +150,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         <button 
           onClick={() => {
             setStep(1);
-            setFormData({ projectName: '', type: '', appTier: '', hostingModel: '', bianDomainId: '', tags: [], humanThoughts: '', reportTemplateId: '' });
+            setFormData({ projectName: '', type: '', appTier: '', hostingModel: '', serviceDomainId: '', tags: [], humanThoughts: '', reportTemplateId: '' });
             setVendorDdqFiles([]);
             setArchitectureFiles([]);
             setIsSaved(false);
@@ -203,6 +203,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 <select 
                   value={formData.type}
                   onChange={e => setFormData({...formData, type: e.target.value})}
+                  aria-label="Select Review Type"
+                  title="Select Review Type"
                   className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 >
                   <option value="">Select Review Type...</option>
@@ -214,8 +216,10 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">BIAN Domain</label>
                 <select 
-                  value={formData.bianDomainId}
-                  onChange={e => setFormData({...formData, bianDomainId: e.target.value})}
+                  value={formData.serviceDomainId}
+                  onChange={e => setFormData({...formData, serviceDomainId: e.target.value})}
+                  aria-label="Select BIAN Domain"
+                  title="Select BIAN Domain"
                   className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 >
                   <option value="">Select Domain...</option>
@@ -232,6 +236,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 <select 
                   value={formData.appTier}
                   onChange={e => setFormData({...formData, appTier: e.target.value})}
+                  aria-label="Select Application Tier"
+                  title="Select Application Tier"
                   className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 >
                   <option value="">Select Tier...</option>
@@ -245,6 +251,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 <select 
                   value={formData.hostingModel}
                   onChange={e => setFormData({...formData, hostingModel: e.target.value})}
+                  aria-label="Select Hosting Model"
+                  title="Select Hosting Model"
                   className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 >
                   <option value="">Select Hosting Model...</option>
@@ -260,6 +268,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <select 
                 value={formData.reportTemplateId}
                 onChange={e => setFormData({...formData, reportTemplateId: e.target.value})}
+                aria-label="Select Report Template"
+                title="Select Report Template"
                 className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               >
                 <option value="">Select Report Template...</option>
@@ -344,7 +354,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{file.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
                       </div>
-                      <button onClick={() => removeDdqFile(idx)} className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
+                      <button onClick={() => removeDdqFile(idx)} aria-label="Remove DDQ File" title="Remove DDQ File" className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
                         <X size={18} />
                       </button>
                     </div>
@@ -387,6 +397,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 className="hidden" 
                 ref={fileInputRef}
                 onChange={handleFileSelect}
+                aria-label="Upload Architecture Artifacts"
+                title="Upload Architecture Artifacts"
               />
             </div>
 
@@ -401,7 +413,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{file.name}</p>
                         <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                       </div>
-                      <button onClick={() => removeArchitectureFile(idx)} className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
+                      <button onClick={() => removeArchitectureFile(idx)} aria-label="Remove Architecture Artifact" title="Remove Architecture Artifact" className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400">
                         <X size={16} />
                       </button>
                     </div>

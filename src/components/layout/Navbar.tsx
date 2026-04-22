@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen, Library } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen, Library, Globe } from 'lucide-react';
 import { useStateContext } from '../../context/StateContext';
 import Logo from '../ui/Logo';
 
@@ -36,6 +36,7 @@ const adminTabs: Record<string, { id: string; label: string; icon: React.Compone
   ],
   'knowledge-mgmt': [
     { id: 'knowledge', label: 'Enterprise Knowledge', icon: BookOpen },
+    { id: 'web-providers', label: 'Web Trainings', icon: Globe },
   ],
 };
 export default function Navbar({ currentView, setCurrentView, adminSubView, setAdminSubView }: NavbarProps) {

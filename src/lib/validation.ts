@@ -17,7 +17,7 @@ const ProviderTypeEnum = z.enum(['WebSearchAPI', 'CloudLLMAPI', 'CustomEnterpris
  * ServiceDomain schema for BIAN (Business, Information, Architecture, Network) tab.
  * Validates all required fields for architecture domain entities.
  */
-export const BianSchema = z.object({
+export const ServiceDomainSchema = z.object({
   id: z.number().optional(),
   name: z
     .string()
@@ -48,14 +48,15 @@ export const BianSchema = z.object({
     .string()
     .max(2000, 'Description must be under 2000 characters')
     .trim()
-    .optional()
     .or(z.literal('')),
+  frameworkTag: z
+    .string()
+    .min(1, 'Framework tag is required')
+    .max(50, 'Framework tag must be under 50 characters')
+    .trim(),
   status: StatusEnum,
 });
 
-export type BianInput = z.infer<typeof BianSchema>;
-
-export const ServiceDomainSchema = BianSchema;
 export type ServiceDomainInput = z.infer<typeof ServiceDomainSchema>;
 
 /**
@@ -78,19 +79,16 @@ export const ArchitectureLayerSchema = z.object({
     .string()
     .max(255, 'Context layer must be under 255 characters')
     .trim()
-    .optional()
     .or(z.literal('')),
   description: z
     .string()
     .max(2000, 'Description must be under 2000 characters')
     .trim()
-    .optional()
     .or(z.literal('')),
   abstractionLevels: z
     .string()
     .max(500, 'Abstraction levels must be under 500 characters')
     .trim()
-    .optional()
     .or(z.literal('')),
   categoryId: z.number().optional(),
   category: z.string().optional(),

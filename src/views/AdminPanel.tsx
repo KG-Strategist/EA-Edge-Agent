@@ -1,5 +1,5 @@
-// React auto-injected by JSX transform
 import PrinciplesTab from '../components/admin/PrinciplesTab';
+import WebProvidersTab from '../components/admin/WebProvidersTab';
 import LayersTab from '../components/admin/LayersTab';
 import CategoriesTab from '../components/admin/CategoriesTab';
 import MetamodelTab from '../components/admin/MetamodelTab';
@@ -37,6 +37,7 @@ export default function AdminPanel({ adminSubView, setAdminSubView: _setAdminSub
             {activeTab === 'templates' && <TemplatesTab />}
             {activeTab === 'network' && <NetworkIntegrationTab />}
             {activeTab === 'knowledge' && <TrainingEventsTable />}
+            {activeTab === 'web-providers' && <WebProvidersTab />}
             {activeTab === 'system' && <SystemTab />}
             {activeTab === 'users' && <UserAccessTab />}
             {activeTab === 'audit' && <AuditWorkspaceTab setAdminSubView={_setAdminSubView} />}
