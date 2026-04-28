@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ArrowUpDown, Download, Upload } from 'lucide-react';
+import { useNotification } from '../../context/NotificationContext';
 
 export interface DataTableColumn<T> {
   key: keyof T | string;
@@ -35,6 +36,9 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string;
   searchFields?: (keyof T)[];
   renderExpandedRow?: (row: T) => React.ReactNode;
+  exportable?: boolean;
+  exportFilename?: string;
+  onImport?: (parsedData: any[]) => void;
 }
 
 interface SortConfig {
@@ -57,10 +61,15 @@ export default function DataTable<T extends Record<string, any>>({
   searchPlaceholder = 'Search...',
   searchFields = [],
   renderExpandedRow,
+  exportable = false,
+  exportFilename = 'export.json',
+  onImport,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { addNotification } = useNotification();
 
   useEffect(() => {
     setCurrentPage(1);
@@ -122,20 +131,86 @@ export default function DataTable<T extends Record<string, any>>({
     setCurrentPage(1);
   };
 
+  const handleExport = () => {
+    if (!exportable) return;
+    try {
+      const blob = new Blob([JSON.stringify(filteredData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFilename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      addNotification('Failed to export data', 'error');
+    }
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onImport) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+          throw new Error('Imported JSON must be an array.');
+        }
+        onImport(parsed);
+      } catch (err) {
+        console.error('Import error:', err);
+        addNotification(err instanceof Error ? err.message : 'Invalid JSON file', 'error');
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className={`flex flex-col gap-4 ${containerClassName}`}>
-      {searchable && (
-        <div className="flex justify-end">
-          <div className="relative w-full sm:w-64 shrink-0">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            />
-          </div>
+      {(searchable || exportable || onImport) && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {exportable && (
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              title="Export as JSON"
+            >
+              <Download size={14} />
+              Export
+            </button>
+          )}
+          {onImport && (
+            <div className="relative">
+              <input
+                type="file"
+                accept=".json"
+                ref={fileInputRef}
+                onChange={handleImport}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                title="Import JSON"
+              />
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                <Upload size={14} />
+                Import
+              </button>
+            </div>
+          )}
+          {searchable && (
+            <div className="relative w-full sm:w-64 shrink-0 sm:ml-auto">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -164,7 +239,7 @@ export default function DataTable<T extends Record<string, any>>({
                             <ChevronDown size={14} className="text-blue-500" />
                           )
                         ) : (
-                          <div className="w-[14px] h-[14px]" />
+                          <ArrowUpDown size={14} className="opacity-50 text-gray-400 group-hover:text-gray-500" />
                         )}
                       </div>
                     )}
@@ -201,7 +276,8 @@ export default function DataTable<T extends Record<string, any>>({
                       return (
                         <td
                           key={String(col.key)}
-                          className={`px-6 py-4 text-gray-900 dark:text-gray-200 ${col.className || ''}`}
+                          className={`px-6 py-4 text-gray-900 dark:text-gray-200 max-w-xs truncate`}
+                          title={String(value)}
                         >
                           {col.render ? col.render(row, value) : String(value)}
                         </td>

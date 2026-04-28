@@ -60,6 +60,8 @@ export interface ServiceDomain {
   status: 'Draft' | 'Active' | 'Needs Review' | 'Deprecated';
 }
 
+export type BianDomain = ServiceDomain;
+
 export interface BespokeTag {
   id?: number;
   name: string;
@@ -318,12 +320,19 @@ export interface CustomAgent {
   updatedAt: Date;
 }
 
+export interface DistillationTask {
+  id?: number;
+  query: string;
+  contextContext?: string;
+  status: 'pending' | 'resolved';
+  createdAt: number;
+  resolvedAt?: number;
+}
+
 export interface ChatThread {
   id?: number;
   title: string;
-  threadId: string; // UUID or timestamp-based ID
-  updatedAt: Date;
-  createdAt: Date;
+  updatedAt: number;
 }
 
 export interface ChatMessage {
@@ -331,7 +340,8 @@ export interface ChatMessage {
   threadId: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  timestamp: Date;
+  inferenceEngine: 'webllm' | 'neuro-symbolic' | 'pending';
+  timestamp: number;
 }
 
 export interface SemanticMemory {
@@ -380,6 +390,7 @@ export class EADatabase extends Dexie {
   chat_messages!: Table<ChatMessage>;
   semantic_memory!: Table<SemanticMemory>;
   local_telemetry_vault!: Table<LocalTelemetry>;
+  distillation_queue!: Table<DistillationTask>;
 
   constructor() {
     super('EADatabase');
@@ -1048,6 +1059,39 @@ export class EADatabase extends Dexie {
       semantic_memory: '++id, createdAt',
       local_telemetry_vault: '++id, timestamp'
     });
+
+    // v32: 3-Tier Chat Architecture Memory
+    this.version(32).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt'
+    });
   }
 }
 
@@ -1086,7 +1130,7 @@ db.on('ready', () => {
   db.tables.forEach(table => {
     if (table.name === 'audit_logs' || table.name === 'users' || table.name === 'privacy_guardrails') return; // Don't audit the audit or identity table loops
 
-    table.hook('creating', function (_primKey, _obj, _transaction) {
+    table.hook('creating', function () {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       // Create separate async transaction to avoid blocking main CRUD
       Dexie.ignoreTransaction(() => {
@@ -1100,7 +1144,8 @@ db.on('ready', () => {
       });
     });
 
-    table.hook('updating', function (_modifications, primKey, _obj, _transaction) {
+    table.hook('updating', function (modifications, primKey) {
+      void modifications;
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       Dexie.ignoreTransaction(() => {
         db.audit_logs.add({
@@ -1114,7 +1159,7 @@ db.on('ready', () => {
       });
     });
 
-    table.hook('deleting', function (primKey, _obj, _transaction) {
+    table.hook('deleting', function (primKey) {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
       Dexie.ignoreTransaction(() => {
         db.audit_logs.add({
@@ -1164,3 +1209,4 @@ export async function logForensicAudit(
     }, null, 2)
   });
 }
+

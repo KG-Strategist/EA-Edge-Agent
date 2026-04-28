@@ -5,9 +5,11 @@ import { ShieldAlert, Save, Globe, KeyRound, ExternalLink, CheckCircle2, Network
 import { OAUTH_PROVIDERS, getRedirectUri } from '../../lib/oauthConfig';
 import { getCurrentUser } from '../../lib/authEngine';
 import PageHeader from '../ui/PageHeader';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function NetworkIntegrationTab() {
   const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
+  const { addNotification } = useNotification();
 
   const enableNetworkIntegrations =
     appSettings.find(s => s.key === 'enableNetworkIntegrations')?.value === true;
@@ -16,7 +18,6 @@ export default function NetworkIntegrationTab() {
   const [googleClientId, setGoogleClientId] = useState('');
   const [microsoftClientId, setMicrosoftClientId] = useState('');
   const [ssoSaveMessage, setSsoSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Enterprise SSO Config State
   const [entProviderName, setEntProviderName] = useState('');
@@ -91,8 +92,7 @@ export default function NetworkIntegrationTab() {
         setPendingConsentAction(() => async () => {
           await appendHybridNetworkConsent();
           await db.app_settings.put({ key: 'enableNetworkIntegrations', value: true });
-          setSaveMessage({ type: 'success', text: 'Network access enabled with consent.' });
-          setTimeout(() => setSaveMessage(null), 3000);
+          addNotification('Network access enabled with consent.', 'success', 3000);
         });
         setShowConsentModal(true);
         return;
@@ -104,11 +104,10 @@ export default function NetworkIntegrationTab() {
       if (!enabled) {
         window.dispatchEvent(new CustomEvent('APP_NETWORK_FORCE_KILLED'));
       }
-      setSaveMessage({ type: 'success', text: enabled ? 'Network access enabled.' : 'Network access disabled. Active background processes terminated.' });
-      setTimeout(() => setSaveMessage(null), 3000);
+      addNotification(enabled ? 'Network access enabled.' : 'Network access disabled. Active background processes terminated.', 'success', 3000);
     } catch (err) {
       console.error("Toggle error:", err);
-      setSaveMessage({ type: 'error', text: 'Failed to update network settings.' });
+      addNotification('Failed to update network settings.', 'error');
     }
   };
 
@@ -183,10 +182,9 @@ export default function NetworkIntegrationTab() {
             clientId: entClientId.trim(),
           }
         });
-        setSaveMessage({ type: 'success', text: 'Enterprise SSO configuration saved.' });
-        setTimeout(() => setSaveMessage(null), 3000);
+        addNotification('Enterprise SSO configuration saved.', 'success', 3000);
       } catch {
-        setSaveMessage({ type: 'error', text: 'Failed to save Enterprise SSO config.' });
+        addNotification('Failed to save Enterprise SSO config.', 'error');
       }
     });
     setShowConsentModal(true);
@@ -214,10 +212,9 @@ export default function NetworkIntegrationTab() {
             tokenUrl: ''
           }
         });
-        setSaveMessage({ type: 'success', text: 'LDAP configuration saved.' });
-        setTimeout(() => setSaveMessage(null), 3000);
+        addNotification('LDAP configuration saved.', 'success', 3000);
       } catch {
-        setSaveMessage({ type: 'error', text: 'Failed to save LDAP config.' });
+        addNotification('Failed to save LDAP config.', 'error');
       }
     });
     setShowConsentModal(true);
@@ -248,7 +245,7 @@ export default function NetworkIntegrationTab() {
               aria-label="Enable External Network Features"
               title="Enable External Network Features"
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 dark:peer-checked:bg-blue-500 transition-all duration-200 ease-in-out"></div>
           </label>
         </div>
       </div>
@@ -419,13 +416,6 @@ export default function NetworkIntegrationTab() {
             </button>
           </div>
         </div>
-      
-      {saveMessage && (
-        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium ${saveMessage.type === 'success' ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
-          }`}>
-          {saveMessage.text}
-        </div>
-      )}
 
       {/* ─── Granular Consent Interceptor Modal ─── */}
       {showConsentModal && (

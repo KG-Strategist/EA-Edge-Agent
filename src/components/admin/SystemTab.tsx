@@ -271,13 +271,13 @@ export default function SystemTab() {
     const headers = ['Timestamp,Action,Status,User Alias'];
     const rows = filteredLogs.map(log => {
       let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
-      try {
-        if (log.details) parsedDetails = JSON.parse(log.details);
-      } catch (e) {
-        // Ignore parse error
-      }
-      return `"${new Date(log.timestamp).toISOString()}","${parsedDetails.event}","${parsedDetails.status}","${log.pseudokey}"`;
-    });
+try {
+    if (log.details) parsedDetails = JSON.parse(log.details);
+  } catch {
+    // Silently ignore JSON parse errors
+  }
+  return `"${new Date(log.timestamp).toISOString()}","${parsedDetails.event}","${parsedDetails.status}","${log.pseudokey}"`;
+});
     
     const csvContent = headers.concat(rows).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -528,6 +528,8 @@ export default function SystemTab() {
           </div>
         </div>
         <DataTable
+            exportable={true}
+            exportFilename="niti-system-events.json"
             data={filteredLogs}
             keyField="id"
             pagination={true}
@@ -538,16 +540,18 @@ export default function SystemTab() {
               {
                 key: 'timestamp',
                 label: 'Timestamp',
+                sortable: true,
                 render: (row) => <span className="text-gray-500 dark:text-gray-400">{new Date(row.timestamp).toLocaleString()}</span>
               },
               {
                 key: 'details',
                 label: 'Action',
+                sortable: true,
                 render: (row) => {
                   let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
                   try {
                     if (row.details) parsedDetails = JSON.parse(row.details);
-                  } catch (e) {
+                  } catch {
                     // Ignore parse error
                   }
                   return <span className="font-medium text-gray-900 dark:text-gray-200">{parsedDetails.event}</span>;
@@ -556,11 +560,12 @@ export default function SystemTab() {
               {
                 key: 'pseudokey',
                 label: 'Status',
+                sortable: true,
                 render: (row) => {
                   let parsedDetails = { event: 'UNKNOWN', status: 'UNKNOWN' };
                   try {
                     if (row.details) parsedDetails = JSON.parse(row.details);
-                  } catch (e) {
+                  } catch {
                     // Ignore parse error
                   }
                   return (
@@ -577,6 +582,7 @@ export default function SystemTab() {
               {
                 key: 'pseudokey',
                 label: 'User Alias',
+                sortable: true,
                 render: (row) => <span className="font-mono text-gray-600 dark:text-gray-400">{row.pseudokey}</span>
               }
             ]}

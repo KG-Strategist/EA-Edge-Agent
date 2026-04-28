@@ -333,6 +333,8 @@ export default function UserAccessTab() {
           </button>
         </div>
         <DataTable
+          exportable={true}
+          exportFilename="niti-identity-directory.json"
           data={filteredUsers}
           keyField="pseudokey"
           emptyMessage="No identities match the active filter or search query."
@@ -346,11 +348,13 @@ export default function UserAccessTab() {
             {
               key: 'pseudokey',
               label: 'Pseudonym',
+              sortable: true,
               render: (row) => <span className="font-mono font-medium text-gray-900 dark:text-white">{row.pseudokey}</span>
             },
             {
               key: 'role',
               label: 'Role',
+              sortable: true,
               render: (row) => {
                 const role = getRole(row);
                 return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getRoleBadgeClass(role)}`}>{role}</span>;
@@ -359,11 +363,13 @@ export default function UserAccessTab() {
             {
               key: 'environment',
               label: 'Environment',
+              sortable: true,
               render: (row) => <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{environmentMap[row.authMode || 'AIR_GAPPED'] || 'Unknown'}</span>
             },
             {
               key: 'idp',
               label: 'Identity Provider',
+              sortable: true,
               render: (row) => {
                 const idp = getUserIdentityProvider(row);
                 return <span className="px-2 py-1 text-[10px] font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 uppercase tracking-wider">{authMap[idp === 'Public OAuth' ? 'OAUTH' : idp === 'Enterprise SSO' ? 'SSO' : idp === 'LDAP / Active Directory' ? 'LDAP' : 'S2FA'] || 'Standard 2FA'}</span>;
@@ -372,11 +378,13 @@ export default function UserAccessTab() {
             {
               key: 'joined',
               label: 'Joined',
+              sortable: true,
               render: (row) => <span className="text-gray-500 dark:text-gray-400">{new Date(row.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
             },
             {
               key: 'status',
               label: 'Status',
+              sortable: true,
               render: (row) => {
                 if (row.requiresPinSetup) return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pending Setup</span>;
                 if (row.isActive === false) return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Suspended</span>;

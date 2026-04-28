@@ -239,6 +239,8 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
         {/* Table */}
         <div className="flex-1 overflow-auto">
           <DataTable<AuditLog>
+            exportable={true}
+            exportFilename="niti-audit-logs-export.json"
             data={filteredLogs}
             keyField="id"
             pagination={true}
@@ -250,11 +252,13 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
               {
                 key: 'timestamp',
                 label: 'Timestamp',
+                sortable: true,
                 render: (row) => new Date(row.timestamp).toLocaleString()
               },
               {
                 key: 'action',
                 label: 'Action',
+                sortable: true,
                 render: (row) => (
                   <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${getActionBadgeColor(row.action)}`}>
                     {row.action}
@@ -264,6 +268,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
               {
                 key: 'tableName',
                 label: 'Table',
+                sortable: true,
                 render: (row) => (
                   <span className="font-mono text-gray-900 dark:text-white uppercase text-xs">
                     {row.tableName}
@@ -273,6 +278,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
               {
                 key: 'pseudokey',
                 label: 'User Alias',
+                sortable: true,
                 render: (row) => (
                   row.pseudokey === 'DELETED_USER' ? (
                     <span className="italic text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">

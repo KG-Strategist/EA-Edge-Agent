@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PromptTemplate } from '../../lib/db';
 import { Plus, Edit, Sparkles, Copy, Archive, RotateCcw, MessageSquareCode } from 'lucide-react';
 import StatusToggle from '../ui/StatusToggle';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import { useMasterData } from '../../hooks/useMasterData';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import { useNotification } from '../../context/NotificationContext';
 import PageHeader from '../ui/PageHeader';
 import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
@@ -57,8 +55,6 @@ export default function PromptsTab() {
   
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
-
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'prompt_templates', filename: 'prompt_templates' });
 
   const filteredPrompts = prompts.filter(p => {
     if (showArchived) {
@@ -147,6 +143,7 @@ export default function PromptsTab() {
     {
       key: 'name',
       label: 'Name',
+      sortable: true,
       render: (row) => (
         <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-200 whitespace-nowrap">
           <Sparkles size={14} className="text-purple-500" />
@@ -157,6 +154,7 @@ export default function PromptsTab() {
     {
       key: 'category',
       label: 'Category',
+      sortable: true,
       render: (row) => (
         <div className="whitespace-nowrap">
           <span className="px-2 py-1 bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-md text-xs font-medium border border-purple-200 dark:border-purple-500/30">
@@ -171,6 +169,7 @@ export default function PromptsTab() {
     {
       key: 'promptText',
       label: 'Prompt Preview',
+      sortable: true,
       render: (row) => (
         <span className="text-gray-600 dark:text-gray-400 text-sm max-w-[300px] block truncate" title={row.promptText}>
           {row.promptText}
@@ -180,6 +179,7 @@ export default function PromptsTab() {
     {
       key: 'status',
       label: 'Status',
+      sortable: true,
       render: (row) => (
         showArchived ? (
           <StatusToggle 
@@ -266,7 +266,6 @@ export default function PromptsTab() {
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} />
               Add Prompt
@@ -284,6 +283,16 @@ export default function PromptsTab() {
         searchable={true}
         searchFields={['name', 'category', 'promptText', 'version', 'status']}
         emptyMessage="No prompt templates found. Click 'Add Prompt' to create your first one."
+        exportable={true}
+        exportFilename="niti-prompts-export.json"
+        onImport={async (parsedData) => {
+          try {
+            await db.prompt_templates.bulkPut(parsedData);
+            addNotification('Prompts imported successfully!', 'success', 3000);
+          } catch {
+            addNotification('Failed to import prompts.', 'error');
+          }
+        }}
       />
 
       {/* Add/Edit Modal */}

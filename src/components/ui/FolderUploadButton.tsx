@@ -42,7 +42,7 @@ export default function FolderUploadButton({
       />
       <label
         htmlFor={id}
-        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+        className={`flex items-center justify-center h-8 transition-all duration-200 ease-in-out gap-2 px-4 py-2 rounded-md text-sm font-medium cursor-pointer ${
           disabled || isLoading
             ? 'bg-blue-400 cursor-not-allowed opacity-70'
             : 'bg-blue-600 hover:bg-blue-700 text-white'

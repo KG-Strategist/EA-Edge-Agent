@@ -4,12 +4,11 @@ import { db, BespokeTag } from '../../lib/db';
 import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw, Tag } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown from '../ui/CreatableDropdown';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 const TAILWIND_COLORS = [
   { name: 'Red', value: 'bg-red-500/20 text-red-700 dark:text-red-400', bgClass: 'bg-red-500' },
@@ -34,6 +33,7 @@ const TAILWIND_COLORS = [
 
 
 export default function TagsTab() {
+  const { addNotification } = useNotification();
   const tags = useLiveQuery(() => db.bespoke_tags.toArray()) || [];
   const tagCategories = useLiveQuery(() => db.master_categories.where('type').equals('Tag Category').toArray()) || [];
   
@@ -47,8 +47,6 @@ export default function TagsTab() {
   
   const [selectedColor, setSelectedColor] = useState(TAILWIND_COLORS[10].value);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'bespoke_tags', filename: 'bespoke_tags' });
 
   const handleSort = (column: keyof BespokeTag) => {
     if (sortColumn === column) {
@@ -152,7 +150,6 @@ export default function TagsTab() {
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} />
               Add New
@@ -164,6 +161,16 @@ export default function TagsTab() {
       <DataTable
         data={sortedTags}
         keyField="id"
+        exportable={true}
+        exportFilename="niti-tags-export.json"
+        onImport={async (parsedData) => {
+          try {
+            await db.bespoke_tags.bulkPut(parsedData);
+            addNotification('Import successful!', 'success', 3000);
+          } catch {
+            addNotification('Failed to import data.', 'error');
+          }
+        }}
         emptyMessage={showArchived ? 'No archived tags.' : 'No tags found.'}
         searchable={true}
         searchPlaceholder="Search tags..."

@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen, Library, Globe } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, Shield, Sun, Moon, ChevronLeft, ChevronRight, Menu, X, Layers, Lightbulb, Database, Tag, Brain, Network, FileDown, Workflow, BookOpen, Library, Globe, Plane } from 'lucide-react';
 import { useStateContext } from '../../context/StateContext';
 import Logo from '../ui/Logo';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../lib/db';
+import { useNotification } from '../../context/NotificationContext';
 
 interface NavbarProps {
   currentView: string;
@@ -39,11 +42,41 @@ const adminTabs: Record<string, { id: string; label: string; icon: React.Compone
     { id: 'web-providers', label: 'Web Trainings', icon: Globe },
   ],
 };
+
 export default function Navbar({ currentView, setCurrentView, adminSubView, setAdminSubView }: NavbarProps) {
   const { theme, toggleTheme, identity } = useStateContext();
+  const { addNotification } = useNotification();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAdminSubmenuVisible, setIsAdminSubmenuVisible] = useState(true);
+
+  const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
+  const enableNetworkIntegrations = appSettings.find(s => s.key === 'enableNetworkIntegrations')?.value === true;
+  const isAirGapped = !enableNetworkIntegrations;
+
+  const handleToggleNetworkIntegrations = async (enabled: boolean) => {
+    if (!identity?.username) {
+      addNotification("Network access must be initialized via System Preferences > Network & Privacy.", "error");
+      return;
+    }
+    try {
+      const user = await db.users.where('pseudokey').equals(identity.username).first();
+      const hasConsent = user?.consentHistory?.some((c: any) => c.type === 'HYBRID_NETWORK' || c.type === 'HYBRID_LIMITED' || c.type === 'EXTERNAL_IDENTITY' || c.type === 'TELEMETRY');
+      
+      if (enabled && !hasConsent) {
+        addNotification("Network access must be initialized via System Preferences > Network & Privacy.", "error");
+        return;
+      }
+      
+      await db.app_settings.put({ key: 'enableNetworkIntegrations', value: enabled });
+      if (!enabled) {
+        window.dispatchEvent(new CustomEvent('APP_NETWORK_FORCE_KILLED'));
+      }
+      addNotification(enabled ? 'Network access enabled.' : 'Network access disabled. Active background processes terminated.', 'success', 3000);
+    } catch {
+      addNotification('Failed to update network settings.', 'error');
+    }
+  };
 
   // Keep submenu open when navigating within an admin view
   useEffect(() => {
@@ -154,20 +187,40 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
               })}
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-              <button
-                onClick={toggleTheme}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200 transition-colors text-sm font-medium"
-              >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-              </button>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={toggleTheme}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 ease-in-out text-sm font-medium"
+                >
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                  <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                </button>
+                <div className="flex-1 flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-all duration-200 ease-in-out text-sm font-medium">
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                    {isAirGapped ? <Plane size={16} className="text-blue-500" /> : <Network size={16} className="text-emerald-500" />}
+                    <span>{isAirGapped ? 'Offline' : 'Online'}</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={!isAirGapped}
+                      onChange={(e) => handleToggleNetworkIntegrations(e.target.checked)}
+                    />
+                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-500 peer-checked:bg-emerald-500 transition-all duration-200 ease-in-out"></div>
+                  </label>
+                </div>
+              </div>
+              <div className="mt-4 text-center">
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 opacity-60 whitespace-nowrap">© 2026 EANITI Foundation | EA-NITI™</span>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Desktop Sidebar */}
-      <nav className={`hidden md:flex md:flex-col ${isCollapsed ? 'md:w-20' : 'md:w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen flex-col transition-all duration-300 relative`}>
+      <nav className={`hidden md:flex md:flex-col ${isCollapsed ? 'md:w-20' : 'md:w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-screen sticky top-0 flex-col transition-all duration-300 z-30`}>
         <div className={`p-5 border-b border-gray-200 dark:border-gray-800 flex ${isCollapsed ? 'justify-center' : 'justify-between'} items-center h-[73px] relative`}>
           {!isCollapsed && (
             <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
@@ -224,17 +277,38 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
             );
           })}
         </div>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-          <button
-            onClick={toggleTheme}
-            title={isCollapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
-            className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-2'} w-full py-2 px-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium`}
-          >
-            {theme === 'dark' ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
-            {!isCollapsed && <span className="whitespace-nowrap">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
-          </button>
+        <div className="p-3 border-t border-gray-200 dark:border-gray-800 mt-auto">
+          <div className={`flex ${isCollapsed ? 'flex-col' : ''} gap-1.5 w-full`}>
+            <button
+              onClick={toggleTheme}
+              title={isCollapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
+              className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-2'} flex-1 py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 ease-in-out text-sm font-medium`}
+            >
+              {theme === 'dark' ? <Sun size={15} className="shrink-0" /> : <Moon size={15} className="shrink-0" />}
+              {!isCollapsed && <span className="whitespace-nowrap text-xs">{theme === 'dark' ? 'Light' : 'Dark'}</span>}
+            </button>
+            <button
+              onClick={() => handleToggleNetworkIntegrations(isAirGapped)}
+              title={isCollapsed ? (isAirGapped ? 'Offline Mode' : 'Online Mode') : undefined}
+              className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-2'} flex-1 py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-200 ease-in-out text-sm font-medium`}
+            >
+              {isAirGapped ? <Plane size={15} className="text-blue-500 shrink-0" /> : <Network size={15} className="text-emerald-500 shrink-0" />}
+              {!isCollapsed && <span className="whitespace-nowrap text-xs">{isAirGapped ? 'Offline' : 'Online'}</span>}
+            </button>
+          </div>
+          {!isCollapsed && (
+            <div className="mt-2 text-center">
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 opacity-60 whitespace-nowrap">© 2026 EANITI Foundation | EA-NITI™</span>
+            </div>
+          )}
         </div>
       </nav>
     </>
   );
 }
+
+
+
+
+
+

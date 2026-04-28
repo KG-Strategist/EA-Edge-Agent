@@ -5,18 +5,18 @@ import { Plus, Edit, Trash2, ChevronDown, ChevronUp, ArrowUpDown, Globe, Loader2
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import Select from 'react-select';
 import { reactSelectClassNames } from '../ui/CreatableDropdown';
 import { fetchFromProvider } from '../../lib/byoeGateway';
 import { decryptString } from '../../lib/cryptoVault';
 import { initAIEngine, analyzeWithHybridProvider } from '../../lib/aiEngine';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import StatusSelect from '../ui/StatusSelect';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function PrinciplesTab() {
+  const { addNotification } = useNotification();
   const principles = useLiveQuery(() => db.architecture_principles.toArray()) || [];
   const layers = useLiveQuery(() => db.architecture_layers.toArray()) || [];
   const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
@@ -44,8 +44,6 @@ export default function PrinciplesTab() {
   const [consentEndpoint, setConsentEndpoint] = useState('');
   const [isFetchingTrends, setIsFetchingTrends] = useState(false);
   const [trendProgress, setTrendProgress] = useState('');
-
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'architecture_principles', filename: 'architecture_principles' });
 
   const handleSort = (column: keyof ArchitecturePrinciple | 'layerName') => {
     if (sortColumn === column) {
@@ -255,7 +253,6 @@ export default function PrinciplesTab() {
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} />
               Add New
@@ -267,6 +264,16 @@ export default function PrinciplesTab() {
       <DataTable
         data={sortedPrinciples}
         keyField="id"
+        exportable={true}
+        exportFilename="niti-principles-export.json"
+        onImport={async (parsedData) => {
+          try {
+            await db.architecture_principles.bulkPut(parsedData);
+            addNotification('Import successful!', 'success', 3000);
+          } catch {
+            addNotification('Failed to import data.', 'error');
+          }
+        }}
         emptyMessage={showArchived ? 'No deprecated principles.' : 'No principles found.'}
         searchable={true}
         searchPlaceholder="Search principles..."

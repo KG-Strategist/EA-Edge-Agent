@@ -123,7 +123,7 @@ export default function Header({ currentView, setCurrentView, adminSubView }: He
   const breadcrumbs = getBreadcrumbs();
 
   return (
-    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 shrink-0 transition-colors duration-300">
+    <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 shrink-0 transition-colors duration-300">
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 flex-1 min-w-0 whitespace-nowrap truncate">
         {breadcrumbs.map((crumb, index) => (
           <React.Fragment key={index}>

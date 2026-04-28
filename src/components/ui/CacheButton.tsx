@@ -87,7 +87,7 @@ export default function CacheButton({ modelId, modelUrl, onPull, disabled, class
     <button
       onClick={handlePullClick}
       disabled={disabled}
-      className={`flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`flex items-center justify-center h-8 transition-all duration-200 ease-in-out px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       <Download className="w-4 h-4 mr-2" />
       Cache

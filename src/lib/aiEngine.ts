@@ -5,6 +5,8 @@ import { decryptString } from './cryptoVault';
 import { checkNetworkConsent } from '../utils/networkGuard';
 import { findSimilarReviews, findRelevantEnterpriseContext } from './ragEngine';
 import { queryEAContext } from './ragOrchestrator';
+import { globalArena } from './SemanticArena';
+import { DeepParsedQuery } from './StructuralVectoriser';
 
 export const DEFAULT_PRIMARY_MODEL_ID = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
 export const DEFAULT_TINY_MODEL_ID = 'gemma-2b-it-q4f16_1-MLC';
@@ -24,7 +26,7 @@ export async function getActiveModelId(type: 'Core' | 'Tiny'): Promise<string> {
       const fallback = models.find(m => m.type === 'PRIMARY' && m.isActive);
       return secondary?.name || fallback?.name || DEFAULT_TINY_MODEL_ID;
     }
-  } catch (e) {
+  } catch {
     return type === 'Core' ? DEFAULT_PRIMARY_MODEL_ID : DEFAULT_TINY_MODEL_ID;
   }
 }
@@ -221,7 +223,7 @@ export async function initAIEngine(
     let networkEnabled = false;
     try {
       networkEnabled = await checkNetworkConsent();
-    } catch (e) {
+    } catch {
       networkEnabled = false;
     }
     
@@ -572,35 +574,39 @@ export async function chatWithAgent(
 
   // ── 5. Local LLM — with tiered generative fallback ─────────────────
   // Priority: requested model → any cached model → RAG-only (no generation)
-  try {
+  
+  let targetModelId = target;
+  if (target === 'Primary EA Agent') {
+    targetModelId = (await db.app_settings.get('core-primary'))?.value?.id || DEFAULT_PRIMARY_MODEL_ID;
+  } else if (target === 'Tiny Triage Agent') {
+    targetModelId = (await db.app_settings.get('core-triage'))?.value?.id || DEFAULT_TINY_MODEL_ID;
+  }
+
+  const cachedModels = await scanLocalModels();
+  const available = cachedModels.filter(m => m.isCached);
+
+  if (available.length === 0) {
+    // No generative models cached at all → RAG-only
+    return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
+  }
+
+  const isTargetCached = available.some(m => m.modelId === targetModelId);
+
+  if (isTargetCached) {
     await initAIEngine(() => {}, false, target);
-  } catch (primaryError) {
-    Logger.warn(`[chatWithAgent] Primary target "${target}" unavailable. Scanning for cached fallback…`, primaryError);
+  } else {
+    Logger.warn(`[chatWithAgent] Primary target "${targetModelId}" unavailable. Scanning for cached fallback…`);
+    
+    // Prefer SECONDARY (tiny) over PRIMARY (heavy) for fast fallback
+    const tinyModelId = await getActiveModelId('Tiny');
+    const preferTiny = available.find(m => m.modelId === tinyModelId);
+    const fallbackId = preferTiny ? preferTiny.modelId : available[0].modelId;
 
-    // Scan all registered models for a cached alternative
-    let fallbackLoaded = false;
-    try {
-      const cachedModels = await scanLocalModels();
-      const available = cachedModels.filter(m => m.isCached);
-
-      if (available.length > 0) {
-        // Prefer SECONDARY (tiny) over PRIMARY (heavy) for fast fallback
-        const tinyModelId = await getActiveModelId('Tiny');
-        const preferTiny = available.find(m => m.modelId === tinyModelId);
-        const fallbackId = preferTiny ? preferTiny.modelId : available[0].modelId;
-
-        Logger.warn(`[chatWithAgent] Primary model unavailable. Falling back to cached model: ${fallbackId}…`);
-        await initAIEngine(() => {}, false, fallbackId);
-        fallbackLoaded = !!engine;
-      }
-    } catch (scanError) {
-      Logger.warn('[chatWithAgent] Fallback model scan failed:', scanError);
-    }
-
-    if (!fallbackLoaded) {
-      // No generative models cached at all → RAG-only
-      return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
-    }
+    Logger.warn(`[chatWithAgent] Primary model unavailable. Falling back to cached model: ${fallbackId}…`);
+    
+    // Pass the fallbackId directly to initAIEngine. Since we know it's cached, 
+    // it will NOT trigger the download/consent loop.
+    await initAIEngine(() => {}, false, fallbackId); 
   }
 
   if (!engine) {
@@ -628,56 +634,27 @@ export async function chatWithAgent(
  * Constructs a formatted RAG-only response when no generative LLM is loaded.
  * Merges lightweight Dexie context + vector store results into a readable reply.
  */
-async function buildRagOnlyResponse(
-  userPrompt: string,
+export async function buildRagOnlyResponse(
+  _userPrompt: string,
   eaContext: string,
   onUpdate: (text: string) => void
 ): Promise<string> {
-  onUpdate('🔍 _No generative model loaded — searching local knowledge base…_\n\n');
-
-  let sections: string[] = [];
-
-  // Lightweight Dexie context (principles + BIAN domains)
-  if (eaContext) {
-    sections.push(eaContext);
+  // 1. Check for Deterministic Guardrail Block
+  if (eaContext.includes('[CRITICAL GUARDRAIL INTERCEPT]')) {
+    onUpdate(eaContext);
+    return eaContext;
   }
 
-  // Vector store context
-  try {
-    const [historical, enterprise] = await Promise.all([
-      findSimilarReviews(userPrompt),
-      findRelevantEnterpriseContext(userPrompt)
-    ]);
-
-    if (enterprise.length > 0) {
-      sections.push(
-        `**📂 Proprietary Enterprise Context** _(${enterprise.length} result${enterprise.length > 1 ? 's' : ''})_\n\n` +
-        enterprise.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
-      );
-    }
-    if (historical.length > 0) {
-      sections.push(
-        `**📜 Historical Architectural Decisions** _(${historical.length} result${historical.length > 1 ? 's' : ''})_\n\n` +
-        historical.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
-      );
-    }
-  } catch (ragErr) {
-    Logger.warn('[buildRagOnlyResponse] Vector search failed:', ragErr);
+  // 2. Check for Empty Context
+  if (!eaContext || eaContext.length === 0) {
+    const fallbackMsg = `⚡ **Neuro-Symbolic Fallback**\n\nI currently have no structural data, policies, or architectural blueprints in my local vault regarding your query. Please adjust your search or import the relevant Service Domains into the EA-NITI database.`;
+    onUpdate(fallbackMsg);
+    return fallbackMsg;
   }
 
-  let response: string;
-  if (sections.length > 0) {
-    response = `> **⚡ RAG-Only Mode** — No generative LLM is loaded. Showing raw knowledge base results.\n\n---\n\n` + sections.join('\n\n---\n\n');
-  } else {
-    response =
-      `> **⚡ RAG-Only Mode**\n\n` +
-      `No relevant results found in the local knowledge base for your query.\n\n` +
-      `**To unlock full AI analysis**, download a model via **Admin → System → Model Sandbox**, ` +
-      `or sideload weights from USB in **Network & Privacy** settings.`;
-  }
-
-  onUpdate(response);
-  return response;
+  // 3. Output the Synthesized Tier-3 Response (clean — no markdown header)
+  onUpdate(eaContext);
+  return eaContext;
 }
 
 export async function analyzeWebTrends(
@@ -713,7 +690,7 @@ Do not include any markdown formatting or explanation, just the raw JSON array.`
     reply += content;
     onUpdate(reply);
   }
-
+  distillTripletsFromResponse(reply);
   return reply;
 }
 
@@ -742,7 +719,7 @@ export async function analyzeWithHybridProvider(
         }
 
         return JSON.stringify(parsed);
-      } catch (e) {
+      } catch {
         // Treat as text response
         return webData;
       }
@@ -754,4 +731,19 @@ export async function analyzeWithHybridProvider(
     onUpdate(`Error in hybrid analysis: ${message}`);
     throw new Error(message);
   }
+}
+
+// --- LLM Distillation Gatekeeper ---
+export function distillTripletsFromResponse(responseText: string): void {
+  try {
+    const jsonMatch = responseText.match(/\[\s*\{.*?\}\s*\]/s);
+    if (!jsonMatch) return;
+    const tripletArray = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(tripletArray)) return;
+    for (const triplet of tripletArray) {
+      if (triplet.s && triplet.i && triplet.t) {
+        globalArena.addMemory({ Subject: triplet.s, Intent: triplet.i, Target: triplet.t } as DeepParsedQuery, 2);
+      }
+    }
+  } catch { /* best-effort */ }
 }

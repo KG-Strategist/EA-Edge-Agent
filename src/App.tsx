@@ -14,13 +14,12 @@ import ModelConsentModal from './components/ui/ModelConsentModal';
 import BackupConsentModal from './components/ui/BackupConsentModal';
 import NetworkGatekeeperModal from './components/ui/NetworkGatekeeperModal';
 import { seedDatabase } from './lib/seedData';
+import { globalArena, parser } from './lib/SemanticArena';
 
 function AppContent() {
   const { identity, setIdentity } = useStateContext();
   const [currentView, setCurrentView] = useState('dashboard');
   const [adminSubView, setAdminSubView] = useState('layers');
-
-  const [_currentSessionId, setCurrentSessionId] = useState<number | null>(null);
 
   // Index Redirect Mechanism (Router-like behavior)
   useEffect(() => {
@@ -35,8 +34,18 @@ function AppContent() {
     }
   }, [currentView, adminSubView]);
 
-  useEffect(() => {
-    seedDatabase();
+useEffect(() => {
+  const bootEngine = async () => {
+    try {
+      await parser.loadLexicon();
+      await seedDatabase();
+      await globalArena.loadFromDB();
+    } catch (err) {
+      console.warn('[App] Failed to boot SemanticArena:', err);
+    }
+  };
+
+  bootEngine();
 
     const worker = new Worker(new URL('./workers/distillation.worker.ts', import.meta.url), { type: 'module' });
     (window as any).distillationWorker = worker;
@@ -65,9 +74,9 @@ function AppContent() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard setCurrentView={setCurrentView} setCurrentSessionId={setCurrentSessionId} />;
+        return <Dashboard />;
       case 'reviews':
-        return <ArchitectureReviews setCurrentView={setCurrentView} setCurrentSessionId={setCurrentSessionId} />;
+        return <ArchitectureReviews />;
       case 'threat':
         return <ThreatModeling />;
       case 'expert-config':
@@ -77,27 +86,27 @@ function AppContent() {
       case 'admin':
         return <AdminPanel adminSubView={adminSubView} setAdminSubView={setAdminSubView} />;
       default:
-        return <Dashboard setCurrentView={setCurrentView} setCurrentSessionId={setCurrentSessionId} />;
+        return <Dashboard />;
     }
   };
 
   return (
     <>
-      <div className="h-screen overflow-hidden flex flex-col md:flex-row bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+      <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
         <Navbar 
           currentView={currentView} 
           setCurrentView={setCurrentView} 
           adminSubView={adminSubView}
           setAdminSubView={setAdminSubView}
         />
-        <div className="flex-1 flex flex-col overflow-hidden mt-16 md:mt-0">
+        <div className="flex-1 flex flex-col mt-16 md:mt-0">
           <Header 
             currentView={currentView} 
             setCurrentView={setCurrentView} 
             adminSubView={adminSubView}
             setAdminSubView={setAdminSubView}
           />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto pb-12">
               {renderView()}
             </div>

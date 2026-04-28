@@ -107,10 +107,10 @@ export default function TemplatesTab() {
                   </div>
                </div>
                <div className="flex items-center gap-2">
-                  <button onClick={() => handleEdit(tmpl)} className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <button onClick={() => handleEdit(tmpl)} className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700" title="Edit Template" aria-label="Edit Template">
                     <Edit2 size={16} />
                   </button>
-                  <button onClick={() => handleDelete(tmpl.id!)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <button onClick={() => handleDelete(tmpl.id!)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700" title="Delete Template" aria-label="Delete Template">
                     <Trash2 size={16} />
                   </button>
                </div>
@@ -133,7 +133,7 @@ export default function TemplatesTab() {
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                 {editingId === -1 ? 'Create Report Template' : 'Edit Template'}
               </h3>
-              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300" title="Close" aria-label="Close">
                 <X size={24} />
               </button>
             </div>
@@ -147,6 +147,9 @@ export default function TemplatesTab() {
                       className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                       value={formData.name || ''}
                       onChange={e => setFormData({...formData, name: e.target.value})}
+                      placeholder="Template Name"
+                      title="Template Name"
+                      aria-label="Template Name"
                     />
                  </div>
                  <div>
@@ -173,7 +176,7 @@ export default function TemplatesTab() {
                  
                  <div className="mt-6">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
-                    <select name="status" value={formData.status || 'Active'} onChange={e => setFormData({ ...formData, status: e.target.value as any })} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
+                    <select name="status" value={formData.status || 'Active'} onChange={e => setFormData({ ...formData, status: e.target.value as any })} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" title="Status" aria-label="Status">
                       <option value="Draft">Draft</option>
                       <option value="Active">Active</option>
                       <option value="Needs Review">Needs Review</option>

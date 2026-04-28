@@ -7,13 +7,13 @@ import CreatableDropdown from '../ui/CreatableDropdown';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { useMasterData } from '../../hooks/useMasterData';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function LayersTab() {
+  const { addNotification } = useNotification();
   const layers = useLiveQuery(() => db.architecture_layers.toArray()) || [];
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,7 +34,6 @@ export default function LayersTab() {
   const coreLayersData = useMasterData('Core Layer');
   const contextLayersData = useMasterData('Context Layer');
   const abstractionLevelsData = useMasterData('Abstraction Level');
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'architecture_layers', filename: 'architecture_layers' });
 
   const handleSort = (column: keyof ArchitectureLayer) => {
     if (sortColumn === column) {
@@ -146,7 +145,6 @@ export default function LayersTab() {
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} />
               Add New
@@ -158,120 +156,123 @@ export default function LayersTab() {
       <DataTable
         data={sortedLayers}
         keyField="id"
-        emptyMessage={showArchived ? 'No archived layers.' : 'No layers found. Click "Add New" to create one.'}
-        searchable={true}
-        searchPlaceholder="Search layers..."
-        searchFields={['name', 'coreLayer', 'contextLayer', 'description']}
-        pagination={true}
-        itemsPerPage={10}
-        containerClassName="flex-1 border-0 shadow-none"
-        columns={[
-          {
-            key: 'name',
-            label: (
-              <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
-              </button>
-            ),
-            className: "text-gray-900 dark:text-gray-200 font-medium"
-          },
-          {
-            key: 'coreLayer',
-            label: (
-              <button onClick={() => handleSort('coreLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                Core Layer <ArrowUpDown size={14} className={sortColumn === 'coreLayer' ? 'text-blue-500' : 'opacity-50'} />
-              </button>
-            ),
-            className: "text-gray-600 dark:text-gray-300 text-sm",
-            render: (row) => (
-              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md text-xs border border-gray-200 dark:border-gray-700">
-                {row.coreLayer || 'None'}
-              </span>
-            )
-          },
-          {
-            key: 'contextLayer',
-            label: (
-              <button onClick={() => handleSort('contextLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                Context <ArrowUpDown size={14} className={sortColumn === 'contextLayer' ? 'text-blue-500' : 'opacity-50'} />
-              </button>
-            ),
-            className: "text-gray-600 dark:text-gray-300 text-sm hidden lg:table-cell",
-            render: (row) => <span>{row.contextLayer || '-'}</span>
-          },
-          {
-            key: 'abstractionLevels',
-            label: 'Abstraction',
-            className: "text-gray-600 dark:text-gray-300 text-sm hidden xl:table-cell",
-            render: (row) => <span>{row.abstractionLevels || '-'}</span>
-          },
-          {
-            key: 'description',
-            label: 'Description',
-            className: "text-gray-600 dark:text-gray-300 text-sm max-w-[200px] truncate hidden lg:table-cell",
-            render: (row) => <span title={row.description}>{row.description || '-'}</span>
-          },
-          {
-            key: 'status',
-            label: (
-              <button onClick={() => handleSort('status' as any)} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
-                Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
-              </button>
-            ),
-            render: (row) => (
-              showArchived ? (
-                <StatusToggle
-                  currentStatus="Deprecated"
-                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                  onChange={() => { }}
-                  readonly={true}
-                />
-              ) : (
-                <StatusToggle
-                  currentStatus={row.status || 'Active'}
-                  statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
-                  onChange={(s) => handleStatusChange(row, s)}
-                />
-              )
-            )
-          }
-        ]}
-        actions={
-          showArchived
-            ? [
-              {
-                label: 'Restore',
-                icon: <RotateCcw size={16} />,
-                onClick: (row) => handleRestore(row.id!),
-                className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
-                title: () => 'Restore'
-              },
-              {
-                label: 'Delete Permanently',
-                icon: <Trash2 size={16} />,
-                onClick: (row) => setItemToDelete(row.id!),
-                className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
-                title: () => 'Delete Permanently'
-              }
-            ]
-            : [
-              {
-                label: 'Edit',
-                icon: <Edit size={16} />,
-                onClick: (row) => openModal(row),
-                className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
-                title: () => 'Edit layer'
-              },
-              {
-                label: 'Archive',
-                icon: <Archive size={16} />,
-                onClick: (row) => handleArchive(row.id!),
-                className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
-                title: () => 'Archive'
-              }
-            ]
-        }
-      />
+        exportable={true}
+        exportFilename="niti-layers-export.json"
+onImport={async (parsedData) => {
+  try {
+    await db.architecture_layers.bulkPut(parsedData);
+    addNotification('Import successful!', 'success', 3000);
+  } catch {
+    addNotification('Import failed', 'error');
+  }
+}}
+searchable={true}
+searchPlaceholder="Search layers..."
+searchFields={['name', 'coreLayer', 'contextLayer', 'description']}
+pagination={true}
+itemsPerPage={10}
+containerClassName="flex-1 border-0 shadow-none"
+columns={[
+  {
+    key: 'name',
+    label: (
+      <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+        Name <ArrowUpDown size={14} className={sortColumn === 'name' ? 'text-blue-500' : 'opacity-50'} />
+      </button>
+    ),
+    className: "text-gray-900 dark:text-gray-200 font-medium"
+  },
+  {
+    key: 'coreLayer',
+    label: (
+      <button onClick={() => handleSort('coreLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+        Core Layer <ArrowUpDown size={14} className={sortColumn === 'coreLayer' ? 'text-blue-500' : 'opacity-50'} />
+      </button>
+    ),
+    className: "text-gray-900 dark:text-gray-200"
+  },
+  {
+    key: 'contextLayer',
+    label: (
+      <button onClick={() => handleSort('contextLayer')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+        Context <ArrowUpDown size={14} className={sortColumn === 'contextLayer' ? 'text-blue-500' : 'opacity-50'} />
+      </button>
+    ),
+    className: "text-gray-900 dark:text-gray-200"
+  },
+  {
+    key: 'status',
+    label: (
+      <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors">
+        Status <ArrowUpDown size={14} className={sortColumn === 'status' as any ? 'text-blue-500' : 'opacity-50'} />
+      </button>
+    ),
+    className: "text-gray-900 dark:text-gray-200"
+  },
+  {
+    key: 'actions',
+    label: 'Actions',
+render: (row) => (
+        <div className="flex items-center gap-2">
+          <StatusToggle
+            currentStatus={row.status || 'Active'}
+            statusOptions={['Draft', 'Active', 'Needs Review', 'Deprecated']}
+            onChange={(s) => handleStatusChange(row, s)}
+          />
+        </div>
+      )
+  }
+]}
+actions={
+  showArchived
+  ? [
+      {
+        label: 'Restore',
+        icon: <RotateCcw size={16} />,
+        onClick: (row) => handleRestore(row.id!),
+        className: 'text-gray-400 hover:text-green-600 dark:hover:text-green-400',
+        title: () => 'Restore'
+      },
+      {
+        label: 'Delete Permanently',
+        icon: <Trash2 size={16} />,
+        onClick: (row) => setItemToDelete(row.id!),
+        className: 'text-gray-400 hover:text-red-600 dark:hover:text-red-400',
+        title: () => 'Delete Permanently'
+      },
+      {
+        label: 'Edit',
+        icon: <Edit size={16} />,
+        onClick: (row) => openModal(row),
+        className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+        title: () => 'Edit'
+      },
+      {
+        label: 'Archive',
+        icon: <Archive size={16} />,
+        onClick: (row) => handleArchive(row.id!),
+        className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+        title: () => 'Archive'
+      }
+    ]
+  : [
+      {
+        label: 'Edit',
+        icon: <Edit size={16} />,
+        onClick: (row) => openModal(row),
+        className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400',
+        title: () => 'Edit'
+      },
+      {
+        label: 'Archive',
+        icon: <Archive size={16} />,
+        onClick: (row) => handleArchive(row.id!),
+        className: 'text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
+        title: () => 'Archive'
+      }
+    ]
+}
+/>
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

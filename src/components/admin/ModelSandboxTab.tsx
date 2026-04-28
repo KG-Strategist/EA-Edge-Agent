@@ -9,6 +9,7 @@ import FolderUploadButton from '../ui/FolderUploadButton';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
 import { Logger } from '../../lib/logger';
+import { useNotification } from '../../context/NotificationContext';
 
 function EngineDiagnostics({ selectedModelId }: { selectedModelId?: string }) {
   const [logs, setLogs] = useState<string[]>([]);
@@ -32,7 +33,7 @@ function EngineDiagnostics({ selectedModelId }: { selectedModelId?: string }) {
 
     const handleProgress = (e: Event) => {
       const customEvent = e as CustomEvent;
-      const { text, message, progress: _progress } = customEvent.detail;
+      const { text, message } = customEvent.detail;
       const logText = message || text;
       if (logText) {
         setLogs(prev => {
@@ -109,6 +110,7 @@ function EngineDiagnostics({ selectedModelId }: { selectedModelId?: string }) {
 }
 
 export default function ModelSandboxTab() {
+  const { addNotification } = useNotification();
   const models = useLiveQuery(() => db.model_registry.toArray());
   const masterCategories = useLiveQuery(() => db.master_categories.toArray()) || [];
   
@@ -338,87 +340,102 @@ export default function ModelSandboxTab() {
           searchable={true}
           searchPlaceholder="Search model definition, type, or source..."
           searchFields={['name', 'engineType', 'contextSource']}
-          columns={[
-            {
-              key: 'engineType',
-              label: 'Engine Type',
-              render: (row) => (
-                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${row.type === 'PRIMARY' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                  {row.engineType || row.type}
-                </span>
-              )
-            },
-            {
-              key: 'name',
-              label: 'Model Definition',
-              render: (row) => (
-                <span className="font-mono font-medium text-xs text-gray-900 dark:text-gray-100 line-clamp-2" title={row.name}>
-                  {row.name}
-                </span>
-              )
-            },
-            {
-              key: 'contextSource',
-              label: 'Context Source',
-              render: (row) => (
-                <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-                  {row.isLocalhost ? <Server className="w-3 h-3 text-green-500" /> : <div className="w-2 h-2 rounded-full bg-yellow-500" />} 
-                  {row.contextSource || (row.isLocalhost ? 'Localhost (Air-Gapped)' : 'External URI')}
-                </span>
-              )
-            },
-            {
-              key: 'contextWindow',
-              label: 'Context Window',
-              render: (row) => (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {row.contextWindow || 'N/A'}
-                </span>
-              )
-            },
-            {
-              key: 'allowDistillation',
-              label: 'Distillation Target',
-              render: (row) => {
-                if (row.type === 'PRIMARY') {
-                  return <span className="text-xs text-gray-400 italic">Self (Target)</span>;
-                }
-                return editTargetId === row.id ? (
-                  <select 
-                    value={row.allowDistillation ? 'Local Dataset (JSONL)' : 'Disabled/None'}
-                    onChange={async (e) => {
-                      await toggleDistillation(row.id!, e.target.value === 'Local Dataset (JSONL)');
-                      setEditTargetId(null);
-                    }}
-                    onBlur={() => setEditTargetId(null)}
-                    className="text-xs p-1 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100"
-                    aria-label="Distillation Options"
-                    title="Distillation Options"
-                    autoFocus
-                  >
-                    <option>Disabled/None</option>
-                    <option>Local Dataset (JSONL)</option>
-                  </select>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      row.allowDistillation 
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
-                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                    }`}>
-                      {row.allowDistillation ? 'Local Dataset (JSONL)' : 'Disabled/None'}
-                    </span>
-                    <button onClick={() => setEditTargetId(row.id!)} className="text-[10px] underline text-blue-500 hover:text-blue-700">
-                      Configure
-                    </button>
-                  </div>
-                );
-              }
-            }
-          ]}
-          emptyMessage="No models available."
-          containerClassName="flex flex-col"
-        />
+          exportable={true}
+          exportFilename="niti-models.json"
+          onImport={async (parsedData) => {
+            try {
+              await db.model_registry.bulkPut(parsedData);
+addNotification('Import successful!', 'success', 3000);
+  } catch {
+    addNotification('Import failed', 'error');
+  }
+}}
+columns={[
+  {
+    key: 'engineType',
+    label: 'Engine Type',
+    sortable: true,
+    render: (row) => (
+      <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${row.type === 'PRIMARY' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+        {row.engineType || row.type}
+      </span>
+    )
+  },
+  {
+    key: 'name',
+    label: 'Model Definition',
+    sortable: true,
+    render: (row) => (
+      <span className="font-mono font-medium text-xs text-gray-900 dark:text-gray-100 line-clamp-2" title={row.name}>
+        {row.name}
+      </span>
+    )
+  },
+  {
+    key: 'contextSource',
+    label: 'Context Source',
+    sortable: true,
+    render: (row) => (
+      <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+        {row.isLocalhost ? <Server className="w-3 h-3 text-green-500" /> : <div className="w-2 h-2 rounded-full bg-yellow-500" />}
+        {row.contextSource || (row.isLocalhost ? 'Localhost (Air-Gapped)' : 'External URI')}
+      </span>
+    )
+  },
+  {
+    key: 'contextWindow',
+    label: 'Context Window',
+    sortable: true,
+    render: (row) => (
+      <span className="text-xs text-gray-500 dark:text-gray-400">
+        {row.contextWindow || 'N/A'}
+      </span>
+    )
+  },
+  {
+    key: 'allowDistillation',
+    label: 'Distillation Target',
+    sortable: true,
+    render: (row) => {
+      if (row.type === 'PRIMARY') {
+        return <span className="text-xs text-gray-400 italic">Self (Target)</span>;
+      }
+      return editTargetId === row.id ? (
+        <select
+          value={row.allowDistillation ? 'Local Dataset (JSONL)' : 'Disabled/None'}
+          onChange={async (e) => {
+            await toggleDistillation(row.id!, e.target.value === 'Local Dataset (JSONL)');
+            setEditTargetId(null);
+          }}
+          onBlur={() => setEditTargetId(null)}
+          className="text-xs p-1 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100"
+          aria-label="Distillation Options"
+          title="Distillation Options"
+          autoFocus
+        >
+          <option>Disabled/None</option>
+          <option>Local Dataset (JSONL)</option>
+        </select>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+            row.allowDistillation
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+          }`}>
+            {row.allowDistillation ? 'Local Dataset (JSONL)' : 'Disabled/None'}
+          </span>
+          <button onClick={() => setEditTargetId(row.id!)} className="text-[10px] underline text-blue-500 hover:text-blue-700">
+            Configure
+          </button>
+        </div>
+      );
+    }
+  }
+]}
+emptyMessage="No models available."
+containerClassName="flex flex-col"
+/>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -531,10 +548,22 @@ export default function ModelSandboxTab() {
               searchable={true}
               searchPlaceholder="Filter sideloaded models..."
               searchFields={['name']}
+              exportable={true}
+              exportFilename="niti-sideloaded-models.json"
+              onImport={async (parsedData) => {
+                try {
+                  await db.model_registry.bulkPut(parsedData);
+                  addNotification('Import successful!', 'success', 3000);
+                } catch (_error: any) {
+                  console.error('Import failed', _error);
+                  addNotification('Import failed', 'error', 3000);
+                }
+              }}
               columns={[
                 {
                   key: 'name',
                   label: 'Alias',
+                  sortable: true,
                   render: (row) => (
                     <span className="font-mono text-xs text-gray-900 dark:text-gray-100">
                       {row.name}
@@ -544,6 +573,7 @@ export default function ModelSandboxTab() {
                 {
                   key: 'modelUrl',
                   label: 'Cache Size',
+                  sortable: true,
                   render: () => <span className="text-xs text-gray-500 dark:text-gray-400">Cached</span>
                 }
               ]}

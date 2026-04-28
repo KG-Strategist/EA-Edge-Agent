@@ -197,6 +197,17 @@ export async function seedDatabase() {
     const tagsCount = await db.bespoke_tags.count();
     const workflowsCount = await db.review_workflows.count();
     const reportTemplatesCount = await db.report_templates.count();
+    const memoryCount = await db.semantic_memory.count();
+
+    if (memoryCount === 0 && (seedData as any).semantic_memory) {
+      const mappedMemory = (seedData as any).semantic_memory.map((item: any) => ({
+        text: item.Payload,
+        embedding: [], // Ignored by StructuralVectoriser, but satisfies schema
+        metadata: { intent: item.Intent, entity: item.Entity },
+        createdAt: new Date()
+      }));
+      await db.semantic_memory.bulkAdd(mappedMemory);
+    }
 
     if (workflowsCount === 0 && seedData.review_workflows) {
       const mappedWorkflows = seedData.review_workflows.map(wf => ({
@@ -230,8 +241,8 @@ export async function seedDatabase() {
       ]);
     }
 
-    if (masterCategoriesCount === 0) {
-      await db.master_categories.bulkAdd([
+if (masterCategoriesCount === 0) {
+  await db.master_categories.bulkAdd((seedData as any).master_categories || [
         { type: 'Review Type', name: 'New System Implementation (NSI)', status: 'Active' },
         { type: 'Review Type', name: 'Enhancement Review (ER)', status: 'Active' },
         { type: 'Application Tier', name: 'Tier 1', status: 'Active' },
@@ -620,9 +631,20 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
         }
       });
     }
-    // ─────────────────────────────────────────────────────────────────────────────
+// ─── Genesis Seeder: Semantic Memory from JSON Corpus ───────────────────────
+const CURRENT_CORPUS_VERSION = 5001; // FORCE RE-SEED
 
-    return true;
+async function seedSemanticMemory() {
+  // Baseline corpus is loaded directly into RAM via SemanticArena.loadCompiledBinary()
+  // No Dexie insertion needed. Guardrails managed exclusively via UI.
+  const settings = await db.app_settings.get('seedVersion');
+  if (!settings || settings.value < CURRENT_CORPUS_VERSION) {
+    await db.app_settings.put({ key: 'seedVersion', value: CURRENT_CORPUS_VERSION });
+  }
+}
+
+await seedSemanticMemory();
+return true;
   } catch (error) {
     Logger.info('Failed to seed database:', error);
     return false;

@@ -153,10 +153,10 @@ export default function WorkflowTab() {
                </div>
                </div>
                <div className="flex items-center gap-2">
-                  <button onClick={() => handleEdit(wf)} className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <button onClick={() => handleEdit(wf)} className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700" title="Edit Pipeline" aria-label="Edit Pipeline">
                     <Edit2 size={16} />
                   </button>
-                  <button onClick={() => handleDelete(wf.id!)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <button onClick={() => handleDelete(wf.id!)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700" title="Delete Pipeline" aria-label="Delete Pipeline">
                     <Trash2 size={16} />
                   </button>
                </div>
@@ -199,7 +199,7 @@ export default function WorkflowTab() {
                 <Settings2 className="text-blue-500" />
                 {editingId === -1 ? 'Build Governance Pipeline' : 'Edit Pipeline'}
               </h3>
-              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300" title="Close" aria-label="Close">
                 <X size={24} />
               </button>
             </div>
@@ -214,6 +214,9 @@ export default function WorkflowTab() {
                         className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                         value={formData.name || ''}
                         onChange={e => setFormData({...formData, name: e.target.value})}
+                        placeholder="Pipeline Name"
+                        title="Pipeline Name"
+                        aria-label="Pipeline Name"
                       />
                    </div>
                    <div>
@@ -222,6 +225,9 @@ export default function WorkflowTab() {
                         className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                         value={formData.description || ''}
                         onChange={e => setFormData({...formData, description: e.target.value})}
+                        placeholder="Internal Description"
+                        title="Internal Description"
+                        aria-label="Internal Description"
                       />
                    </div>
                    <div>
@@ -249,7 +255,7 @@ export default function WorkflowTab() {
                    
                    <div className="mt-4">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
-                      <select name="status" value={formData.status || 'Active'} onChange={e => setFormData({ ...formData, status: e.target.value as any })} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500">
+                      <select name="status" value={formData.status || 'Active'} onChange={e => setFormData({ ...formData, status: e.target.value as any })} className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" title="Status" aria-label="Status">
                         <option value="Draft">Draft</option>
                         <option value="Active">Active</option>
                         <option value="Needs Review">Needs Review</option>
@@ -287,7 +293,7 @@ export default function WorkflowTab() {
                                            className="font-semibold text-gray-900 dark:text-white bg-transparent outline-none border-b border-transparent focus:border-blue-500 w-full"
                                            placeholder="Stage Name (e.g., ABR)"
                                        />
-                                       <button onClick={() => removeStage(idx)} className="text-gray-400 hover:text-red-500">
+                                       <button onClick={() => removeStage(idx)} className="text-gray-400 hover:text-red-500" title="Remove Stage" aria-label="Remove Stage">
                                            <X size={16} />
                                        </button>
                                    </div>
@@ -299,6 +305,8 @@ export default function WorkflowTab() {
                                                value={stage.linkedPromptTemplateId || ''}
                                                onChange={e => updateStage(idx, { linkedPromptTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
                                                className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                                               title="AI Prompt Instruction"
+                                               aria-label="AI Prompt Instruction"
                                            >
                                                <option value="">-- No specific prompt --</option>
                                                {promptTemplates.map(pt => (
@@ -312,6 +320,8 @@ export default function WorkflowTab() {
                                                value={stage.linkedReportTemplateId || ''}
                                                onChange={e => updateStage(idx, { linkedReportTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
                                                className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                                               title="Output Templating"
+                                               aria-label="Output Templating"
                                            >
                                                <option value="">-- Render natural Output --</option>
                                                {reportTemplates.map(rt => (

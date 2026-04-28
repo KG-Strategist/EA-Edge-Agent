@@ -46,7 +46,7 @@ export default function SafeMermaid({ chart }: SafeMermaidProps) {
           setSvg(svg);
           setIsLoading(false);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) {
           setError(chart);
           setIsLoading(false);

@@ -15,9 +15,8 @@ export async function constantTimeCompare(a: string, b: string): Promise<boolean
   // If lengths don't match, still do the full comparison to avoid leaking length info
   if (a.length !== b.length) {
     // Do a dummy comparison to waste time consistent with matching operation
-    let dummy = 0;
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
-      dummy |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+      void ((a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0));
     }
     // Add timing variance to obscure the early mismatch
     const variance = Math.floor(Math.random() * 15); // 0-15ms random delay

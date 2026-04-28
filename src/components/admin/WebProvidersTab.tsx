@@ -6,8 +6,10 @@ import ConfirmModal from '../ui/ConfirmModal';
 import DataTable from '../ui/DataTable';
 import PageHeader from '../ui/PageHeader';
 import { encryptString, decryptString, getVaultKey } from '../../lib/cryptoVault';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function WebProvidersTab() {
+  const { addNotification } = useNotification();
   const providers = useLiveQuery(() => db.network_integrations.toArray()) || [];
   
   const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
@@ -344,22 +346,33 @@ export default function WebProvidersTab() {
           <DataTable 
             data={providers}
             keyField="id"
+            exportable={true}
+            exportFilename="niti-web-providers.json"
+            onImport={async (parsedData) => {
+              try {
+                await db.network_integrations.bulkPut(parsedData);
+                addNotification('Import successful!', 'success', 3000);
+              } catch {
+                addNotification('Import failed.', 'error');
+              }
+            }}
             emptyMessage="No providers configured. Add your first provider."
             columns={[
-                { key: 'displayName', label: 'Display Name', render: (row) => <span className="font-medium text-gray-900 dark:text-gray-200">{row.displayName}</span> },
-                { key: 'providerType', label: 'Type', className: 'text-gray-600 dark:text-gray-400' },
-                { key: 'endpointUrl', label: 'Endpoint', className: 'text-gray-600 dark:text-gray-400 text-xs truncate max-w-xs' },
+                { key: 'displayName', label: 'Display Name', sortable: true, render: (row) => <span className="font-medium text-gray-900 dark:text-gray-200">{row.displayName}</span> },
+                { key: 'providerType', label: 'Type', sortable: true, className: 'text-gray-600 dark:text-gray-400' },
+                { key: 'endpointUrl', label: 'Endpoint', sortable: true, className: 'text-gray-600 dark:text-gray-400 text-xs truncate max-w-xs' },
                 { 
                   key: 'status', 
                   label: 'Status', 
+                  sortable: true,
                   render: (row) => (
                     <span className={`inline-block px-2 py-1 rounded text-xs ${row.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
                       {row.status === 'active' ? 'Active' : 'Inactive'}
                     </span>
                   ) 
                 },
-                { key: 'isDefault', label: 'Default', render: (row) => row.isDefault ? <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs">Default</span> : <button onClick={() => row.id && handleSetDefault(row.id)} className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Set default</button> },
-                { key: 'createdAt', label: 'Created', className: 'text-gray-600 dark:text-gray-400', render: (row) => new Date(row.createdAt).toLocaleDateString() }
+                { key: 'isDefault', label: 'Default', sortable: true, render: (row) => row.isDefault ? <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs">Default</span> : <button onClick={() => row.id && handleSetDefault(row.id)} className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Set default</button> },
+                { key: 'createdAt', label: 'Created', sortable: true, className: 'text-gray-600 dark:text-gray-400', render: (row) => new Date(row.createdAt).toLocaleDateString() }
               ]}
               actions={[
                 { label: 'Edit Provider', icon: <Edit size={16} />, onClick: handleEditProvider, className: 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400', title: () => 'Edit Provider' },

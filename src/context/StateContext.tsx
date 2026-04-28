@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ServiceDomain, BespokeTag } from '../lib/db';
+
+export type ConsentModalType = 'network_upgrade' | 'save_sso' | 'save_ldap' | 'save_oauth';
 
 export interface UserIdentity {
   mode: 'Hybrid' | 'AirGapped';
@@ -40,8 +42,13 @@ interface StateContextType {
   setDownloadState: React.Dispatch<React.SetStateAction<GlobalDownloadState>>;
   executionMode: string;
   setExecutionMode: (mode: string) => void;
+  showConsentModal?: boolean;
+  setShowConsentModal?: (show: boolean) => void;
+  consentModalType?: ConsentModalType;
+  setConsentModalType?: (type: ConsentModalType) => void;
+  pendingConsentAction?: (() => Promise<void>) | null;
+  setPendingConsentAction?: React.Dispatch<React.SetStateAction<(() => Promise<void>) | null>>;
 }
-
 const StateContext = createContext<StateContextType | undefined>(undefined);
 
 export function StateProvider({ children, initialIdentity = null }: { children: ReactNode, initialIdentity?: UserIdentity | null }) {
@@ -98,24 +105,25 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
     localStorage.setItem('ea-theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
+  }, []);
 
-  const activeBianDomains = useLiveQuery(() => db.service_domains.where('status').equals('Active').toArray()) || [];
-  const activeTags = useLiveQuery(() => db.bespoke_tags.filter(t => t.status !== 'Deprecated').toArray()) || [];
+  const activeBianDomainsRaw = useLiveQuery(() => db.service_domains.where('status').equals('Active').toArray());
+  const activeTagsRaw = useLiveQuery(() => db.bespoke_tags.filter(t => t.status !== 'Deprecated').toArray());
 
-  return (
-    <StateContext.Provider
-      value={{
+  const memoizedActiveBianDomains = useMemo(() => activeBianDomainsRaw || [], [activeBianDomainsRaw]);
+  const memoizedActiveTags = useMemo(() => activeTagsRaw || [], [activeTagsRaw]);
+
+  const contextValue = useMemo(() => ({
         pendingReviews,
         setPendingReviews,
         selectedDomains,
         setSelectedDomains,
         systemHealth,
         setSystemHealth,
-        activeBianDomains,
-        activeTags,
+        activeBianDomains: memoizedActiveBianDomains,
+        activeTags: memoizedActiveTags,
         theme,
         toggleTheme,
         identity,
@@ -124,8 +132,27 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
         setDownloadState,
         executionMode,
         setExecutionMode,
-      }}
-    >
+  }), [
+        pendingReviews,
+        setPendingReviews,
+        selectedDomains,
+        setSelectedDomains,
+        systemHealth,
+        setSystemHealth,
+        memoizedActiveBianDomains,
+        memoizedActiveTags,
+        theme,
+        toggleTheme,
+        identity,
+        setIdentity,
+        downloadState,
+        setDownloadState,
+        executionMode,
+        setExecutionMode
+  ]);
+
+  return (
+    <StateContext.Provider value={contextValue}>
       {children}
     </StateContext.Provider>
   );

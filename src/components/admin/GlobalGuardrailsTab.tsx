@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Trash2, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, Lock, Download, Upload, Edit2, Check } from 'lucide-react';
+import { Trash2, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, Lock, Edit2, Check } from 'lucide-react';
 import { db, PrivacyGuardrail, logForensicAudit } from '../../lib/db';
 import { useArchive } from '../../hooks/useArchive';
 import { generateReview, isModelCached, getActiveModelId } from '../../lib/aiEngine';
 import PageHeader from '../ui/PageHeader';
 import { Logger } from '../../lib/logger';
 import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function GlobalGuardrailsTab() {
+  const { addNotification } = useNotification();
   // ── Guardrails CRUD State ──────────────────────────────────────────
   const [guardrails, setGuardrails] = useState<PrivacyGuardrail[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -50,11 +52,13 @@ export default function GlobalGuardrailsTab() {
     {
       key: 'title',
       label: 'Title',
+      sortable: true,
       render: (row) => <span className="font-medium">{row.title}</span>,
     },
     {
       key: 'frameworkTags',
       label: 'Tags',
+      sortable: true,
       render: (row) => (
         <>
           {row.frameworkTags?.map(tag => (
@@ -71,6 +75,7 @@ export default function GlobalGuardrailsTab() {
     {
       key: 'enforcementScope',
       label: 'Scope',
+      sortable: true,
       render: (row) => (
         <div className="flex flex-wrap gap-1">
           {row.enforcementScope?.map(scope => (
@@ -82,6 +87,7 @@ export default function GlobalGuardrailsTab() {
     {
       key: 'isActive',
       label: 'Active',
+      sortable: true,
       render: (row) => (
         <button
           onClick={() => handleToggle(row.id!, row.isActive)}
@@ -288,21 +294,6 @@ export default function GlobalGuardrailsTab() {
     .filter(filterByArchiveStatus)
     .filter(g => selectedTagFilter === 'ALL' || (g.frameworkTags && g.frameworkTags.includes(selectedTagFilter)));
 
-  const handleExport = () => {
-    const csvContent = "data:text/csv;charset=utf-8," +
-      "Title,Rule Text,Framework Tags,Enforcement Scope,Is Active\n" +
-      filteredGuardrails.map(g =>
-        `"${g.title.replace(/"/g, '""')}","${g.ruleText.replace(/"/g, '""')}","${(g.frameworkTags || []).join(', ')}","${(g.enforcementScope || []).join(', ')}",${g.isActive}`
-      ).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "privacy_guardrails_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="w-full max-w-4xl">
       <PageHeader
@@ -356,18 +347,6 @@ export default function GlobalGuardrailsTab() {
               <Archive size={14} />
               {showArchived ? 'View Active' : 'View Archived'}
             </button>
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium transition-colors"
-            >
-              <Download size={14} /> Export CSV
-            </button>
-            <button
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium transition-colors opacity-50 cursor-not-allowed"
-              title="Import coming soon"
-            >
-              <Upload size={14} /> Import
-            </button>
             {!showArchived && (
               <button
                 id="add-guardrail-btn"
@@ -399,6 +378,16 @@ export default function GlobalGuardrailsTab() {
           searchFields={['title', 'ruleText', 'frameworkTags', 'enforcementScope']}
           pagination={true}
           itemsPerPage={5}
+          exportable={true}
+          exportFilename="niti-guardrails.json"
+          onImport={async (parsedData) => {
+            try {
+              await db.privacy_guardrails.bulkPut(parsedData);
+              addNotification('Import successful!', 'success', 3000);
+            } catch {
+              addNotification('Import failed.', 'error');
+            }
+          }}
           emptyMessage={showArchived ? 'No archived guardrails.' : 'No guardrails configured. Add one to enforce compliance boundaries on AI output.'}
         />
       </div>

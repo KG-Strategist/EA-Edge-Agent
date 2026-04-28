@@ -6,11 +6,10 @@ import CreatableDropdown from '../ui/CreatableDropdown';
 import CacheButton from '../ui/CacheButton';
 import { useMasterData } from '../../hooks/useMasterData';
 import { useArchive } from '../../hooks/useArchive';
-import { useDataPortability } from '../../hooks/useDataPortability';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import DataTable from '../ui/DataTable';
 import { SUPPORTED_MLC_MODELS } from '../../lib/constants';
 import PageHeader from '../ui/PageHeader';
+import { useNotification } from '../../context/NotificationContext';
 
 interface BaseConfig {
   id: string;
@@ -30,6 +29,7 @@ interface BaseConfig {
 const getDynamicEndpoint = () => typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:11434` : 'http://localhost:11434';
 
 export default function AgentConfigTab() {
+  const { addNotification } = useNotification();
   const [hardwareWarning, setHardwareWarning] = useState<string | null>(null);
 
 
@@ -105,11 +105,6 @@ export default function AgentConfigTab() {
     statusField: 'status',
     archivedValue: 'PURGED',
     activeValue: 'Active'
-  });
-
-  const { handleExport, handleImport } = useDataPortability({
-    tableName: 'custom_agents',
-    filename: 'agent_personas_export'
   });
 
   const filteredCustomAgents = allCustomAgents.filter(agent => {
@@ -200,7 +195,7 @@ export default function AgentConfigTab() {
           if (!probe.ok && probe.status !== 405) {
             validationWarning = `Network validation returned HTTP ${probe.status}. Configuration saved anyway.`;
           }
-        } catch (fetchError: any) {
+        } catch {
           // CRUCIAL: Network/CORS failures are NOT fatal — user may be offline or CORS-blocked
           // Log a soft warning but ALWAYS proceed with the save
           validationWarning = 'Network validation failed or offline. Saving custom configuration anyway.';
@@ -625,7 +620,6 @@ export default function AgentConfigTab() {
                {showArchived ? <ToggleRight size={20} className="text-blue-500" /> : <ToggleLeft size={20} />}
                Show Archived
              </button>
-             <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
              <button
                onClick={openAddAgentModal}
                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
@@ -643,25 +637,39 @@ export default function AgentConfigTab() {
           searchable={true}
           searchPlaceholder="Search custom mitras..."
           searchFields={['name', 'agentCategory', 'engineType']}
+          exportable={true}
+          exportFilename="niti-agent-configs.json"
+          onImport={async (parsedData) => {
+            try {
+              await db.custom_agents.bulkPut(parsedData);
+              addNotification('Import successful!', 'success', 3000);
+            } catch {
+              addNotification('Import failed.', 'error');
+            }
+          }}
           columns={[
               {
                 key: 'name',
                 label: 'Mitra Name',
+                sortable: true,
                 render: (row) => <span className="font-semibold text-gray-900 dark:text-white">{row.name}</span>
               },
               {
                 key: 'agentCategory',
                 label: 'Category',
+                sortable: true,
                 render: (row) => <span className="text-gray-600 dark:text-gray-400">{row.agentCategory}</span>
               },
               {
                 key: 'engineType',
                 label: 'Engine',
+                sortable: true,
                 render: (row) => <span className="text-gray-600 dark:text-gray-400">{row.engineType}</span>
               },
               {
                 key: 'isActive',
                 label: 'Status',
+                sortable: true,
                 render: (row) => (
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${row.isActive ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
@@ -706,15 +714,27 @@ export default function AgentConfigTab() {
           searchable={true}
           searchPlaceholder="Search configuration events..."
           searchFields={['pseudokey', 'recordId', 'action', 'details']}
+          exportable={true}
+          exportFilename="niti-agent-logs.json"
+          onImport={async (parsedData) => {
+            try {
+              await db.audit_logs.bulkPut(parsedData);
+              addNotification('Import successful!', 'success', 3000);
+            } catch {
+              addNotification('Import failed.', 'error');
+            }
+          }}
           columns={[
               {
                 key: 'timestamp',
                 label: 'Timestamp',
+                sortable: true,
                 render: (row) => <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{new Date(row.timestamp).toLocaleString()}</span>
               },
               {
                 key: 'pseudokey',
                 label: 'Updated By',
+                sortable: true,
                 render: (row) => (
                   <div className="flex items-center gap-2 font-medium">
                     <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold shrink-0">
@@ -727,16 +747,19 @@ export default function AgentConfigTab() {
               {
                 key: 'recordId',
                 label: 'Agent',
+                sortable: true,
                 render: (row) => <span className="whitespace-nowrap font-medium">{row.recordId}</span>
               },
               {
                 key: 'action',
                 label: 'Action',
+                sortable: true,
                 render: (row) => <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{row.action}</span>
               },
               {
                 key: 'details',
                 label: 'Details',
+                sortable: true,
                 render: (row) => <span className="text-gray-600 dark:text-gray-400 truncate max-w-sm">{row.details}</span>
               }
             ]}

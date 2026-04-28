@@ -1,19 +1,19 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ContentMetamodel } from '../../lib/db';
 import { Plus, Edit, Trash2, Archive, RotateCcw, Box } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { useMasterData } from '../../hooks/useMasterData';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import StatusSelect from '../ui/StatusSelect';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import PageHeader from '../ui/PageHeader';
 import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function MetamodelTab() {
+  const { addNotification } = useNotification();
   const metamodels = useLiveQuery(() => db.content_metamodel.toArray()) || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ContentMetamodel | null>(null);
@@ -30,7 +30,6 @@ export default function MetamodelTab() {
   const ownerRoles = useMasterData('Owner Role');
   const [showArchived, setShowArchived] = useState(false);
   const [descriptionValue, setDescriptionValue] = useState('');
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'content_metamodel', filename: 'content_metamodel' });
 
   const filteredMetamodels = showArchived
     ? metamodels.filter(m => m.status === 'Deprecated')
@@ -123,6 +122,7 @@ export default function MetamodelTab() {
     {
       key: 'description',
       label: 'Description',
+      sortable: true,
       className: 'hidden lg:table-cell max-w-[200px]',
       headerClassName: 'hidden lg:table-cell',
       render: (row) => (
@@ -134,6 +134,7 @@ export default function MetamodelTab() {
     {
       key: 'ownerRole',
       label: 'Owner',
+      sortable: true,
       className: 'hidden xl:table-cell',
       headerClassName: 'hidden xl:table-cell',
       render: (row) => <span className="text-gray-600 dark:text-gray-300 text-sm">{row.ownerRole}</span>,
@@ -204,7 +205,6 @@ export default function MetamodelTab() {
             <button onClick={() => setShowArchived(!showArchived)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${showArchived ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
               <Archive size={14} />{showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} /> Add New
             </button>
@@ -220,6 +220,16 @@ export default function MetamodelTab() {
         pagination={true}
         searchable={true}
         searchFields={['name', 'admPhase', 'artifactType', 'description', 'ownerRole']}
+        exportable={true}
+        exportFilename="niti-metamodel.json"
+        onImport={async (parsedData) => {
+          try {
+            await db.content_metamodel.bulkPut(parsedData);
+            addNotification('Import successful!', 'success', 3000);
+          } catch {
+            addNotification('Import failed.', 'error');
+          }
+        }}
       />
 
       {isModalOpen && (

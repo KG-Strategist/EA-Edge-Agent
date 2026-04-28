@@ -61,5 +61,10 @@
       "version": 1,
       "markdownStructure": "# Security Threat Report\n\n## Identified Threats\n{{threats}}\n\n## Mitigations\n{{mitigations}}"
     }
+  ],
+  "semantic_memory": [
+    { "Intent": "explain", "Entity": "EA-NITI", "Payload": "I am EA-NITI, your completely air-gapped Enterprise Architecture AI. I run strictly in your browser using WebGPU and a zero-dependency Neuro-Symbolic offline engine." },
+    { "Intent": "help", "Entity": "navigation", "Payload": "Here is your quick guide to EA-NITI:\n• **Threat Modeling:** Generate STRIDE models.\n• **Model Sandbox:** Connect custom local LLMs.\n• **Global Guardrails:** Set your enterprise security policies.\n• **Expert Setup:** Define your architectural domains." },
+    { "Intent": "explain", "Entity": "STRIDE", "Payload": "STRIDE is a threat modeling framework evaluating Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, and Elevation of Privilege." }
   ]
 }

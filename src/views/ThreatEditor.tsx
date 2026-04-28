@@ -149,7 +149,7 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
       }
       setSaveMessage('Threat model saved to local database.');
       setTimeout(() => setSaveMessage(''), 3000);
-    } catch (e) {
+    } catch {
       setSaveMessage('Failed to save threat model.');
     } finally {
       setIsSaving(false);

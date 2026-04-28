@@ -24,7 +24,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     };
   }
 
-  static getDerivedStateFromError(_error: Error): Partial<ErrorBoundaryState> {
+  static getDerivedStateFromError(): Partial<ErrorBoundaryState> {
     return { hasError: true };
   }
 
@@ -72,7 +72,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center w-screen h-screen bg-gray-950 text-gray-100 p-8">
+        <div className="flex flex-col items-center justify-center w-full min-h-screen bg-gray-950 text-gray-100 p-8">
           <div className="max-w-md text-center">
             <div className="flex justify-center mb-6">
               <AlertTriangle size={64} className="text-red-500" />

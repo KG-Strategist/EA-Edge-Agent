@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 
 export interface Notification {
   id: string;
@@ -18,6 +18,10 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  const removeNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const addNotification = useCallback((message: string, type: Notification['type'] = 'info', duration = 3000) => {
     const id = `${Date.now()}-${Math.random()}`;
     const notification: Notification = { id, message, type, duration };
@@ -31,14 +35,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
     
     return id;
-  }, []);
+  }, [removeNotification]);
 
-  const removeNotification = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, []);
+  const contextValue = useMemo(() => ({
+    notifications,
+    addNotification,
+    removeNotification
+  }), [notifications, addNotification, removeNotification]);
 
   return (
-    <NotificationContext.Provider value={{ notifications, addNotification, removeNotification }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
       <NotificationDisplay notifications={notifications} removeNotification={removeNotification} />
     </NotificationContext.Provider>

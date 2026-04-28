@@ -6,13 +6,13 @@ import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw, ListTree } from 'l
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { MASTER_CATEGORY_TYPES } from '../../lib/constants';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function CategoriesTab() {
+  const { addNotification } = useNotification();
   const categories = useLiveQuery(() => db.master_categories.toArray()) || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MasterCategory | null>(null);
@@ -24,8 +24,6 @@ export default function CategoriesTab() {
   
   const [descriptionValue, setDescriptionValue] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
-
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'master_categories', filename: 'master_categories' });
 
   const handleSort = (column: keyof MasterCategory) => {
     if (sortColumn === column) {
@@ -138,7 +136,6 @@ export default function CategoriesTab() {
               <Archive size={14} />
               {showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} />
               Add New
@@ -150,6 +147,16 @@ export default function CategoriesTab() {
       <DataTable
         data={sortedCategories}
         keyField="id"
+        exportable={true}
+        exportFilename="niti-categories-export.json"
+        onImport={async (parsedData) => {
+          try {
+            await db.master_categories.bulkPut(parsedData);
+            addNotification('Import successful!', 'success', 3000);
+          } catch {
+            addNotification('Failed to import data.', 'error');
+          }
+        }}
         emptyMessage={showArchived ? 'No inactive categories.' : 'No categories found.'}
         searchable={true}
         searchPlaceholder="Search categories..."

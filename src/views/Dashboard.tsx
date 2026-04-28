@@ -9,12 +9,7 @@ import { StatCard, NativeBarChart, NativeProgressRing } from '../components/widg
 // Default layout config if no dashboard exist
 const DEFAULT_WIDGETS = ['drafts', 'completed', 'reviews_by_type', 'completion_rate'];
 
-interface DashboardProps {
-  setCurrentView: (view: string) => void;
-  setCurrentSessionId: (id: number) => void;
-}
-
-export default function Dashboard(_props: DashboardProps) {
+export default function Dashboard() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [boardName, setBoardName] = useState('Default View');
   const [activeWidgets, setActiveWidgets] = useState<string[]>(DEFAULT_WIDGETS);

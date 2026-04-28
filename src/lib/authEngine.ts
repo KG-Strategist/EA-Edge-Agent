@@ -138,7 +138,7 @@ export async function decryptWithPin(encryptedData: string, pin: string, salt: s
       encrypted
     );
     return new TextDecoder().decode(decrypted);
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -273,7 +273,7 @@ export async function registerHybridUser(
   await initializeVault(pin, salt);
 }
 
-export async function loginWithPassword(_pseudokey: string, _password: string): Promise<boolean> {
+export async function loginWithPassword(): Promise<boolean> {
   // Not used directly anymore, but keeping for compatibility
   return false;
 }

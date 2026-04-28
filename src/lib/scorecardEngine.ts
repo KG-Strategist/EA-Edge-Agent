@@ -169,6 +169,6 @@ export function computeWeightedScorecard(
  */
 export function getPrinciplesByAxis(axis: keyof BDATWeights): string[] {
   return Object.entries(BDAT_PRINCIPLE_MAP)
-    .filter(([_, a]) => a === axis)
+    .filter(([, a]) => a === axis)
     .map(([principle]) => principle);
 }

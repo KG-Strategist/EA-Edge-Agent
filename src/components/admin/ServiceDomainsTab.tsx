@@ -5,18 +5,18 @@ import { Plus, Edit, Trash2, ArrowUpDown, Archive, RotateCcw, Layers } from 'luc
 import ConfirmModal from '../ui/ConfirmModal';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
-import DataPortabilityButtons from '../ui/DataPortabilityButtons';
 import { useServiceDomains } from '../../hooks/useServiceDomains';
 import { useMasterData } from '../../hooks/useMasterData';
-import { useDataPortability } from '../../hooks/useDataPortability';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import StatusSelect from '../ui/StatusSelect';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
+import { useNotification } from '../../context/NotificationContext';
 
 type SortableColumn = keyof ServiceDomain;
 
 export default function ServiceDomainsTab() {
+  const { addNotification } = useNotification();
   const { domains } = useServiceDomains();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,7 +34,6 @@ export default function ServiceDomainsTab() {
   const controlRecords = useMasterData('service_control_record');
   const functionalPatterns = useMasterData('service_functional_pattern');
   const frameworkTags = useMasterData('framework_tag');
-  const { handleExport, handleImport } = useDataPortability({ tableName: 'service_domains', filename: 'service_domains' });
 
   const handleSort = (column: SortableColumn) => {
     if (sortColumn === column) {
@@ -138,7 +137,6 @@ export default function ServiceDomainsTab() {
             <button onClick={() => setShowArchived(!showArchived)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${showArchived ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
               <Archive size={14} />{showArchived ? 'Exit Archive' : 'Archive'}
             </button>
-            <DataPortabilityButtons onExport={handleExport} onImport={handleImport} />
             <button onClick={() => openModal(null)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
               <Plus size={16} /><span className="hidden sm:inline">Add New</span>
             </button>
@@ -150,6 +148,16 @@ export default function ServiceDomainsTab() {
         <DataTable<ServiceDomain>
           data={sortedDomains}
           keyField="id"
+          exportable={true}
+          exportFilename="niti-service-domains-export.json"
+          onImport={async (parsedData) => {
+            try {
+              await db.service_domains.bulkPut(parsedData);
+              addNotification('Import successful!', 'success', 3000);
+            } catch {
+              addNotification('Failed to import data.', 'error');
+            }
+          }}
           pagination={true}
           searchable={true}
           searchPlaceholder="Filter domains by name, area, or framework..."

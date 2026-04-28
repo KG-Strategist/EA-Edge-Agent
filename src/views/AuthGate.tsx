@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff, Plane, Network } from 'lucide-react';
 import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback } from '../lib/authEngine';
 import Logo from '../components/ui/Logo';
 import { db, GlobalSetting } from '../lib/db';
 import { UserIdentity, useStateContext } from '../context/StateContext';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 type Particle = { id: number; x: number; y: number; size: number };
 
@@ -89,11 +90,15 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
   const { theme, toggleTheme } = useStateContext();
   const isDark = theme === 'dark';
+
+  const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
+  const enableNetworkIntegrations = appSettings.find((s: any) => s.key === 'enableNetworkIntegrations')?.value === true;
+  const isAirGapped = !enableNetworkIntegrations;
   
   const [entProviderName, setEntProviderName] = useState('Corporate Keycloak');
   const [entAuthUrl, setEntAuthUrl] = useState('https://sso.corp.local/auth');
   const [entClientId, setEntClientId] = useState('ea-edge-agent');
-  const [entTokenUrl, _setEntTokenUrl] = useState('');
+  const [entTokenUrl] = useState('');
 
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -153,7 +158,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
   }, []);
 
-  const dispatchAuthSuccess = async (uname?: string) => {
+  const dispatchAuthSuccess = useCallback(async (uname?: string) => {
     const finalUname = uname || getCurrentUser() || pseudokey || 'Unknown';
     
     let role: 'System Admin' | 'Lead EA' | 'Viewer' = 'Viewer';
@@ -174,7 +179,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       username: finalUname,
       role
     });
-  };
+  }, [globalConfig?.connection_mode, onAuthenticated, pseudokey]);
 
   useEffect(() => {
     const checkState = async () => {
@@ -243,7 +248,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       }
     };
     checkState();
-  }, [globalConfig?.connection_mode, isInSetupWorkflow]);
+  }, [globalConfig?.connection_mode, isInSetupWorkflow, dispatchAuthSuccess]);
 
   const saveHybridConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -567,10 +572,20 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         }}
       />
 
-      {/* Theme Toggle Button */}
-      <div className="absolute top-4 right-4 z-50">
-        <button 
-          onClick={toggleTheme} 
+      {/* Top Toggles */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        <button
+          onClick={() => {}}
+          disabled={true}
+          className="p-2 sm:p-2.5 border rounded-full shadow-sm transition-all backdrop-blur-md bg-gray-200/50 dark:bg-white/5 border-gray-300 dark:border-white/5 text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
+          title="Network configuration unavailable during Genesis setup."
+          aria-label="Toggle Network Isolation"
+        >
+          {isAirGapped ? <Plane size={18} className="text-gray-400" /> : <Network size={18} className="text-gray-400" />}
+        </button>
+
+        <button
+          onClick={toggleTheme}
           className="p-2 sm:p-2.5 bg-white/50 dark:bg-white/10 hover:bg-white/80 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10 rounded-full shadow-sm text-gray-700 dark:text-blue-100 transition-all backdrop-blur-md"
           title="Toggle Theme"
           aria-label="Toggle between light and dark theme"
@@ -578,7 +593,6 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
       </div>
-
       {/* Inner Content Wrapper Safe-Area Layout (my-auto provides safe centering without top-clipping) */}
       <div className="flex flex-col items-center w-full max-w-md gap-2 sm:gap-3 z-10 relative">
         

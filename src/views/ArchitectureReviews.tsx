@@ -7,7 +7,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import { downloadAsMarkdown } from '../lib/exportEngine';
 import PageHeader from '../components/ui/PageHeader';
 
-export default function ArchitectureReviews({ setCurrentView: _setCurrentView, setCurrentSessionId: _setCurrentSessionId }: { setCurrentView: (v: string) => void, setCurrentSessionId: (id: number) => void }) {
+export default function ArchitectureReviews() {
   const [showWizard, setShowWizard] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 

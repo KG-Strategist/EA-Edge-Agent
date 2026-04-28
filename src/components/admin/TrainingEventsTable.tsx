@@ -130,7 +130,7 @@ export default function TrainingEventsTable() {
 
     setIsUploading(true);
     try {
-      await initiateTrainingJob(file, (_progress) => {
+      await initiateTrainingJob(file, () => {
         // the knowledgeIngestionEngine takes care of writing to the DB
       });
     } catch (e) {
@@ -167,16 +167,19 @@ export default function TrainingEventsTable() {
     {
       key: 'startedAt',
       label: 'Timestamp',
+      sortable: true,
       render: (row) => <span className="text-gray-600 dark:text-gray-400 font-mono text-xs">{new Date(row.startedAt).toLocaleString()}</span>
     },
     {
       key: 'filename',
       label: 'Data Source',
+      sortable: true,
       render: (row) => <span className="text-gray-900 dark:text-white font-medium">{row.filename}</span>
     },
     {
       key: 'status',
       label: 'Status',
+      sortable: true,
       render: (row) => (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusStyle(row.status)}`}>
           {getStatusIcon(row.status)}
@@ -187,6 +190,7 @@ export default function TrainingEventsTable() {
     {
       key: 'latestLog',
       label: 'Latest Log',
+      sortable: true,
       className: 'truncate max-w-xs xl:max-w-md',
       render: (row) => <span className="text-gray-600 dark:text-gray-400 font-mono text-xs" title={row.latestLog}>{row.latestLog}</span>
     }
@@ -196,6 +200,7 @@ export default function TrainingEventsTable() {
     {
       key: 'filename',
       label: 'Document Name',
+      sortable: true,
       render: (row) => (
         <div className="flex items-center gap-2 text-gray-900 dark:text-white font-medium">
           <FileText size={16} className="text-gray-400" />
@@ -206,6 +211,7 @@ export default function TrainingEventsTable() {
     {
       key: 'type',
       label: 'Type',
+      sortable: true,
       render: (row) => (
         <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400">
           {row.type}
@@ -215,6 +221,7 @@ export default function TrainingEventsTable() {
     {
       key: 'chunks',
       label: 'Chunks Indexed',
+      sortable: true,
       render: (row) => (
         <span className="font-mono text-xs text-blue-600 dark:text-blue-400">
           {showArchived ? <span className="text-gray-400 line-through">0 Chunks (Purged)</span> : `${row.chunks} Chunks`}
@@ -326,6 +333,8 @@ export default function TrainingEventsTable() {
         </div>
 
         <DataTable
+          exportable={true}
+          exportFilename="niti-training-events.json"
           data={jobsWithSearchFields}
           columns={jobsColumns}
           keyField="id"
@@ -357,6 +366,8 @@ export default function TrainingEventsTable() {
         </div>
         
         <DataTable
+          exportable={true}
+          exportFilename="niti-knowledge-registry.json"
           data={displayRegistryItems}
           columns={registryColumns}
           actions={registryActions}

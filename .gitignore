@@ -1,69 +1,74 @@
-# ---------------------------------------------------
-# Dependencies & Builds
-# ---------------------------------------------------
-node_modules/
-/dist/
-dist/
-.vite/
+# ===================================================
+# EA-NITI PRODUCTION GITIGNORE
+# ===================================================
 
-# ---------------------------------------------------
-# Environment Variables & Secrets (CRITICAL)
-# ---------------------------------------------------
+# --- [1] Dependencies & Builds ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# --- [2] AI Core Brain (REQUIRED FOR RUNTIME) ---
+# We explicitly allow these compiled binaries so the agent functions.
+!public/baseline_corpus.bin.gz
+!public/baseline_meta.json
+!public/lexicon.json
+
+# --- [3] Raw Source Data (INTERNAL ONLY) ---
+# Ignore the raw uncompressed CSVs/TXTs used to build the brain.
+public/ee.csv
+public/words.txt
+public/EnterpriseArchitectureLearnings.txt
+public/*.bin
+*.gguf
+*.onnx
+
+# --- [4] Database, Cache & Traces ---
+.cache/
+*.idb
+*.dexie
+*.sqlite
+*.tmp
+trace_hydration.json.json.gz
+
+# --- [5] Environment & Security (CRITICAL) ---
 .env
 .env.*
-!.env.example # (Optional) Allows you to push a safe template file
+!.env.example
 
-# ---------------------------------------------------
-# OS Generated Files
-# ---------------------------------------------------
+# --- [6] OS & IDE Junk ---
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.code-workspace
 
-# ---------------------------------------------------
-# Local Cache & Runtime Artifacts
-# ---------------------------------------------------
-.cache/
-*.wasm
-*.idb
+# --- [7] Internal Agent Metadata & Research ---
+# These files contain internal developer instructions/IP.
+.agents/
+.claude/
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+BIT_ARENA_LLD.md
+PROJECT_STATUS.md
+copilot-instructions.md
+architecture.md
+features.md
+miner.ps1
 
-# ---------------------------------------------------
-# Logs
-# ---------------------------------------------------
+# --- [8] Build, Test & Debug Logs ---
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.log
-
-# ---------------------------------------------------
-# IDE / Workspace Settings
-# ---------------------------------------------------
-.vscode/
-.idea/
-*.code-workspace
-
-# ---------------------------------------------------
-# AI Coding Agents & Studio Metadata
-# ---------------------------------------------------
-.agents/
-.claude/
-.cline/
-.aider/
-.cursor/
-meta.json
-metadata.json
-*.json.meta
-
-# ---------------------------------------------------
-# Proprietary / Internal Documentation
-# ---------------------------------------------------
-AGENTS.md
-architecture.md
-PROJECT_STATUS.md
-features.md
-
-# Local diagnostic outputs
-lint_results.txt
-tsc_res.txt
-tsc_results.txt
+coverage/
+tsc_output.txt
+eslint_out.json
 int_res.txt
 ts_errors.txt
+src/__tests__/
+src/tests/
