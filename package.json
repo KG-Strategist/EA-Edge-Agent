@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "cleanup:test-files": "node remove-test-files.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.4",
