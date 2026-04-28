@@ -70,4 +70,5 @@ tsc_output.txt
 eslint_out.json
 int_res.txt
 ts_errors.txt
+vitest.config.ts
 src/__tests__/
