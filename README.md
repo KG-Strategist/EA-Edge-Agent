@@ -79,6 +79,12 @@ npm run build:corpus
 npm run dev
 ```
 
+### Compile a Custom Structural Corpus
+*(Note: The raw proprietary data source files are intentionally not included in this open-source repository. The application uses a pre-compiled brain out-of-the-box.)* To train the engine on your own enterprise data, place your custom text data in the designated `public/` files and run:
+```bash
+npm run build:corpus
+```
+
 ---
 
 ## 🔮 Roadmap

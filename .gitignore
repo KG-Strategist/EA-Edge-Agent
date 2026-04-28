@@ -71,4 +71,3 @@ eslint_out.json
 int_res.txt
 ts_errors.txt
 src/__tests__/
-src/tests/

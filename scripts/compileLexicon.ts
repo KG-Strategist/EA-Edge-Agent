@@ -36,6 +36,13 @@ const main = () => {
   const readmePath = path.join(basePath, 'README.md');
   const outPath = path.join(basePath, 'public', 'lexicon.json');
 
+  // Graceful exit for open-source deployments without proprietary raw data
+  const wordsPath = path.join(basePath, 'public', 'words.txt');
+  if (!fs.existsSync(wordsPath)) {
+    console.log('📘 NOTICE: Proprietary lexicon not found. Skipping compilation. The application will use the pre-packaged OOB Brain.');
+    process.exit(0);
+  }
+
   if (fs.existsSync(eePath)) {
     const lines = fs.readFileSync(eePath, 'utf-8').split('\n');
     lines.forEach(line => processText(line));

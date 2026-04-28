@@ -15,6 +15,13 @@ async function compile() {
   const outBinUncompressed = path.join(basePath, 'public', 'baseline_corpus.bin');
   const outMetaPath = path.join(basePath, 'public', 'baseline_meta.json');
 
+  // Graceful exit for open-source deployments without proprietary raw data
+  const enterpriseArchPath = path.join(basePath, 'public', 'EnterpriseArchitectureLearnings.txt');
+  if (!fs.existsSync(enterpriseArchPath)) {
+    console.log('📘 NOTICE: Proprietary raw corpus not found. Skipping compilation. The application will use the pre-packaged OOB Brain.');
+    process.exit(0);
+  }
+
   const parser = new LexicalStateMachine();
   await parser.loadLexicon(true, basePath);
   const vectoriser = new StructuralVectoriser();
