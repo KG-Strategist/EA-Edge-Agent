@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { StateProvider, useStateContext } from './context/StateContext';
-import { NotificationProvider } from './context/NotificationContext';
+import { NotificationProvider, useNotification } from './context/NotificationContext';
 import AuthGate from './views/AuthGate';
 import Dashboard from './views/Dashboard';
 import ArchitectureReviews from './views/ArchitectureReviews';
@@ -9,17 +9,27 @@ import AdminPanel from './views/AdminPanel';
 import Navbar from './components/layout/Navbar';
 import Header from './components/layout/Header';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
-import AgentChat from './components/ui/AgentChat';
-import ModelConsentModal from './components/ui/ModelConsentModal';
-import BackupConsentModal from './components/ui/BackupConsentModal';
-import NetworkGatekeeperModal from './components/ui/NetworkGatekeeperModal';
+
+const AgentChat = lazy(() => import('./components/ui/AgentChat'));
+const ModelConsentModal = lazy(() => import('./components/ui/ModelConsentModal'));
+const BackupConsentModal = lazy(() => import('./components/ui/BackupConsentModal'));
+const NetworkGatekeeperModal = lazy(() => import('./components/ui/NetworkGatekeeperModal'));
 import { seedDatabase } from './lib/seedData';
 import { globalArena, parser } from './lib/SemanticArena';
+import { localDaemon } from './lib/providers/LocalDaemonProvider';
+import { Logger } from './lib/logger';
 
 function AppContent() {
-  const { identity, setIdentity } = useStateContext();
+  const { identity, setIdentity, downloadState, authStatus, setAuthStatus } = useStateContext();
+  const { addNotification } = useNotification();
   const [currentView, setCurrentView] = useState('dashboard');
   const [adminSubView, setAdminSubView] = useState('layers');
+  const [vaultLocked, setVaultLocked] = useState(false);
+  const downloadStateRef = useRef(downloadState);
+
+  useEffect(() => {
+    downloadStateRef.current = downloadState;
+  }, [downloadState]);
 
   // Index Redirect Mechanism (Router-like behavior)
   useEffect(() => {
@@ -34,38 +44,70 @@ function AppContent() {
     }
   }, [currentView, adminSubView]);
 
-useEffect(() => {
-  const bootEngine = async () => {
-    try {
-      await parser.loadLexicon();
-      await seedDatabase();
-      await globalArena.loadFromDB();
-    } catch (err) {
-      console.warn('[App] Failed to boot SemanticArena:', err);
-    }
-  };
-
-  bootEngine();
-
-    const worker = new Worker(new URL('./workers/distillation.worker.ts', import.meta.url), { type: 'module' });
-    (window as any).distillationWorker = worker;
-
-    worker.onmessage = (event) => {
-      window.dispatchEvent(new CustomEvent('DISTILLATION_EVENT', { detail: event.data }));
+  useEffect(() => {
+    const bootEngine = async () => {
+      try {
+        await parser.loadLexicon();
+        await seedDatabase();
+        await globalArena.loadFromDB();
+      } catch (err) {
+        if (err instanceof Error && (err.name === 'VaultLockedError' || err.message.includes('VaultLockedError'))) {
+          setAuthStatus('locked');
+          setVaultLocked(true);
+          return;
+        }
+        Logger.warn('[App] Failed to boot SemanticArena:', err);
+      }
     };
+
+    if (authStatus === 'unlocked') {
+      Logger.info('[App] Boot engine starting after vault unlock.');
+      bootEngine();
+    } else {
+      Logger.info(`[App] Boot engine deferred until vault unlock. authStatus=${authStatus}`);
+    }
+
+    // Eager ping: Detect Local Daemon on startup (non-blocking, async)
+    localDaemon.pingDaemon();
 
     const handleNavigate = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail.view) setCurrentView(customEvent.detail.view);
       if (customEvent.detail.subView) setAdminSubView(customEvent.detail.subView);
     };
-    
+
     window.addEventListener('EA_NAVIGATE', handleNavigate);
-    return () => {
-      window.removeEventListener('EA_NAVIGATE', handleNavigate);
-      worker.terminate();
+    return () => window.removeEventListener('EA_NAVIGATE', handleNavigate);
+  }, [authStatus, setAuthStatus]);
+
+  // Kill switch: surface contextual toast when network is disabled mid-download
+  useEffect(() => {
+    const handleKillSwitch = () => {
+      const state = downloadStateRef.current;
+      if (state.isActive && state.status === 'Downloading') {
+        const isEmbedding = state.progressText?.toLowerCase().includes('embedding');
+        const message = isEmbedding
+          ? 'Network was disabled — embedding downloads halted. Re-enable network to resume.'
+          : 'Network was disabled — LLM model weights preserved. Re-enable network to resume.';
+
+        addNotification(message, 'warning', 0);
+      }
     };
-  }, []);
+    window.addEventListener('APP_NETWORK_FORCE_KILLED', handleKillSwitch);
+    return () => window.removeEventListener('APP_NETWORK_FORCE_KILLED', handleKillSwitch);
+  }, [addNotification]);
+
+  // TASK 6: If vault is locked, show AuthGate to allow re-authentication
+  if (vaultLocked) {
+    return (
+      <AuthGate 
+        onAuthenticated={(newIdentity) => {
+          setVaultLocked(false);
+          setIdentity(newIdentity);
+        }} 
+      />
+    );
+  }
 
   if (!identity) {
     return <AuthGate onAuthenticated={setIdentity} />;
@@ -113,10 +155,13 @@ useEffect(() => {
           </main>
         </div>
       </div>
-      <AgentChat />
-      <ModelConsentModal />
-      <BackupConsentModal />
-      <NetworkGatekeeperModal />
+      <Suspense fallback={null}>
+        <AgentChat />
+        <ModelConsentModal />
+        <BackupConsentModal />
+        <NetworkGatekeeperModal />
+        
+      </Suspense>
     </>
   );
 }

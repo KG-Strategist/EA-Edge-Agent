@@ -3,6 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, LocalUser } from '../../lib/db';
 import { Shield, Lock, CheckCircle, Plus, X, UserPlus, Globe, Server, Wifi, Users, Edit2, Trash2, FolderKey } from 'lucide-react';
 import { generatePseudonym, createTempUserByAdmin, getCurrentUser } from '../../lib/authEngine';
+import { Logger } from '../../lib/logger';
+import { useNotification } from '../../context/NotificationContext';
+import { UserFormSchema } from '../../lib/validation';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
 
@@ -43,6 +46,7 @@ function getUserIdentityProvider(user: LocalUser): 'Standard 2FA' | 'Enterprise 
 }
 
 export default function UserAccessTab() {
+  const { addNotification } = useNotification();
   const users = useLiveQuery(() => db.users.toArray());
 
   // ── Derive auth mode from DB instead of hardcoding ─────────────────
@@ -127,7 +131,7 @@ export default function UserAccessTab() {
         if (isDemoting) {
           const systemAdmins = users?.filter(u => getRole(u) === 'System Admin') || [];
           if (systemAdmins.length <= 1) {
-            alert("Security Violation: You are the final System Administrator. You cannot demote yourself without provisioning another Admin first.");
+            addNotification("Security Violation: You are the final System Administrator. You cannot demote yourself without provisioning another Admin first.", 'error', 5000);
             throw new Error('Cannot demote the last System Admin.');
           }
           if (isSelfEdit) {
@@ -160,14 +164,20 @@ export default function UserAccessTab() {
 
         await db.users.update(currentUserId, updates);
       } else {
-        // Create flow
-        if (!formPseudonym.trim() || !formPassword.trim()) {
-          throw new Error('Please fill in all required fields.');
+        // Create flow — Zod validation
+        const validationResult = UserFormSchema.safeParse({
+          pseudokey: formPseudonym.trim(),
+          password: formPassword,
+          role: formRole,
+        });
+        if (!validationResult.success) {
+          setModalError(`Validation error: ${validationResult.error.message}`);
+          return;
         }
         await createTempUserByAdmin(
-          formPseudonym.trim(),
-          formPassword,
-          formRole
+          validationResult.data.pseudokey,
+          validationResult.data.password,
+          validationResult.data.role
         );
       }
       handleCloseModal();
@@ -182,7 +192,7 @@ export default function UserAccessTab() {
     if (getRole(user) === 'System Admin') {
       const systemAdmins = users?.filter(u => getRole(u) === 'System Admin') || [];
       if (systemAdmins.length <= 1) {
-        alert('Security Violation: Cannot delete the last active System Administrator.');
+        addNotification('Security Violation: Cannot delete the last active System Administrator.', 'error', 5000);
         return;
       }
     }
@@ -215,8 +225,8 @@ export default function UserAccessTab() {
       // useLiveQuery will automatically trigger and re-fetch users from DB
       handleDeleteClose();
     } catch (error) {
-      console.error("Dexie DB Error:", error);
-      alert("Database Error: Failed to update user status.");
+      Logger.error("Dexie DB Error:", error);
+      addNotification("Database Error: Failed to update user status.", 'error', 5000);
     } finally {
       setIsDeleting(false);
     }
@@ -238,7 +248,7 @@ export default function UserAccessTab() {
       await executeHardDelete(userToDelete.id, userToDelete.pseudokey);
       handleDeleteClose();
     } catch (err) {
-      console.error(err);
+      Logger.error(err);
     } finally {
       setIsDeleting(false);
     }

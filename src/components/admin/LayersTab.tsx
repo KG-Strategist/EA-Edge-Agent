@@ -323,10 +323,10 @@ actions={
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-sm text-gray-600 dark:text-gray-400">Description</label>
-                  <AIRewriteButton
-                    context={descriptionValue}
-                    onResult={(text) => setDescriptionValue(text)}
-                  />
+<AIRewriteButton
+            currentText={descriptionValue}
+            onUpdate={(text) => setDescriptionValue(text)}
+          />
                 </div>
                 <textarea
                   name="description"

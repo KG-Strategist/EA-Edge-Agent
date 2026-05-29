@@ -3,16 +3,20 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
 import { useArchive } from '../../hooks/useArchive';
 import { initiateTrainingJob } from '../../lib/knowledgeIngestionEngine';
+import { Logger } from '../../lib/logger';
+import { useNotification } from '../../context/NotificationContext';
 import { Database, Plus, CheckCircle2, XCircle, Clock, Loader2, Link2, Calendar, Download, Trash2, FileText, Type, Archive, BookOpen } from 'lucide-react';
 import PageHeader from '../ui/PageHeader';
 import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
+import AIRewriteButton from '../ui/AIRewriteButton';
 
 export default function TrainingEventsTable() {
+  const { addNotification } = useNotification();
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const jobs = useLiveQuery(() => db.training_jobs.orderBy('startedAt').reverse().toArray()) || [];
-  const knowledgeChunks = useLiveQuery(() => db.enterprise_knowledge.toArray()) || [];
+  const knowledgeChunks = useLiveQuery(() => db.semantic_memory.where('source').startsWith('enterprise').toArray()) || [];
   const knowledgeCount = knowledgeChunks.length;
 
   const { archiveItem: purgeDocument } = useArchive({
@@ -75,11 +79,13 @@ export default function TrainingEventsTable() {
 
   const registryMap = new Map<string, { filename: string, type: string, chunks: number }>();
   knowledgeChunks.forEach(doc => {
-      const type = doc.sourceType || 'MD'; 
-      if (!registryMap.has(doc.sourceFile)) {
-         registryMap.set(doc.sourceFile, { filename: doc.sourceFile, type: type, chunks: 0 });
+      const source = doc.source || 'unknown';
+      const type = source.includes('legacy') ? 'LEGACY' : 'ORTHOGONAL';
+      const filename = doc.subject || source;
+      if (!registryMap.has(filename)) {
+         registryMap.set(filename, { filename, type, chunks: 0 });
       }
-      registryMap.get(doc.sourceFile)!.chunks++;
+      registryMap.get(filename)!.chunks++;
   });
   
   const displayRegistryItems = showArchived 
@@ -94,7 +100,7 @@ export default function TrainingEventsTable() {
     try {
         await purgeDocument(filename);
     } catch (e) {
-        alert("Failed to purge document: " + e);
+        addNotification("Failed to purge document: " + e, 'error', 5000);
     }
   };
 
@@ -108,7 +114,7 @@ export default function TrainingEventsTable() {
     try {
       await initiateTrainingJob(file, () => {});
     } catch (e) {
-      console.error(e);
+      Logger.error(e);
     } finally {
       setIsUploading(false);
       setFreeTextName('');
@@ -123,7 +129,7 @@ export default function TrainingEventsTable() {
     // QA Audit - Strict File Extension Validation
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
     if (!['pdf', 'md', 'txt', 'csv', 'docx'].includes(ext)) {
-      alert("Unsupported binary format. Please convert to .docx or .csv.");
+      addNotification("Unsupported binary format. Please convert to .docx or .csv.", 'warning', 5000);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -134,7 +140,7 @@ export default function TrainingEventsTable() {
         // the knowledgeIngestionEngine takes care of writing to the DB
       });
     } catch (e) {
-      console.error(e);
+      Logger.error(e);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -395,8 +401,11 @@ export default function TrainingEventsTable() {
                  <input type="text" placeholder="e.g. Q3 Architecture Memo" value={freeTextName} onChange={e => setFreeTextName(e.target.value)} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm" />
               </div>
               <div>
-                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Raw Content</label>
-                 <textarea rows={10} placeholder="Paste raw unstructured text here... It will automatically be chunked and vectorized." value={freeTextContent} onChange={e => setFreeTextContent(e.target.value)} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm custom-scrollbar" />
+                 <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Raw Content</label>
+                  <AIRewriteButton currentText={freeTextContent} onUpdate={setFreeTextContent} />
+                </div>
+                <textarea rows={10} placeholder="Paste raw unstructured text here... It will automatically be chunked and vectorized." value={freeTextContent} onChange={e => setFreeTextContent(e.target.value)} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm custom-scrollbar" />
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 flex justify-end gap-3">

@@ -11,6 +11,7 @@
  */
 
 import { db } from './db';
+import { Logger } from './logger';
 
 // ─── Provider Endpoint Configuration ────────────────────────────────────────
 
@@ -218,7 +219,7 @@ export async function exchangeCodeForToken(
     return await response.json();
   } catch (err: any) {
     // CORS block or network failure — expected in pure SPA without proxy
-    console.warn('[OAuth] Token exchange failed (likely CORS):', err.message);
+    Logger.warn('[OAuth] Token exchange failed (likely CORS):', err.message);
     return null;
   }
 }

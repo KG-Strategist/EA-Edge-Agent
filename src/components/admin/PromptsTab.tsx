@@ -4,6 +4,7 @@ import { db, PromptTemplate } from '../../lib/db';
 import { Plus, Edit, Sparkles, Copy, Archive, RotateCcw, MessageSquareCode } from 'lucide-react';
 import StatusToggle from '../ui/StatusToggle';
 import CreatableDropdown from '../ui/CreatableDropdown';
+import AIRewriteButton from '../ui/AIRewriteButton';
 import { useMasterData } from '../../hooks/useMasterData';
 import { useNotification } from '../../context/NotificationContext';
 import PageHeader from '../ui/PageHeader';
@@ -50,6 +51,7 @@ export default function PromptsTab() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PromptTemplate | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promptTextValue, setPromptTextValue] = useState('');
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
@@ -70,6 +72,7 @@ export default function PromptsTab() {
     setEditingItem(item);
     setError(null);
     setSelectedCategory(item?.category || '');
+    setPromptTextValue(item?.promptText || '');
     setIsModalOpen(true);
   };
 
@@ -99,7 +102,7 @@ export default function PromptsTab() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const name = (formData.get('name') as string).trim();
-    const promptText = (formData.get('promptText') as string).trim();
+    const promptText = promptTextValue.trim();
     const executionTarget = formData.get('executionTarget') as 'Primary EA Agent' | 'Tiny Triage Agent' | 'Auto-Route (MoE)';
 
     if (!name || !promptText) {
@@ -352,16 +355,20 @@ export default function PromptsTab() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  Prompt Text
-                  <span className="text-xs text-gray-400 ml-2">
-                    Use {'{{variable}}'} syntax for dynamic placeholders (e.g., {'{{projectName}}'}, {'{{vendorScore}}'})
-                  </span>
-                </label>
-                <textarea 
-                  name="promptText" 
-                  defaultValue={editingItem?.promptText}
-                  required 
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400">
+                    Prompt Text
+                    <span className="text-xs text-gray-400 ml-2">
+                      Use {'{{variable}}'} syntax for dynamic placeholders (e.g., {'{{projectName}}'}, {'{{vendorScore}}'})
+                    </span>
+                  </label>
+                  <AIRewriteButton currentText={promptTextValue} onUpdate={setPromptTextValue} />
+                </div>
+<textarea
+                  name="promptText"
+                  value={promptTextValue}
+                  onChange={(e) => { setPromptTextValue(e.target.value); }}
+                  required
                   rows={10}
                   placeholder={`Example:\nYou are an Enterprise Architecture auditor. The vendor scored themselves {{vendorScore}}/5 on "{{questionText}}".\n\nReview the following architecture documentation:\n{{documentText}}\n\nDoes the documentation support the vendor's self-assessment? Identify discrepancies.`}
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 font-mono text-sm leading-relaxed" 

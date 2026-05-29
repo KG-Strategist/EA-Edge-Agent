@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, AuditLog } from '../../lib/db';
 import { Download, CalendarDays, ClipboardList, Eye, X, RefreshCw } from 'lucide-react';
 import PageHeader from '../ui/PageHeader';
+import { Logger } from '../../lib/logger';
 import ConfirmModal from '../ui/ConfirmModal';
 import DataTable from '../ui/DataTable';
 import { useLocalBackupState } from '../../hooks/useLocalBackupState';
@@ -86,7 +87,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
       await db.audit_logs.where('timestamp').below(lastBackupDate).delete();
       setShowPurgeModal(false);
     } catch (err) {
-      console.error('Purge failed:', err);
+      Logger.error('Purge failed:', err);
     } finally {
       setIsPurging(false);
     }
@@ -115,10 +116,10 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
           details: JSON.stringify({ fileName: file.name, recordsImported: logsToImport.length })
         });
       } else {
-        console.error("Import failed: No valid audit logs found in the selected file.");
+        Logger.error("Import failed: No valid audit logs found in the selected file.");
       }
     } catch (err) {
-      console.error('Import failed:', err);
+      Logger.error('Import failed:', err);
     }
   };
 
@@ -126,7 +127,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
     // Strict action guard: Verify database-level configuration exists
     const activeConfig = await db.app_settings.get('backupDirectoryHandle');
     if (!activeConfig || !activeConfig.value) {
-      console.error("Sync aborted: No valid local backup configuration found in database.");
+      Logger.error("Sync aborted: No valid local backup configuration found in database.");
       // ROADMAP (MVP 2.0): Optionally trigger a UI toast error here
       return;
     }
@@ -161,7 +162,7 @@ export default function AuditWorkspaceTab({ setAdminSubView }: { setAdminSubView
         details: JSON.stringify({ path: backupPath, filesExported: 1 }) // NO raw dirHandle
       });
     } catch (err) {
-      console.error('Sync backup failed:', err);
+      Logger.error('Sync backup failed:', err);
       // ROADMAP: Add toast notification for user feedback
     }
   }, [backupPath, identity]);

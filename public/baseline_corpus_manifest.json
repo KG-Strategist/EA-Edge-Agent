@@ -1,0 +1,670 @@
+{
+  "schemaVersion": 7,
+  "generatedAt": "2026-05-25T11:46:04.657Z",
+  "vectorWidth": 64,
+  "recordCount": 844854,
+  "maxRecords": 1000000,
+  "dictionaryRuntimeDefinitionLimit": 900,
+  "dataAssetsRoot": "public/dataAssets",
+  "acceptedFiles": [
+    "csv",
+    "json",
+    "jsonl",
+    "ndjson",
+    "txt",
+    "md",
+    "html",
+    "pdf"
+  ],
+  "quality": {
+    "sourceTypeCounts": {
+      "seed:togaf_phases": 6,
+      "seed:service_domains": 5,
+      "seed:ea_principles": 4,
+      "seed:semantic_memory": 3,
+      "seed:report_templates": 3,
+      "csv-dictionary": 225543,
+      "csv-dictionary-morphology": 469128,
+      "csv-dictionary-relation": 6637,
+      "local-brain-fact": 8,
+      "miner-generated": 2241,
+      "local-curated-fact": 130120,
+      "json": 154,
+      "official-web-fact": 97,
+      "txt": 10282,
+      "html": 95,
+      "pdf": 528
+    },
+    "personaCounts": {
+      "enterprise-language": 7168,
+      "english-grammar": 3160,
+      "business-product-analyst": 15200,
+      "data-ai-architect": 15246,
+      "enterprise-architect": 15451,
+      "legal-compliance": 15246,
+      "people-hr-operations": 15209,
+      "platform-cloud-engineer": 15256,
+      "risk-audit": 15258,
+      "security-architect": 15272
+    },
+    "domainCounts": {
+      "EA": 143546,
+      "DICT": 701308
+    },
+    "lexicalCounters": {
+      "dictionaryDefinitionsTrimmed": 1431,
+      "generatedMorphologyFacts": 285740,
+      "sourceDerivedRelationFacts": 6637,
+      "rejectedGeneratedForms": 46023,
+      "ambiguityFacts": 9986
+    },
+    "samples": {
+      "accepted": [
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase architecture vision",
+          "i": "govern",
+          "t": "initial phase architecture development cycle"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase busine architecture",
+          "i": "govern",
+          "t": "development busine architecture support an agre architecture vision"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase information system architectur",
+          "i": "govern",
+          "t": "development information system architectur for an project"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase technology architecture",
+          "i": "govern",
+          "t": "development technology architecture"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase opportunity solution",
+          "i": "govern",
+          "t": "initial implementation plann and identification delivery vehicl"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:togaf_phases",
+          "s": "togaf phase migration plann",
+          "i": "govern",
+          "t": "formulation set sequence transition architectur"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:service_domains",
+          "s": "party rout domain",
+          "i": "manage",
+          "t": "service area reference data"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:service_domains",
+          "s": "customer",
+          "i": "offer",
+          "t": "domain manag service area sal"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:service_domains",
+          "s": "consumer loan domain",
+          "i": "manage",
+          "t": "service area lend"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:service_domains",
+          "s": "account domain",
+          "i": "manage",
+          "t": "service area deposit"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:service_domains",
+          "s": "payment execution domain",
+          "i": "manage",
+          "t": "service area payment"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:ea_principles",
+          "s": "primacy principl principle stat these principl information management",
+          "i": "apply",
+          "t": "all organization within enterprise"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:ea_principles",
+          "s": "information management everybody busine principle stat all organization enterprise",
+          "i": "participate",
+          "t": "information management decision need accomplish busine objectiv"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:ea_principles",
+          "s": "busine continuity principle stat enterprise operation",
+          "i": "maintain",
+          "t": "spite system interruption"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:ea_principles",
+          "s": "common use application principle stat development application",
+          "i": "us",
+          "t": "acro enterprise preferr development or duplicative application provid organization"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:semantic_memory",
+          "s": "eaniti",
+          "i": "explain",
+          "t": "i eaniti your airgapp enterprise architecture ai i run your browser us webgpu and a zerodependency neurosymbolic offline engine"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:semantic_memory",
+          "s": "navigation help here your quick guide eaniti threat model",
+          "i": "generate",
+          "t": "stride model model sandbox connect custom llm global guardrail set your enterprise security policy expert setup define your architectural domain"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:semantic_memory",
+          "s": "stride",
+          "i": "explain",
+          "t": "stride threat model framework evaluat spoof tamper repudiation information disclosure denial service and elevation privilege"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:report_templates",
+          "s": "nsi eac council report template",
+          "i": "provide",
+          "t": "structure for nsi report"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:report_templates",
+          "s": "standard adr template",
+          "i": "provide",
+          "t": "structure for adr report"
+        },
+        {
+          "sourceFile": "ea_seed_data.json",
+          "sourceType": "seed:report_templates",
+          "s": "security threat report template",
+          "i": "provide",
+          "t": "structure for security report"
+        },
+        {
+          "sourceFile": "dict/ee.csv",
+          "sourceType": "csv-dictionary",
+          "s": "a",
+          "i": "means",
+          "t": "the first letter of the english and of many other alphabets. the capital a of the alphabets of middle and western europe, as also the small letter (a), besides the forms in italic, black letter, etc., are all descended from the old latin a, which was borrowed from the greek alpha, of the same form; and this was made from the first letter (/) of the phoenician alphabet, the equivalent of the hebrew aleph, and itself from the egyptian origin. the aleph was a consonant letter, with a guttural breath sound that was not an element of greek articulation; and the greeks took it to represent their vowel alpha with the a sound, the phoenician alphabet having no vowel symbols.-the name of the sixth tone in the model major scale (that in c), or the first tone of the minor scale, which is named after it the scale in a minor. the second string of the violin is tuned to the a in the treble staff"
+        },
+        {
+          "sourceFile": "dict/ee.csv",
+          "sourceType": "csv-dictionary",
+          "s": "a 1",
+          "i": "means",
+          "t": "a registry mark given by underwriters (as at lloyd's) to ships in first-class condition. inferior grades are indicated by a 2 and a 3."
+        },
+        {
+          "sourceFile": "dict/ee.csv",
+          "sourceType": "csv-dictionary",
+          "s": "a b c",
+          "i": "means",
+          "t": "the first three letters of the alphabet, used for the whole alphabet.-a primer for teaching the alphabet and first elements of reading.-the simplest rudiments of any subject; as, the a b c of finance."
+        }
+      ],
+      "skipped": [
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "A 1 means A registry mark given by underwriters (as at Lloyd's) to ships in first-class condition. Inferior grades are indicated by A 2 and A 3."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Aaronic means Alt. of Aaronical"
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abacinate means To blind by a red-hot metal plate held before the eyes."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abacination means The act of abacinating."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaciscus means One of the tiles or squares of a tessellated pavement; an abaculus."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abacist means One who uses an abacus in casting accounts; a calculator."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abactinal means Pertaining to the surface or end opposite to the mouth in a radiate animal; -- opposed to actinal."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaction means Stealing cattle on a large scale."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abactor means One who steals and drives away cattle or beasts by herds or droves."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaculi means of Abaculus"
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abacuses means of Abacus"
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaci means of Abacus"
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abada means The rhinoceros."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaisance means Obeisance."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaiser means Ivory black or animal charcoal."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abaist means Abashed; confounded; discomfited."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abalienation means The act of abalienating; alienation; estrangement."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abandoning means of Abandon"
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abandonedly means Unrestrainedly."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abandonee means One to whom anything is legally abandoned."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abandoner means One who abandons."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abandum means Anything forfeited or confiscated."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abanet means See Abnet."
+        },
+        {
+          "sourceFile": "dict/OPTED-Dictionary.csv",
+          "reason": "duplicateSentence",
+          "sentence": "Abannation means Alt. of Abannition"
+        }
+      ]
+    }
+  },
+  "sources": {
+    "ea_seed_data.json": {
+      "processed": 24,
+      "accepted": 21,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "dict/ee.csv": {
+      "processed": 533707,
+      "accepted": 533707,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 2
+    },
+    "dict/OPTED-Dictionary.csv": {
+      "processed": 229636,
+      "accepted": 167601,
+      "skippedDuplicateSentence": 62035,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 30
+    },
+    "brain/core/app-capabilities/facts.jsonl": {
+      "processed": 8,
+      "accepted": 8,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "shared/english-grammar/facts.jsonl": {
+      "processed": 160,
+      "accepted": 160,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "brain/shared/english-grammar/facts.local.jsonl": {
+      "processed": 3000,
+      "accepted": 3000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "shared/enterprise-language/facts.jsonl": {
+      "processed": 160,
+      "accepted": 160,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "brain/shared/enterprise-language/facts.local.jsonl": {
+      "processed": 7000,
+      "accepted": 7000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "brain/app_features.json": {
+      "processed": 164,
+      "accepted": 154,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/business-product-analyst/facts.jsonl": {
+      "processed": 200,
+      "accepted": 200,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/business-product-analyst/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/business-product-analyst/BusinessProductAnalysisLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/data-ai-architect/facts.jsonl": {
+      "processed": 246,
+      "accepted": 246,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/data-ai-architect/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/data-ai-architect/DataAIArchitectureLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 13500,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/facts.jsonl": {
+      "processed": 451,
+      "accepted": 451,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/EnterpriseArchitectureLearnings.txt": {
+      "processed": 13115,
+      "accepted": 10282,
+      "skippedDuplicateSentence": 91,
+      "skippedDuplicateTriplet": 54,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/EnterpriseArchitectureLocalLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/Togaf-01.html": {
+      "processed": 104,
+      "accepted": 64,
+      "skippedDuplicateSentence": 1,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 9,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/Togaf-02.html": {
+      "processed": 42,
+      "accepted": 31,
+      "skippedDuplicateSentence": 1,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/BIAN_Implementation_Examples_v1.pdf": {
+      "processed": 120,
+      "accepted": 61,
+      "skippedDuplicateSentence": 1,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 10,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/togaf10part01.pdf": {
+      "processed": 579,
+      "accepted": 399,
+      "skippedDuplicateSentence": 9,
+      "skippedDuplicateTriplet": 1,
+      "skippedLowQuality": 47,
+      "skippedMalformed": 0
+    },
+    "personas/enterprise-architect/TOGAFStandard.pdf": {
+      "processed": 256,
+      "accepted": 68,
+      "skippedDuplicateSentence": 3,
+      "skippedDuplicateTriplet": 1,
+      "skippedLowQuality": 60,
+      "skippedMalformed": 0
+    },
+    "personas/legal-compliance/facts.jsonl": {
+      "processed": 246,
+      "accepted": 246,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/legal-compliance/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/legal-compliance/LegalComplianceLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/people-hr-operations/facts.jsonl": {
+      "processed": 209,
+      "accepted": 209,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/people-hr-operations/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/people-hr-operations/PeopleHROperationsLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/platform-cloud-engineer/facts.jsonl": {
+      "processed": 256,
+      "accepted": 256,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/platform-cloud-engineer/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/platform-cloud-engineer/PlatformCloudEngineeringLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/risk-audit/facts.jsonl": {
+      "processed": 258,
+      "accepted": 258,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/risk-audit/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/risk-audit/RiskAuditLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/security-architect/facts.jsonl": {
+      "processed": 272,
+      "accepted": 272,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/security-architect/facts.local.jsonl": {
+      "processed": 15000,
+      "accepted": 15000,
+      "skippedDuplicateSentence": 0,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    },
+    "personas/security-architect/SecurityArchitectureLearnings.txt": {
+      "processed": 15000,
+      "accepted": 0,
+      "skippedDuplicateSentence": 15000,
+      "skippedDuplicateTriplet": 0,
+      "skippedLowQuality": 0,
+      "skippedMalformed": 0
+    }
+  }
+}

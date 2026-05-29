@@ -3,13 +3,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ArchitecturePrinciple, NetworkIntegration } from '../../lib/db';
 import { Plus, Edit, Trash2, ChevronDown, ChevronUp, ArrowUpDown, Globe, Loader2, Archive, RotateCcw, Scale } from 'lucide-react';
 import ConfirmModal from '../ui/ConfirmModal';
+import { Logger } from '../../lib/logger';
 import StatusToggle from '../ui/StatusToggle';
 import AIRewriteButton from '../ui/AIRewriteButton';
 import Select from 'react-select';
 import { reactSelectClassNames } from '../ui/CreatableDropdown';
 import { fetchFromProvider } from '../../lib/byoeGateway';
 import { decryptString } from '../../lib/cryptoVault';
-import { initAIEngine, analyzeWithHybridProvider } from '../../lib/aiEngine';
+import { analyzeWithHybridProvider } from '../../lib/aiEngine';
 import StatusSelect from '../ui/StatusSelect';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
@@ -138,7 +139,7 @@ export default function PrinciplesTab() {
   const handleOpenConsentModal = () => {
     const defaultProv = networkProviders.find(p => p.isDefault);
     if (!defaultProv) {
-      alert('Please configure a default provider in Network Integration settings.');
+      addNotification('Please configure a default provider in Network Integration settings.', 'warning', 3000);
       return;
     }
     setSelectedProvider(defaultProv);
@@ -163,9 +164,6 @@ export default function PrinciplesTab() {
         } catch (e) {
           throw new Error(`Failed to decrypt API key: ${e instanceof Error ? e.message : String(e)}`);
         }
-      } else if (provider.apiKey) {
-        // Fallback for legacy plaintext API keys
-        decryptedApiKey = provider.apiKey;
       } else {
         throw new Error('No API key found for provider');
       }
@@ -176,8 +174,7 @@ export default function PrinciplesTab() {
 
       let analyzed = externalData;
       if (provider.providerType === 'WebSearchAPI' || provider.providerType === 'CustomEnterprise') {
-        setTrendProgress('Analyzing with local WebLLM...');
-        await initAIEngine(progress => setTrendProgress(`Loading AI: ${Math.round(progress.progress * 100)}%`));
+        setTrendProgress('Analyzing with Sovereign Engine...');
         analyzed = await analyzeWithHybridProvider(externalData, provider.providerType, (text) => setTrendProgress(`Analyzing: ${text.substring(0, 64)}...`));
       } else {
         setTrendProgress('Parsing cloud LLM response...');
@@ -193,7 +190,7 @@ export default function PrinciplesTab() {
           results = JSON.parse(analyzed);
         }
       } catch (e) {
-        console.error('Failed parsing analyzed output', e, analyzed);
+        Logger.error('Failed parsing analyzed output', e, analyzed);
         throw new Error('Unable to parse produced principles JSON from provider response.');
       }
 
@@ -212,10 +209,10 @@ export default function PrinciplesTab() {
       }));
 
       await db.architecture_principles.bulkAdd(toInsert);
-      alert(`Added ${toInsert.length} new principle(s) to Needs Review.`);
+      addNotification(`Added ${toInsert.length} new principle(s) to Needs Review.`, 'success', 3000);
     } catch (err: any) {
-      console.error('Trend Fetch Error', err);
-      alert(err?.message || 'Unable to fetch or analyze trends.');
+      Logger.error('Trend Fetch Error', err);
+      addNotification(err?.message || 'Unable to fetch or analyze trends.', 'error', 5000);
     } finally {
       setIsFetchingTrends(false);
       setTrendProgress('');
@@ -398,15 +395,15 @@ export default function PrinciplesTab() {
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label><input name="name" defaultValue={editingItem?.name} placeholder="e.g., Always encrypt data at rest" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" />{error && <p className="text-sm text-red-500 mt-1">{error}</p>}</div>
               <div>
-                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Statement</label><AIRewriteButton context={statementValue} onResult={setStatementValue} /></div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Statement</label><AIRewriteButton currentText={statementValue} onUpdate={setStatementValue} /></div>
                 <textarea name="statement" value={statementValue} onChange={e => setStatementValue(e.target.value)} placeholder="Enter the principle statement" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
               </div>
               <div>
-                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Rationale</label><AIRewriteButton context={rationaleValue} onResult={setRationaleValue} /></div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Rationale</label><AIRewriteButton currentText={rationaleValue} onUpdate={setRationaleValue} /></div>
                 <textarea name="rationale" value={rationaleValue} onChange={e => setRationaleValue(e.target.value)} placeholder="Why this principle matters" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
               </div>
               <div>
-                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Implications</label><AIRewriteButton context={implicationsValue} onResult={setImplicationsValue} /></div>
+                <div className="flex justify-between items-center mb-1"><label className="text-sm text-gray-600 dark:text-gray-400">Implications</label><AIRewriteButton currentText={implicationsValue} onUpdate={setImplicationsValue} /></div>
                 <textarea name="implications" value={implicationsValue} onChange={e => setImplicationsValue(e.target.value)} placeholder="Potential impact and effects" required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" />
               </div>
               <div className="grid grid-cols-2 gap-4">

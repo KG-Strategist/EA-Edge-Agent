@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ArrowUpDown, Download, Upload } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
+import { Logger } from '../../lib/logger';
 
 export interface DataTableColumn<T> {
   key: keyof T | string;
@@ -159,7 +160,7 @@ export default function DataTable<T extends Record<string, any>>({
         }
         onImport(parsed);
       } catch (err) {
-        console.error('Import error:', err);
+        Logger.error('Import error:', err);
         addNotification(err instanceof Error ? err.message : 'Invalid JSON file', 'error');
       }
       if (fileInputRef.current) {

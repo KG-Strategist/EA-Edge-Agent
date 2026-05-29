@@ -253,7 +253,7 @@ export function generateComponentId(type: ComponentType): string {
     'Data Flow': 'DF',
     'Trust Boundary': 'TB',
   };
-  return `${prefixes[type]}_${Math.random().toString(36).substr(2, 6)}`;
+  return `${prefixes[type]}_${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0, 6)}`;
 }
 
 /**

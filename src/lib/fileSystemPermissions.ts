@@ -2,6 +2,7 @@
  * File System Access API Permission Management
  * Handles verification and restoration of persistent directory handle permissions
  */
+import { Logger } from './logger';
 
 export type PermissionStatus = 'granted' | 'prompt' | 'denied' | 'unknown';
 
@@ -17,7 +18,7 @@ export async function queryDirectoryPermission(
     const permission = await (handle as any).queryPermission({ mode: 'readwrite' });
     return permission as PermissionStatus;
   } catch (err) {
-    console.warn('Failed to query directory permission:', err);
+    Logger.warn('Failed to query directory permission:', err);
     return 'unknown';
   }
 }
@@ -36,7 +37,7 @@ export async function requestDirectoryPermission(
     const permission = await (handle as any).requestPermission({ mode: 'readwrite' });
     return permission === 'granted';
   } catch (err) {
-    console.error('Failed to request directory permission:', err);
+    Logger.error('Failed to request directory permission:', err);
     return false;
   }
 }

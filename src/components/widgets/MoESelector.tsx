@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { setGlobalMoETarget } from '../../lib/aiEngine';
-import { ChevronDown, Zap, Brain, Rocket } from 'lucide-react';
+import { ChevronDown, Zap, Brain, Rocket, Sparkles } from 'lucide-react';
 import { useStateContext } from '../../context/StateContext';
 
 export default function MoESelector() {
@@ -28,6 +28,7 @@ export default function MoESelector() {
     switch (executionMode) {
       case 'Primary EA Agent': return <Brain size={16} className="text-purple-500" />;
       case 'Tiny Triage Agent': return <Rocket size={16} className="text-green-500" />;
+      case 'Tiny Triage Agent (Epistemic)': return <Sparkles size={16} className="text-amber-500" />;
       case 'Auto-Route (MoE)':
       default: return <Zap size={16} className="text-blue-500" />;
     }
@@ -46,12 +47,27 @@ export default function MoESelector() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+        <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Execution Mode
+              Cognitive Routing
             </span>
           </div>
+
+          <button
+            onClick={() => handleSelect('Tiny Triage Agent (Epistemic)')}
+            className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+              executionMode === 'Tiny Triage Agent (Epistemic)'
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
+            }`}
+          >
+            <Sparkles size={16} className={executionMode === 'Tiny Triage Agent (Epistemic)' ? 'text-amber-500' : 'text-gray-400'} />
+            <div>
+              <span className="font-medium">Epistemic Moat</span>
+              <div className="text-[10px] text-gray-400">Deterministic · Zero LLM · Arena-only</div>
+            </div>
+          </button>
 
           <button
             onClick={() => handleSelect('Auto-Route (MoE)')}
@@ -62,19 +78,10 @@ export default function MoESelector() {
             }`}
           >
             <Zap size={16} className={executionMode === 'Auto-Route (MoE)' ? 'text-blue-500' : 'text-gray-400'} />
-            <span className="font-medium">Auto-Route (MoE)</span>
-          </button>
-
-          <button
-            onClick={() => handleSelect('Primary EA Agent')}
-            className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
-              executionMode === 'Primary EA Agent'
-                ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
-                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <Brain size={16} className={executionMode === 'Primary EA Agent' ? 'text-purple-500' : 'text-gray-400'} />
-            <span className="font-medium">Primary EA Agent</span>
+            <div>
+              <span className="font-medium">Auto-Route (MoE)</span>
+              <div className="text-[10px] text-gray-400">Arena-scored, Epistemic first</div>
+            </div>
           </button>
 
           <button
@@ -86,7 +93,25 @@ export default function MoESelector() {
             }`}
           >
             <Rocket size={16} className={executionMode === 'Tiny Triage Agent' ? 'text-green-500' : 'text-gray-400'} />
-            <span className="font-medium">Tiny Triage Agent</span>
+            <div>
+              <span className="font-medium">Tiny Triage Agent</span>
+              <div className="text-[10px] text-gray-400">Sovereign WASM triage model</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => handleSelect('Primary EA Agent')}
+            className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+              executionMode === 'Primary EA Agent'
+                ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
+            }`}
+          >
+            <Brain size={16} className={executionMode === 'Primary EA Agent' ? 'text-purple-500' : 'text-gray-400'} />
+            <div>
+              <span className="font-medium">Primary EA Agent</span>
+              <div className="text-[10px] text-gray-400">Sovereign WASM primary model</div>
+            </div>
           </button>
         </div>
       )}

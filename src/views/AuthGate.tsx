@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff, Plane, Network } from 'lucide-react';
-import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback } from '../lib/authEngine';
+import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback, restoreAuthenticatedSession, unlockVaultWithPin } from '../lib/authEngine';
 import Logo from '../components/ui/Logo';
 import { db, GlobalSetting } from '../lib/db';
+import { securePutGlobalSetting } from '../lib/secureDb';
+import { GlobalSettingSchema } from '../lib/validation';
 import { UserIdentity, useStateContext } from '../context/StateContext';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Logger } from '../lib/logger';
+
+// ARCHITECT NOTE: AuthGate is the designated integration point for Phase 5.0 Zero-Trust FIDO2 Biometrics and Hardware Key DB Binding.
 
 type Particle = { id: number; x: number; y: number; size: number };
 
@@ -55,7 +60,7 @@ const MouseSparkles = () => {
   );
 };
 
-type AuthView = 'LOADING' | 'LOGIN' | 'MODE_SELECT' | 'CONFIG_HYBRID' | 'HYBRID_AUTH_OPTIONS' | 'AIR_GAP_OPTIONS' | 'CONFIG_ENTERPRISE' | 'CONFIG_LDAP' | 'OAUTH_INIT' | 'LOCAL_BINDING' | 'RECOVERY' | 'RECOVERY_SUCCESS' | 'HYBRID_CONSENT' | 'AIRGAP_CONSENT' | 'PIN_SETUP';
+type AuthView = 'LOADING' | 'LOGIN' | 'MODE_SELECT' | 'CONFIG_HYBRID' | 'HYBRID_AUTH_OPTIONS' | 'AIR_GAP_OPTIONS' | 'CONFIG_ENTERPRISE' | 'CONFIG_LDAP' | 'OAUTH_INIT' | 'LOCAL_BINDING' | 'RECOVERY' | 'RECOVERY_SUCCESS' | 'HYBRID_CONSENT' | 'AIRGAP_CONSENT' | 'PIN_SETUP' | 'UNLOCK_VAULT';
 
 const getPasswordStrength = (pass: string) => {
   let score = 0;
@@ -88,7 +93,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
   const [confirmPin, setConfirmPin] = useState('');
   const [pendingProviderId, setPendingProviderId] = useState<string>('');
 
-  const { theme, toggleTheme } = useStateContext();
+  const { theme, toggleTheme, setAuthStatus } = useStateContext();
   const isDark = theme === 'dark';
 
   const appSettings = useLiveQuery(() => db.app_settings.toArray()) || [];
@@ -171,7 +176,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         }
       }
     } catch (e) {
-      console.error("Failed to fetch user role", e);
+      Logger.error("Failed to fetch user role", e);
     }
 
     onAuthenticated({
@@ -205,10 +210,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
           // Check if this provider already has an identity bound
           const existingUser = await db.users.where('providerId').equals(result.providerId).first();
           if (existingUser) {
-            // Returning user — auto-login via SSO
+            // Returning SSO user: identity is proven, vault still requires PIN.
             await loginWithSSO(result.providerId);
             setIsInSetupWorkflow(false); // Exit setup workflow
-            await dispatchAuthSuccess(existingUser.pseudokey);
+            setAuthStatus('locked');
+            setPseudokey(existingUser.pseudokey);
+            setPin('');
+            setView('UNLOCK_VAULT');
             return;
           }
           // New user — proceed to local identity binding
@@ -229,9 +237,17 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         return; // Don't interrupt setup with state checks
       }
 
-      const curr = getCurrentUser();
-      if (curr) {
-        await dispatchAuthSuccess(curr);
+      const restored = await restoreAuthenticatedSession();
+      if (restored.status === 'unlocked' && restored.pseudokey) {
+        setAuthStatus('unlocked');
+        await dispatchAuthSuccess(restored.pseudokey);
+        return;
+      }
+      if (restored.status === 'locked' && restored.pseudokey) {
+        setAuthStatus('locked');
+        setPseudokey(restored.pseudokey);
+        setPin('');
+        setView('UNLOCK_VAULT');
         return;
       }
       
@@ -248,7 +264,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       }
     };
     checkState();
-  }, [globalConfig?.connection_mode, isInSetupWorkflow, dispatchAuthSuccess]);
+  }, [globalConfig?.connection_mode, isInSetupWorkflow, dispatchAuthSuccess, setAuthStatus]);
 
   const saveHybridConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,7 +275,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       connection_mode: 'HYBRID',
       public_sso_enabled: true
     };
-    await db.global_settings.put(cfg);
+    await securePutGlobalSetting(cfg);
     setGlobalConfig(cfg);
     setFlowOrigin('hybrid');
     setView('HYBRID_AUTH_OPTIONS');
@@ -268,9 +284,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
   const saveEnterpriseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsInSetupWorkflow(true); // Enter setup workflow
+    setIsInSetupWorkflow(true);
     setIsProcessing(true);
-    // Context-aware: preserve HYBRID mode if user came from hybrid flow
     const mode = flowOrigin === 'hybrid' ? 'HYBRID' : 'AIR_GAPPED';
     const cfg: GlobalSetting = {
       id: 'SSO_CONFIG',
@@ -284,7 +299,17 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         tokenUrl: entTokenUrl
       }
     };
-    await db.global_settings.put(cfg);
+    const sanitizedCfg = { ...cfg };
+    if (sanitizedCfg.local_enterprise_sso?.tokenUrl === '') {
+      sanitizedCfg.local_enterprise_sso.tokenUrl = undefined;
+    }
+    const result = GlobalSettingSchema.safeParse(sanitizedCfg);
+    if (!result.success) {
+      setError(result.error.message);
+      setIsProcessing(false);
+      return;
+    }
+    await securePutGlobalSetting(result.data);
     setGlobalConfig(cfg);
     setView('OAUTH_INIT');
     setIsProcessing(false);
@@ -292,9 +317,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
   const saveLdapConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsInSetupWorkflow(true); // Enter setup workflow
+    setIsInSetupWorkflow(true);
     setIsProcessing(true);
-    // Context-aware: preserve HYBRID mode if user came from hybrid flow
     const mode = flowOrigin === 'hybrid' ? 'HYBRID' : 'AIR_GAPPED';
     const cfg: GlobalSetting = {
       id: 'SSO_CONFIG',
@@ -312,7 +336,17 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         tokenUrl: ''
       }
     };
-    await db.global_settings.put(cfg);
+    const sanitizedCfg = { ...cfg };
+    if (sanitizedCfg.local_enterprise_sso?.tokenUrl === '') {
+      sanitizedCfg.local_enterprise_sso.tokenUrl = undefined;
+    }
+    const result = GlobalSettingSchema.safeParse(sanitizedCfg);
+    if (!result.success) {
+      setError(result.error.message);
+      setIsProcessing(false);
+      return;
+    }
+    await securePutGlobalSetting(result.data);
     setGlobalConfig(cfg);
     setView('OAUTH_INIT');
     setIsProcessing(false);
@@ -354,7 +388,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
   const [airgapConsentType, setAirgapConsentType] = useState<'standalone' | 'enterprise' | 'ldap'>('standalone');
 
-  /** Enterprise SSO trigger (uses existing mock for air-gapped on-prem) */
+  /** Enterprise SSO trigger — air-gapped mode: generates synthetic providerId as local identity anchor.
+   *  No external OAuth server is contacted. The providerId becomes a stable IndexedDB key for re-auth. */
   const triggerEnterpriseSso = () => {
     setIsProcessing(true);
     setTimeout(() => {
@@ -368,14 +403,14 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
   };
 
   /** Standalone local identity — no SSO provider required */
-  const handleStandaloneSetup = () => {
+  const handleStandaloneSetup = async () => {
     setIsInSetupWorkflow(true); // Enter setup workflow
     const cfg: GlobalSetting = {
       id: 'SSO_CONFIG',
       connection_mode: 'AIR_GAPPED',
       public_sso_enabled: false
     };
-    db.global_settings.put(cfg);
+    await securePutGlobalSetting(cfg);
     setGlobalConfig(cfg);
     setPendingProviderId(''); // Clear — no SSO link
     setPseudokey(generatePseudonym());
@@ -448,7 +483,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         // Technically enterprise SSO could act as hybrid identity context, but per instructions Air Gapped uses standalone identity binding for now, or links to the providerId. Let's link it to pendingProviderId if it exists.
         if (pendingProviderId) {
           await registerHybridUser(pendingProviderId, pseudokey, password, pin, securityQuestions, baseConsentHistory, demographics);
-          await loginWithSSO(pendingProviderId);
+          await loginWith2FA(pseudokey, password, pin);
         } else {
           await registerLocalUser(pseudokey, password, pin, securityQuestions, baseConsentHistory, demographics);
           await loginWith2FA(pseudokey, password, pin);
@@ -456,9 +491,10 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
       } else {
         // Hybrid mode (Public SSO)
         await registerHybridUser(pendingProviderId, pseudokey, password, pin, securityQuestions, baseConsentHistory, demographics);
-        await loginWithSSO(pendingProviderId);
+        await loginWith2FA(pseudokey, password, pin);
       }
       setIsInSetupWorkflow(false); // Exit setup workflow on success
+      setAuthStatus('unlocked');
       dispatchAuthSuccess(pseudokey);
     } catch (err: any) {
       setError(err.message || 'Identity binding failed');
@@ -506,7 +542,10 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
         }
 
         const success = await loginWith2FA(pseudokey, password, pin);
-        if (success) await dispatchAuthSuccess(pseudokey);
+        if (success) {
+          setAuthStatus('unlocked');
+          await dispatchAuthSuccess(pseudokey);
+        }
         else setError('Invalid Credentials');
       } else {
         setError('Please provide Agent ID and Passphrase');
@@ -518,12 +557,41 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     }
   };
 
+  const handleUnlockVault = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError('');
+    setIsProcessing(true);
+    try {
+      if (!pin) {
+        setError('Please enter your PIN');
+        setIsProcessing(false);
+        return;
+      }
+      const unlocked = await unlockVaultWithPin(pseudokey, pin);
+      if (!unlocked) {
+        setError('Invalid PIN');
+        return;
+      }
+      setAuthStatus('unlocked');
+      await dispatchAuthSuccess(pseudokey);
+    } catch (err: any) {
+      setError(err.message || 'Vault unlock failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleSSOLogin = async (providerIdMock: string) => {
     setError('');
     setIsProcessing(true);
     try {
       const successPseudonym = await loginWithSSO(providerIdMock);
-      if (successPseudonym) dispatchAuthSuccess(successPseudonym);
+      if (successPseudonym) {
+        setAuthStatus('locked');
+        setPseudokey(successPseudonym);
+        setPin('');
+        setView('UNLOCK_VAULT');
+      }
       else setError('No local identity linked to this SSO provider.');
     } catch (err: any) {
       setError(err.message || 'SSO Authentication error');
@@ -538,9 +606,14 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     try {
       // MVP 1.1: LDAP auth routes through the same local identity resolution as SSO
       const ldapProviderId = `ldap-bind|${globalConfig?.local_ldap?.ldapUrl || 'local'}`;
-      console.info('[AUDIT] LDAP Authentication Attempted:', ldapProviderId);
+      Logger.info('[AUDIT] LDAP Authentication Attempted:', ldapProviderId);
       const successPseudonym = await loginWithSSO(ldapProviderId);
-      if (successPseudonym) dispatchAuthSuccess(successPseudonym);
+      if (successPseudonym) {
+        setAuthStatus('locked');
+        setPseudokey(successPseudonym);
+        setPin('');
+        setView('UNLOCK_VAULT');
+      }
       else setError('No local identity linked to this LDAP directory.');
     } catch (err: any) {
       setError(err.message || 'LDAP Authentication error');
@@ -662,12 +735,12 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                   <div className="space-y-3">
                     {isInternetEnabled && hasPublicSSO && (
                       <>
-                        <button onClick={() => handleSSOLogin('google-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Sign in with Google</button>
-                        <button onClick={() => handleSSOLogin('microsoft-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Sign in with Microsoft</button>
+                        <button onClick={() => handleSSOLogin('google-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Re-auth: Google-linked Identity</button>
+                        <button onClick={() => handleSSOLogin('microsoft-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-sm font-medium text-white hover:bg-gray-700">Re-auth: Microsoft-linked Identity</button>
                       </>
                     )}
                     {hasEnterpriseSSO && (
-                      <button onClick={() => handleSSOLogin('enterprise-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-blue-500 rounded-md shadow-sm bg-blue-600 text-sm font-medium text-white hover:bg-blue-700">Sign in with Enterprise SSO</button>
+                      <button onClick={() => handleSSOLogin('enterprise-oauth2|mock')} className="w-full flex items-center justify-center py-2 px-4 border border-blue-500 rounded-md shadow-sm bg-blue-600 text-sm font-medium text-white hover:bg-blue-700">Re-auth: Enterprise SSO Identity</button>
                     )}
                     {hasLDAP && (
                       <button onClick={() => handleLDAPLogin()} className="w-full flex items-center justify-center py-2 px-4 border border-purple-500 rounded-md shadow-sm bg-purple-600 text-sm font-medium text-white hover:bg-purple-700">Sign in with LDAP</button>
@@ -757,6 +830,51 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
             );
           })()}
 
+          {view === 'UNLOCK_VAULT' && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 mb-2">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white tracking-wide">Vault Locked</h3>
+                <p className="text-xs sm:text-sm text-gray-500 dark:text-blue-200/60 mt-1">
+                  SSO restored your identity. Enter your local PIN to unlock encrypted data.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 p-3">
+                <p className="text-[11px] text-gray-500 dark:text-blue-200/60 font-mono break-all">
+                  Agent ID: {pseudokey || getCurrentUser() || 'Session pending'}
+                </p>
+              </div>
+
+              <form onSubmit={handleUnlockVault} className="space-y-3">
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Local Vault PIN</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Lock className="h-4 w-4 text-gray-400 dark:text-blue-400/60" />
+                    </div>
+                    <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required aria-label="Vault PIN" title="Vault PIN" placeholder="4-6 digit PIN" className="pl-11 pr-10 w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)] bg-white dark:bg-black/30 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 transition-all duration-200 text-sm tracking-widest" />
+                    <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                      {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && <p className="text-red-500 dark:text-red-400 text-xs font-bold text-center bg-red-50 dark:bg-red-500/10 py-2 rounded-lg border border-red-200 dark:border-red-500/20">{error}</p>}
+
+                <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-gradient-to-r dark:from-blue-600 dark:to-blue-500 text-white font-bold rounded-lg px-6 py-3 text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <FolderKey className="w-5 h-5" />} Unlock Vault
+                </button>
+
+                <button type="button" onClick={() => { setAuthStatus('anonymous'); setPseudokey(''); setPin(''); setView('LOGIN'); }} className="w-full text-xs font-semibold text-gray-500 dark:text-blue-300/70 hover:text-blue-600 dark:hover:text-blue-300 transition-colors">
+                  Use full passphrase login instead
+                </button>
+              </form>
+            </div>
+          )}
+
           {view === 'PIN_SETUP' && (
             <div className="space-y-4">
               <div className="text-center">
@@ -788,6 +906,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                   const success = await setupPermanentCredentials(pseudokey, newPassword, pin);
                   if (success) {
                     await loginWith2FA(pseudokey, newPassword, pin);
+                    setAuthStatus('unlocked');
                     await dispatchAuthSuccess(pseudokey);
                   } else {
                     setError('Failed to setup credentials');
@@ -953,7 +1072,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
                <div className="grid grid-cols-1 gap-3">
                  {/* Option 1: Standalone Local 2FA */}
-                 <button onClick={handleStandaloneSetup} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-400/50 bg-gray-50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
+                 <button data-testid="auth-standalone-2fa" onClick={handleStandaloneSetup} className="flex flex-row items-center text-left gap-3 p-2.5 border border-gray-200 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-400/50 bg-gray-50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all duration-300 shadow-sm group relative overflow-hidden">
                     {isDark && <div className="absolute -inset-24 bg-emerald-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />}
                     <div className="p-2 bg-emerald-100 dark:bg-gradient-to-br dark:from-emerald-500 dark:to-teal-400 text-emerald-600 dark:text-white rounded-lg shadow-sm dark:shadow-lg shrink-0 group-hover:scale-110 transition-transform relative z-10">
                       <UserPlus size={16} />
@@ -1206,7 +1325,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  </div>
                </div>
 
-               <button onClick={() => {
+               <button data-testid="auth-consent-continue" onClick={() => {
                  if (isTempLoginMode) {
                    setView('PIN_SETUP');
                    return;
@@ -1233,7 +1352,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                    setView('AIR_GAP_OPTIONS');
                  }
                }} />
-               <form onSubmit={handleLocalBinding} className="space-y-3">
+               <form data-testid="auth-local-binding-form" onSubmit={handleLocalBinding} className="space-y-3">
                  <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl text-emerald-900 dark:text-emerald-100 shadow-inner">
                    <div className="flex flex-col gap-1">
                      <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1253,12 +1372,12 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <div className="space-y-3">
                     <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Pseudonym</label>
-                      <input type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required aria-label="Pseudonym" title="Pseudonym" placeholder="Your pseudonym" className="w-full rounded-xl border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-2 px-3 outline-none font-semibold shadow-inner text-xs" />
+                      <input data-testid="auth-pseudonym" type="text" value={pseudokey} onChange={e => setPseudokey(e.target.value)} required aria-label="Pseudonym" title="Pseudonym" placeholder="Your pseudonym" className="w-full rounded-xl border-2 border-emerald-400/50 dark:border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5 text-gray-900 dark:text-white py-2 px-3 outline-none font-semibold shadow-inner text-xs" />
                     </div>
                     <div>
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Local Passphrase</label>
+                      <label htmlFor="local-passphrase" className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Local Passphrase</label>
                       <div className="relative">
-                        <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Min 8 chars" />
+                        <input data-testid="auth-passphrase" id="local-passphrase" name="local-passphrase" autoComplete="new-password" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Min 8 chars" />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -1280,7 +1399,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">2FA PIN</label>
                         <div className="relative">
-                          <input type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
+                          <input data-testid="auth-pin" type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
                           <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -1289,7 +1408,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Confirm PIN</label>
                         <div className="relative">
-                          <input type={showPin ? "text" : "password"} value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
+                          <input data-testid="auth-confirm-pin" type={showPin ? "text" : "password"} value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
                           <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -1304,13 +1423,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                           <select value={q1Id} onChange={e => setQ1Id(e.target.value)} aria-label="Security Question 1" title="Security Question 1" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
-                          <input type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 1" />
+                          <input data-testid="auth-security-answer-1" type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 1" />
                         </div>
                         <div>
                           <select value={q2Id} onChange={e => setQ2Id(e.target.value)} aria-label="Security Question 2" title="Security Question 2" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
-                          <input type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 2" />
+                          <input data-testid="auth-security-answer-2" type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 2" />
                         </div>
                       </div>
                     </div>
@@ -1318,7 +1437,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  
                  {error && <p className="text-red-500 dark:text-red-400 text-xs font-bold text-center bg-red-50 dark:bg-red-500/10 py-2 px-3 rounded-xl border border-red-200 dark:border-red-500/20">{error}</p>}
                  
-                 <button type="submit" disabled={isProcessing} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-xl py-2.5 text-sm transition-all hover:scale-[1.01] shadow-[0_0_20px_-5px_rgba(16,185,129,0.5)] flex items-center justify-center gap-2">
+                 <button data-testid="auth-create-vault" type="submit" disabled={isProcessing} className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-xl py-2.5 text-sm transition-all hover:scale-[1.01] shadow-[0_0_20px_-5px_rgba(16,185,129,0.5)] flex items-center justify-center gap-2">
                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-4 h-4" />} Create Identity & Vault
                  </button>
                </form>

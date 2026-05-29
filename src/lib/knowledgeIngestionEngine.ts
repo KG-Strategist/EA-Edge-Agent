@@ -1,13 +1,9 @@
 import * as pdfjs from 'pdfjs-dist';
-// Explicitly bundle the worker via Vite to ensure 100% offline air-gapped capability.
-// We use ?url to get the asset URL for the worker.
-import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
-
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 import { db } from './db';
-import { storeEnterpriseEmbeddings } from './ragEngine';
-
-// Prevent CDN fallback
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+import { vectoriser } from './SemanticArena';
+import { Logger } from './logger';
 
 export interface IngestionProgress {
   filename: string;
@@ -44,7 +40,7 @@ async function extractTextFromFile(file: File): Promise<string> {
 }
 
 /**
- * Initiates training logic. Creates job record, parses text, requests embeddings, 
+ * Initiates training logic. Creates job record, parses text, projects to bitfields,
  * and handles progress logs via a callback.
  */
 export async function initiateTrainingJob(
@@ -80,17 +76,30 @@ export async function initiateTrainingJob(
       throw new Error("No readable text found in document.");
     }
     
-    await updateLog(`Extracted ${rawText.length} characters. Sending to Local Vector Engine...`, 'Processing');
+    await updateLog(`Extracted ${rawText.length} characters. Projecting to orthogonal bitfields...`, 'Processing');
     
-    // Defer to the RAG engine which communicates with the background WebWorker
-    // The Web Worker will handle token chunking (generous 500 tokens) and Xenova vectorizing.
-    await storeEnterpriseEmbeddings(file.name, rawText, (workerMsg) => {
-       updateLog(workerMsg, 'Processing');
-    });
+    // Project text to orthogonal bitfields via MoatVectoriser
+    const layers = await vectoriser.projectOrthogonalLayersToBitfields(rawText);
+    
+    let ingested = 0;
+    for (const { vector, orthogonal } of layers) {
+      await db.semantic_memory.add({
+        subject: orthogonal.Subject || '',
+        predicate: orthogonal.Intent || '',
+        object: orthogonal.Target || '',
+        context: rawText.substring(0, 1000),
+        orthogonal_components: orthogonal,
+        vector: vector.slice(),
+        beliefState: 1,
+        source: 'enterprise_ingestion',
+        createdAt: new Date()
+      });
+      ingested++;
+    }
 
-    await updateLog('Ingestion complete. Knowledge integrated into Enterprise RAG.', 'Completed');
+    await updateLog(`Ingestion complete. ${ingested} orthogonal layers integrated into Semantic Memory.`, 'Completed');
   } catch (error: any) {
-    console.error('Ingestion failed:', error);
+    Logger.error('Ingestion failed:', error);
     await updateLog(`Error: ${error.message}`, 'Failed');
   }
 }

@@ -274,11 +274,11 @@ export default function CategoriesTab() {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label htmlFor="category-description" className="block text-sm text-gray-600 dark:text-gray-400">Description (Optional)</label>
-                  <AIRewriteButton
-                    context={descriptionValue}
-                    onResult={(text) => setDescriptionValue(text)}
-                    label="Auto Generate"
-                  />
+<AIRewriteButton
+            currentText={descriptionValue}
+            onUpdate={(text) => setDescriptionValue(text)}
+            label="Auto Generate"
+          />
                 </div>
                 <textarea 
                   id="category-description"

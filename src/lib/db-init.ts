@@ -9,7 +9,7 @@ import { encryptString } from './cryptoVault';
 import { Logger } from '../lib/logger';
 
 // Current schema version (increment on any breaking schema changes)
-const CURRENT_SCHEMA_VERSION = 31;
+const CURRENT_SCHEMA_VERSION = 36;
 
 export async function initDatabase() {
   try {
@@ -40,6 +40,7 @@ export async function initDatabase() {
     }
 
     // 3. Run data migrations
+    await migratePBKDF2To600k();
     await migrateApiKeysToEncrypted();
 
     Logger.info('[DB] Database initialization complete. Ready for operation.');
@@ -162,6 +163,28 @@ export async function getDatabaseHealth() {
 }
 
 /**
+ * TASK 3: PBKDF2 Upgrade Migration (600k iterations)
+ * When PBKDF2 iterations change from 100k to 600k, all existing password hashes become invalid.
+ * CRITICAL LOCKOUT PREVENTION: Force users to re-register by clearing the users table.
+ */
+export async function migratePBKDF2To600k() {
+  try {
+    const users = await db.users.toArray();
+    
+    // If users exist, they were hashed with the old 100k iterations.
+    // Their hashes are no longer valid with 600k iterations.
+    // Purge them to force re-registration with new cryptography.
+    if (users.length > 0) {
+      await db.users.clear();
+      Logger.info('[DB] PBKDF2 upgraded to 600k iterations. Users table cleared. Users must re-register.');
+    }
+  } catch (err) {
+    Logger.info('[DB] PBKDF2 migration failed:', err);
+    // Do not throw - continue gracefully
+  }
+}
+
+/**
  * Migrate plaintext API keys to encrypted format.
  * Finds existing network_integrations with plaintext apiKey and migrates them to encryptedApiKey.
  * This ensures backward compatibility while securing sensitive credentials.
@@ -173,14 +196,17 @@ export async function migrateApiKeysToEncrypted() {
 
     for (const provider of providers) {
       // If plaintext apiKey exists but no encryptedApiKey, migrate it
-      if (provider.apiKey && !provider.encryptedApiKey) {
+      // Note: apiKey field removed from interface but may still exist in legacy DB records
+      const legacyKey = (provider as any).apiKey;
+      if (legacyKey && !provider.encryptedApiKey) {
         try {
-          const encryptedApiKey = await encryptString(provider.apiKey);
+          const encryptedApiKey = await encryptString(legacyKey);
 
           await db.network_integrations.update(provider.id!, {
             encryptedApiKey: encryptedApiKey,
-            apiKey: undefined, // Clear plaintext after encryption
           });
+          // Clear plaintext key from DB (field no longer in schema)
+          await db.network_integrations.where('id').equals(provider.id!).modify((obj: any) => { delete obj.apiKey; });
 
           migratedCount++;
           Logger.info(`[DB] Migrated API key for provider: ${provider.displayName}`);
@@ -196,14 +222,15 @@ export async function migrateApiKeysToEncrypted() {
 
     const legacyModels = await db.model_registry.toArray();
     for (const model of legacyModels) {
-      if (model.apiKey && !model.encryptedApiKey) {
+      const legacyKey = (model as any).apiKey;
+      if (legacyKey && !model.encryptedApiKey) {
         try {
-          const encryptedApiKey = await encryptString(model.apiKey);
+          const encryptedApiKey = await encryptString(legacyKey);
 
           await db.model_registry.update(model.id!, {
             encryptedApiKey: encryptedApiKey,
-            apiKey: undefined,
           });
+          await db.model_registry.where('id').equals(model.id!).modify((obj: any) => { delete obj.apiKey; });
 
           migratedCount++;
           Logger.info(`[DB] Migrated API key for BYOM model: ${model.name}`);

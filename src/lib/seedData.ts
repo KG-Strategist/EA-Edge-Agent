@@ -1,6 +1,7 @@
 import { db } from './db';
 import seedData from '../data/ea_seed_data.json';
 import { Logger } from '../lib/logger';
+import { OPFSManager } from './storage/opfsManager';
 
 async function cleanupDuplicateMasterCategories() {
   const allCategories = await db.master_categories.toArray();
@@ -180,13 +181,29 @@ export async function seedDatabase() {
   if (isSeeding) return true;
   isSeeding = true;
   try {
-    await cleanupDuplicateCategories();
-    await cleanupDuplicateMasterCategories();
-    await cleanupDuplicateMetamodel();
-    await cleanupDuplicateLayers();
-    await cleanupDuplicatePrinciples();
-    await cleanupDuplicateServiceDomains();
-    await cleanupDuplicateTags();
+    // Evict stale GGUF models from previous quantizations (e.g. Q4_K_M → Q4_0)
+    const [primaryCfg, triageCfg] = await Promise.all([
+      db.app_settings.get('core-primary'),
+      db.app_settings.get('core-triage'),
+    ]);
+    const primaryId = (primaryCfg?.value as any)?.id;
+    const triageId = (triageCfg?.value as any)?.id;
+    const activeIds = [primaryId, triageId].filter(Boolean) as string[];
+    if (activeIds.length > 0) {
+      await OPFSManager.evictStaleModels(activeIds);
+    }
+
+    const seedVersion = await db.app_settings.get('seedVersion');
+    const isAlreadySeeded = seedVersion && seedVersion.value >= 5001;
+    if (!isAlreadySeeded) {
+      await cleanupDuplicateCategories();
+      await cleanupDuplicateMasterCategories();
+      await cleanupDuplicateMetamodel();
+      await cleanupDuplicateLayers();
+      await cleanupDuplicatePrinciples();
+      await cleanupDuplicateServiceDomains();
+      await cleanupDuplicateTags();
+    }
 
     const categoriesCount = await db.architecture_categories.count();
     const masterCategoriesCount = await db.master_categories.count();
@@ -216,10 +233,13 @@ export async function seedDatabase() {
         version: String(wf.version),
         triggerReviewType: wf.triggerReviewType,
         status: wf.status as 'Active' | 'Draft' | 'Needs Review' | 'Deprecated',
+        domainTags: ['EA'],
+        defaultMitraProfileId: 1,
         stages: wf.stages.map((stage: any, idx: number) => ({
           id: stage.id || crypto.randomUUID(),
           name: stage.name,
           type: stage.type === "Human" ? "HUMAN_APPROVAL" : "AI_EVALUATION" as 'HUMAN_APPROVAL' | 'AI_EVALUATION',
+          mitraProfileId: null,
           orderIndex: idx,
           requiresManualSignoff: stage.type === "Human"
         }))
@@ -267,12 +287,18 @@ if (masterCategoriesCount === 0) {
         { type: 'Prompt Category', name: 'Anomaly Detection', status: 'Active' },
         { type: 'Prompt Category', name: 'ADR Generation', status: 'Active' },
         { type: 'Prompt Category', name: 'Threat Modeling', status: 'Active' },
+        { type: 'Prompt Category', name: 'NSI', status: 'Active' },
         { type: 'Prompt Category', name: 'Custom', status: 'Active' },
-        { type: 'AGENT_ENGINE_TYPES', name: 'WebLLM (Browser Cache)', status: 'Active' },
+        { type: 'AGENT_ENGINE_TYPES', name: 'Sovereign Engine (OPFS)', status: 'Active' },
         { type: 'AGENT_ENGINE_TYPES', name: 'Local API (Ollama/Custom)', status: 'Active' },
         { type: 'AGENT_CATEGORIES', name: 'Tiny Triage', status: 'Active' },
         { type: 'AGENT_CATEGORIES', name: 'MOE (Mixture of Experts)', status: 'Active' },
         { type: 'AGENT_CATEGORIES', name: 'Coding Agent', status: 'Active' },
+        { type: 'mitra_domain', name: 'EA', status: 'Active' },
+        { type: 'mitra_domain', name: 'Legal', status: 'Active' },
+        { type: 'mitra_domain', name: 'Healthcare', status: 'Active' },
+        { type: 'mitra_domain', name: 'SecOps', status: 'Active' },
+        { type: 'mitra_domain', name: 'Finance', status: 'Active' },
       ]);
     }
 
@@ -401,6 +427,7 @@ if (masterCategoriesCount === 0) {
         {
           name: 'System Auto-Tagging Classifier',
           category: 'System',
+          type: 'system',
           promptText: "You are a governance classifier. Analyze this policy: '{{ruleText}}'. Return 1 or 2 relevant framework tags (e.g., GDPR, DPDP, SOC2, Architecture, Security). Output ONLY a comma-separated list of tags, nothing else.",
           status: 'Active',
           createdAt: now,
@@ -409,7 +436,44 @@ if (masterCategoriesCount === 0) {
         {
           name: 'Master System Persona',
           category: 'System',
-          promptText: 'You are EA-NITI (Network-isolated, In-browser, Triage & Inference). Elite, air-gapped Enterprise Architecture AI. Strict TOGAF/BIAN/0-trust focus. 0 cloud egress.',
+          type: 'system',
+          promptText: 'You are EA-NITI (Edge Agent Network Inference & Triage). Elite, air-gapped Enterprise Architecture AI. Strict TOGAF/BIAN/0-trust focus. 0 cloud egress.',
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'EA_CHAT_GREETING',
+          category: 'System',
+          type: 'greeting',
+          promptText: "Hello! I am **EA-NITI**, your enterprise-grade edge AI agent. I run completely air-gapped in your browser with Sovereign Engine (OPFS pipeline active).\n\nI can assist with any **SAMIKSHA** review process — Enhancement Reviews (ER), New System Implementation (NSI) — as well as DDQ audits, threat modeling, and all pre-configured workflows in your vault. How can I help?",
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'EA_GREETING',
+          category: 'EA',
+          type: 'greeting',
+          promptText: "Hello! I am **EA-NITI** operating in Enterprise Architect mode. I specialize in TOGAF ADM, BIAN service domains, and architectural governance. How can I assist with your enterprise architecture today?",
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'LEGAL_GREETING',
+          category: 'Legal',
+          type: 'greeting',
+          promptText: "Hello! I am **EA-NITI** operating in Legal Compliance mode. I specialize in DPDP, GDPR, data privacy regulations, and contractual compliance. How can I assist with your legal and regulatory review?",
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          name: 'SECOPS_GREETING',
+          category: 'SecOps',
+          type: 'greeting',
+          promptText: "Hello! I am **EA-NITI** operating in Security Analyst mode. I specialize in STRIDE threat modeling, Zero-Trust Architecture, and security controls. How can I assist with your security assessment?",
           status: 'Active',
           createdAt: now,
           updatedAt: now
@@ -417,6 +481,7 @@ if (masterCategoriesCount === 0) {
         {
           name: 'DDQ Score Validation',
           category: 'DDQ Audit',
+          type: 'system',
           promptText: `You are an Enterprise Architecture auditor for a Tier-1 financial institution. A vendor has self-assessed their architecture using a Due Diligence Questionnaire (DDQ).
 
 Vendor's Self-Assessment Summary:
@@ -437,6 +502,7 @@ Instructions:
         {
           name: 'Migration Loophole Detection',
           category: 'Anomaly Detection',
+          type: 'system',
           promptText: `You are an Enterprise Architecture governance engine. A delivery team has submitted a review classified as "{{reviewType}}".
 
 Project Metadata:
@@ -467,6 +533,7 @@ Respond with:
         {
           name: 'ADR Generator',
           category: 'ADR Generation',
+          type: 'system',
           promptText: `You are an Architecture Decision Record (ADR) author. Generate a formal ADR based on the following review session data.
 
 Project: {{projectName}}
@@ -493,6 +560,7 @@ Generate an ADR in the standard format:
         {
           name: 'STRIDE Threat Model',
           category: 'Threat Modeling',
+          type: 'system',
           promptText: `You are a security architect performing a STRIDE threat analysis. Analyze the following architecture for potential threats.
 
 Architecture Documentation:
@@ -515,6 +583,85 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
           createdAt: now,
           updatedAt: now
         },
+        {
+          name: 'NSI_EAC_GENERATION',
+          category: 'NSI',
+          type: 'system',
+          executionTarget: 'Primary EA Agent',
+          promptText: `You are an Enterprise Architecture Council (EAC) Review Agent.
+Your task is to produce a formal NSI EAC Council Report for a New System Implementation vendor selection, using the structure and data provided below.
+
+## REPORT STRUCTURE
+Follow this template EXACTLY. The BDAT Vendor Scorecard has been pre-formatted for you — do NOT reformat it. Fill in all other placeholders with rich, specific narrative content.
+
+{{report_structure}}
+
+## CONTEXT
+- Review Type: {{reviewType}}
+- Service Domain: {{service_domain}}
+- Concept Metadata:
+{{concept_metadata}}
+
+## APPLICABLE ARCHITECTURE PRINCIPLES
+{{architectural_principles}}
+
+## HISTORICAL CONTEXT
+{{historical_context}}
+
+## ARCHITECTURE REFERENCE
+{{architecture_reference}}
+
+## VENDOR SCORECARD DATA
+The following vendors submitted DDQs. The BDAT scorecard below is pre-computed — do NOT regenerate it or alter any scores.
+
+{{bdat_table}}
+
+## INSTRUCTIONS
+1. Replace every {{placeholder}} EXCEPT {{bdat_table}} and {{report_structure}} (already filled) with rich, specific narrative content.
+2. In the {{executive_summary}}, synthesise the overall assessment, leading vendor recommendation, and key risk posture in 3-5 sentences.
+3. In the {{architectural_analysis}}, evaluate the top vendor's architecture against the applicable principles and domain standards. Highlight alignment and gaps.
+4. In the {{risk_assessment}}, call out specific, named risks (data sovereignty violations, SPOF, encryption gaps at rest, public internet exposure, absence of DR/BCP, etc.). Prefix each CRITICAL risk with **CRITICAL OBSERVATION:** so it can be programmatically detected by the host application.
+5. In the {{eac_recommendations}}, recommend the highest-scoring BDAT vendor unless a critical risk makes them unsuitable. Provide specific conditions if recommending "Approve with Conditions."
+6. Keep the BDAT scorecard table exactly as provided — do not modify vendor names, scores, or percentages.
+
+CRITICAL GATE: If any vendor scores below 40% overall, OR if the architecture presents any critical risks (data sovereignty violations, single points of failure, unencrypted data at rest, public internet exposure, absence of DR/BCP), you MUST include the exact phrase "CRITICAL OBSERVATION" in the Risk Assessment section.`,
+          status: 'Active',
+          createdAt: now,
+          updatedAt: now
+        },
+{
+    name: 'NSI_DDQ_GENERATION',
+    category: 'NSI',
+    type: 'system',
+    executionTarget: 'Primary EA Agent',
+    promptText: `You are a Due Diligence Questionnaire (DDQ) Generator for Enterprise Architecture reviews.
+Based on the concept metadata below, generate a comprehensive NSI Vendor DDQ scope document.
+
+## CONCEPT METADATA
+{{concept_metadata}}
+
+## INSTRUCTIONS
+1. Review the concept metadata and identify all applicable BDAT design principles relevant to this NSI.
+2. For each applicable principle, generate 3-5 probing questions that expose gaps in vendor capabilities.
+3. Highlight any questions where a "Partially Implemented" or "Not Implemented" response represents a CRITICAL RISK for a Tier-1 financial institution.
+4. Output a structured DDQ scope summary in Markdown format.
+5. Flag any high-risk areas (e.g., data sovereignty, single-vendor lock-in, absence of DR/BCP) that require additional scrutiny.`,
+    status: 'Active',
+    createdAt: now,
+    updatedAt: now
+},
+{
+    name: 'FIELD_AUTO_REWRITE',
+    category: 'Custom',
+    type: 'system',
+    executionTarget: 'Primary EA Agent',
+    promptText: `You are an Enterprise Architecture technical writer. Rewrite and professionally enhance the following text. Fix any grammatical errors, improve the technical tone, and output ONLY the enhanced text without any conversational filler, introductory remarks, or markdown code blocks:
+
+{{architecture_reference}}`,
+    status: 'Active',
+    createdAt: now,
+    updatedAt: now
+},
       ]);
     }
 
@@ -550,25 +697,42 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
     }
 
     // Seed initial TOGAF and Service data into Knowledge Management if empty
-    const knowledgeCount = await db.enterprise_knowledge.count();
+    const knowledgeCount = await db.semantic_memory.where('source').startsWith('togaf').count();
     if (knowledgeCount === 0 && seedData.togaf_phases && seedData.service_domains) {
-      const togafChunks = seedData.togaf_phases.map((phase: any) => ({
-        sourceFile: 'TOGAF_9.2_Base.txt',
-        sourceType: 'TXT',
-        textChunk: `TOGAF Phase ${phase.id}: ${phase.name}. Description: ${phase.description}`,
-        embedding: Array.from({ length: 384 }).fill(0) as number[], 
-        ingestedAt: new Date()
-      }));
+      const { vectoriser } = await import('./SemanticArena');
+      const togafChunks: any[] = [];
+      for (const phase of seedData.togaf_phases) {
+        const text = `TOGAF Phase ${phase.id}: ${phase.name}. Description: ${phase.description}`;
+        const vector = await vectoriser.projectToBitfield(text);
+        togafChunks.push({
+          subject: `TOGAF Phase ${phase.id}`,
+          predicate: 'defines',
+          object: phase.name,
+          context: text,
+          vector: vector.slice(),
+          beliefState: 2,
+          source: 'togaf_seed',
+          createdAt: new Date()
+        });
+      }
 
-      const bianChunks = seedData.service_domains.map((domain: any) => ({
-        sourceFile: 'BIAN_3.0_Standards.txt',
-        sourceType: 'TXT',
-        textChunk: `Service Domain ${domain.id}: ${domain.name}. Business Area: ${domain.businessArea}. Status: ${domain.status}`,
-        embedding: Array.from({ length: 384 }).fill(0) as number[],
-        ingestedAt: new Date()
-      }));
+      const bianChunks: any[] = [];
+      for (const domain of seedData.service_domains) {
+        const text = `Service Domain ${domain.id}: ${domain.name}. Business Area: ${domain.businessArea}. Status: ${domain.status}`;
+        const vector = await vectoriser.projectToBitfield(text);
+        bianChunks.push({
+          subject: `BIAN Domain ${domain.id}`,
+          predicate: 'defines',
+          object: domain.name,
+          context: text,
+          vector: vector.slice(),
+          beliefState: 2,
+          source: 'bian_seed',
+          createdAt: new Date()
+        });
+      }
 
-      await db.enterprise_knowledge.bulkAdd([...togafChunks, ...bianChunks]);
+      await db.semantic_memory.bulkAdd([...togafChunks, ...bianChunks]);
 
       // Seed dummy training jobs so they show as "Completed" in the UI
       await db.training_jobs.bulkAdd([
@@ -595,17 +759,16 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
       await db.app_settings.put({
         key: 'core-primary',
         value: {
-          id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC',
-          url: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
-          modelLibUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm',
+          id: 'gemma-4-e2b-it-q4_0',
+          url: 'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_0.gguf',
           context: 4096,
           isActive: true,
           agentCategory: 'MOE (Mixture of Experts)',
-          engineType: 'WebLLM (Browser Cache)',
+          engineType: 'Sovereign Engine (OPFS)',
           personaInstruction: 'You are EA-NITI. Elite, air-gapped Enterprise Architecture AI.',
           modelSourceMode: 'Remote URL',
           baseApiEndpoint: '',
-          modelSize: '~2.2 GB',
+          modelSize: '~1.3 GB',
           isValidated: true
         }
       });
@@ -616,17 +779,16 @@ Output as a structured threat matrix with severity (Critical/High/Medium/Low) an
       await db.app_settings.put({
         key: 'core-triage',
         value: {
-          id: 'gemma-2b-it-q4f16_1-MLC',
-          url: 'https://huggingface.co/mlc-ai/gemma-2b-it-q4f16_1-MLC',
-          modelLibUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-ctx4k_cs1k-webgpu.wasm',
-          context: 4096,
+          id: 'tinyllama-1.1b-chat-v1.0-q4_0',
+          url: 'https://huggingface.co/bartowski/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Q4_0.gguf',
+          context: 2048,
           isActive: true,
           agentCategory: 'Tiny Triage',
-          engineType: 'WebLLM (Browser Cache)',
+          engineType: 'Sovereign Engine (OPFS)',
           personaInstruction: 'You are a Triage Agent. Analyze and categorize input.',
           modelSourceMode: 'Remote URL',
           baseApiEndpoint: '',
-          modelSize: '~1.4 GB',
+          modelSize: '~700 MB',
           isValidated: true
         }
       });
@@ -644,6 +806,95 @@ async function seedSemanticMemory() {
 }
 
 await seedSemanticMemory();
+
+// ── Input Safety Config: maxPromptChars ──────────────────────────────────────
+const maxPromptCharsSetting = await db.app_settings.get('maxPromptChars');
+if (!maxPromptCharsSetting) {
+  await db.app_settings.put({ key: 'maxPromptChars', value: 8000 });
+}
+
+// ── Phase 1.3.1: Sovereign Engine OPFS Config ────────────────────────────────
+
+const opfsQuotaSetting = await db.app_settings.get('opfsStorageQuotaMB');
+if (!opfsQuotaSetting) {
+  await db.app_settings.put({ key: 'opfsStorageQuotaMB', value: 4096 });
+}
+
+const sovereignModelUrlSetting = await db.app_settings.get('sovereignModelUrl');
+if (!sovereignModelUrlSetting) {
+  await db.app_settings.put({
+    key: 'sovereignModelUrl',
+    value: 'https://huggingface.co/bartowski/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-Q4_0.gguf'
+  });
+}
+
+// ── Phase 1.5: Local Daemon WebSocket URL ──────────────────────────────
+const daemonWsUrlSetting = await db.app_settings.get('daemonWsUrl');
+if (!daemonWsUrlSetting) {
+  await db.app_settings.put({ key: 'daemonWsUrl', value: 'ws://127.0.0.1:8080' });
+}
+
+// ── Phase 1.6: RAG Budget Weights & MoE Threshold ───────────────────────────
+const ragWeightEpistemic = await db.app_settings.get('ragWeightEpistemic');
+if (!ragWeightEpistemic) {
+  await db.app_settings.put({ key: 'ragWeightEpistemic', value: 0.5 });
+}
+
+const ragWeightVector = await db.app_settings.get('ragWeightVector');
+if (!ragWeightVector) {
+  await db.app_settings.put({ key: 'ragWeightVector', value: 0.3 });
+}
+
+const ragWeightEnterprise = await db.app_settings.get('ragWeightEnterprise');
+if (!ragWeightEnterprise) {
+  await db.app_settings.put({ key: 'ragWeightEnterprise', value: 0.2 });
+}
+
+const moEThreshold = await db.app_settings.get('moEThreshold');
+if (!moEThreshold) {
+  await db.app_settings.put({ key: 'moEThreshold', value: 0.18 });
+}
+
+// ── Phase 1.8: Background Distillation Mode ──────────────────────────────────
+const backgroundDistillation = await db.app_settings.get('backgroundDistillation');
+if (!backgroundDistillation) {
+  await db.app_settings.put({ key: 'backgroundDistillation', value: 'auto' });
+}
+
+// ── Phase 1.10: MITRA Logical Swarm — Default Persona Profiles ────────────────
+const mitraCount = await db.mitra_profiles.count();
+if (mitraCount === 0) {
+  await db.mitra_profiles.bulkAdd([
+    {
+      name: 'Enterprise Architect',
+      systemPrompt: 'You are EA-NITI, an elite Enterprise Architecture council member. Focus on TOGAF ADM phases, BIAN service domains, and architectural governance principles. Provide structured, framework-aligned responses.',
+      domain: 'EA',
+      ragTags: ['TOGAF', 'BIAN'],
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    },
+    {
+      name: 'Security Analyst',
+      systemPrompt: 'You are a security architect specializing in STRIDE threat modeling and Zero-Trust Architecture. Analyze all inputs through the lens of threat vectors, attack surfaces, and security controls. Reference STRIDE categories explicitly.',
+      domain: 'SecOps',
+      ragTags: ['STRIDE', 'Zero-Trust'],
+      isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    },
+    {
+      name: 'Legal Compliance',
+      systemPrompt: 'You are a legal compliance officer specializing in DPDP (Digital Personal Data Protection) and GDPR regulations. Evaluate all architecture decisions for data privacy compliance, data localization requirements, and user consent obligations.',
+      domain: 'Legal',
+      ragTags: ['DPDP', 'GDPR'],
+      isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+  ]);
+}
+
 return true;
   } catch (error) {
     Logger.info('Failed to seed database:', error);

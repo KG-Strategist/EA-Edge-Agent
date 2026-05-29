@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "1.1.3-moat-2026-05-25",
+  "release": {
+    "tag": "v1.1.3-corpus",
+    "baseUrl": ""
+  },
+  "recordCount": 844854,
+  "manifestSchema": 7,
+  "distribution": {
+    "mode": "git-lfs-compressed-runtime-assets",
+    "note": "Clone with Git LFS. Raw JSON corpus files are local build outputs and are intentionally ignored."
+  },
+  "assets": [
+    {
+      "path": "public/baseline_meta.json.gz",
+      "fileName": "baseline_meta.json.gz",
+      "byteLength": 38294576,
+      "sha256": "957a73f2eb5033ca9bf2719db62c03af292a6d7366ffa35ac3e68cf3fb6ea58a",
+      "compressed": true,
+      "inflatedPath": "public/baseline_meta.json",
+      "inflatedByteLength": 494500328,
+      "inflatedSha256": "03ee236fde803fed8cdf8d6d24b924586a7161bda3b3a4b8292f6cc356f2815c"
+    },
+    {
+      "path": "public/baseline_corpus.bin.gz",
+      "fileName": "baseline_corpus.bin.gz",
+      "byteLength": 28925797,
+      "sha256": "fcd0da56e1fe901f1659668a04df3bd650ae4b5fbf1bf8bd2122602107f9c269",
+      "compressed": true,
+      "inflatedFormat": "Uint32Array[recordCount * 64]"
+    },
+    {
+      "path": "public/baseline_corpus_manifest.json",
+      "fileName": "baseline_corpus_manifest.json",
+      "byteLength": 22883,
+      "sha256": "160b8d8dce20d975a167785e51d2bcfc8b04fed3025727291c77e71ac4326de6"
+    },
+    {
+      "path": "public/lexicon.json.gz",
+      "fileName": "lexicon.json.gz",
+      "byteLength": 868341,
+      "sha256": "9babb6fbb53167b2d76cb3050cd30f2df0642fc6991468b3bf065e86f1d960a7",
+      "compressed": true,
+      "inflatedPath": "public/lexicon.json",
+      "inflatedByteLength": 6069293,
+      "inflatedSha256": "4ddb4eba9bd7cead43aa51693395f8b9a347ec572d33926f25c18e7bb30b8597"
+    },
+    {
+      "path": "public/lexicon_roles.json.gz",
+      "fileName": "lexicon_roles.json.gz",
+      "byteLength": 1497585,
+      "sha256": "285018ff4131673fe44750711bcf86b75742a869c75eb07a818abb25d24f100d",
+      "compressed": true,
+      "inflatedPath": "public/lexicon_roles.json",
+      "inflatedByteLength": 26939357,
+      "inflatedSha256": "4ee35f16c1ed99013a3c7f022169ffb7a70b7afa0a9c20564f66871d0aaad903"
+    }
+  ]
+}

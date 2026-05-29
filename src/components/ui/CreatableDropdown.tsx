@@ -1,6 +1,7 @@
 
 import CreatableSelect from 'react-select/creatable';
 import { db } from '../../lib/db';
+import { Logger } from '../../lib/logger';
 
 export interface CreatableDropdownProps {
   value: string | string[] | null;
@@ -72,7 +73,7 @@ export default function CreatableDropdown({
         onChange(trimmed);
       }
     } catch (e) {
-      console.error("Failed to create master category dynamically:", e);
+      Logger.error("Failed to create master category dynamically:", e);
     }
   };
 

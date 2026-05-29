@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'src/lib/wasm/pkg', 'src-rust/pkg'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
@@ -22,6 +22,7 @@ export default tseslint.config(
       'react-refresh/only-export-components': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_+', varsIgnorePattern: '^_+' }],
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/static-components': 'off',
       'prefer-const': 'off'

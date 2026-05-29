@@ -1,42 +1,96 @@
-import { ArchitecturePrinciple, ServiceDomain } from './db';
+import { db, ArchitecturePrinciple, ServiceDomain } from './db';
+import { WeightedVendorResult } from './scorecardEngine';
 
-export function buildPrompt(
-  reviewType: string,
-  domain: ServiceDomain | undefined,
-  principles: ArchitecturePrinciple[],
-  ocrText: string,
-  historicalContext: string[]
-): string {
-  const principlesText = principles.map(p => `- ${p.name}:\n  Statement: ${p.statement}\n  Rationale: ${p.rationale}\n  Implications: ${p.implications}`).join('\n\n');
-  const historyText = historicalContext.length > 0 
-    ? historicalContext.map((c, i) => `[Historical Chunk ${i+1}]: ${c}`).join('\n\n')
-    : 'No historical context available.';
-  
-  return `You are an Enterprise Architecture Review Agent.
-Your task is to review the provided architecture diagram text and context, and generate a comprehensive Architectural Decision Record (ADR) and Review Report.
+export interface PromptContext {
+  session?: {
+    projectName?: string;
+    type?: string;
+    tags?: string[];
+    appTier?: string;
+    hostingModel?: string;
+    dataClassification?: string;
+    networkPosture?: string;
+    serviceDomainId?: number | null;
+  };
+  domain?: ServiceDomain;
+  principles?: ArchitecturePrinciple[];
+  scorecard?: WeightedVendorResult[];
+  architectureText?: string;
+  historicalContext?: string[];
+  eacTemplateMarkdown?: string;
+}
 
-Context:
-- Review Type: ${reviewType}
-- BIAN Domain: ${domain ? `${domain.name} - ${domain.description}` : 'None'}
+function buildBDATVendorTable(vendors: WeightedVendorResult[]): string {
+  if (!vendors || vendors.length === 0) {
+    return '_No vendor scorecard data available._';
+  }
 
-Applicable Architecture Principles:
-${principlesText}
+  const rows = vendors.map((v, i) => {
+    const rank = i === 0 ? '★' : `${i + 1}`;
+    const risk = v.overallPercentage < 40 ? '⚠️ FAILED' : '✅ PASS';
+    return `| ${rank} | **${v.name}** | ${v.axes.B.weighted.toFixed(1)} | ${v.axes.D.weighted.toFixed(1)} | ${v.axes.A.weighted.toFixed(1)} | ${v.axes.T.weighted.toFixed(1)} | **${v.totalWeightedScore.toFixed(2)}** | ${v.overallPercentage.toFixed(1)}% | ${risk} |`;
+  }).join('\n');
 
-Historical Context: Ensure this new architecture does not conflict with these past decisions:
-${historyText}
+  return `| Rank | Vendor | B (Bus) | D (Data) | A (App) | T (Tech) | Weighted Score | Overall % | Status |\n|---|---|---|---|---|---|---|---|---|\n${rows}
 
-Extracted Text from Architecture Diagram (OCR):
-"""
-${ocrText}
-"""
+**Scoring Legend:** B = Business Value | D = Data Governance | A = Application Architecture | T = Technology Infrastructure
+**Weight Distribution (NSI):** D & T are weighted most heavily (35% each); B & A are weighted at 15% each.
 
-Please generate a structured Markdown report including:
-1. Executive Summary
-2. Alignment with BIAN Domain
-3. Adherence to Architecture Principles
-4. Identified Risks & Mitigation Strategies
-5. Final Recommendation (Approve, Approve with Conditions, Reject)
+**Top Vendor:** ${vendors[0].name} — Overall BDAT Score: ${vendors[0].overallPercentage.toFixed(1)}%${vendors[0].overallPercentage < 40 ? '\n\n:warning: **ALERT:** Top vendor scored below 40%. Human-in-the-Loop review is MANDATORY before finalisation.' : ''}`;
+}
 
-CRITICAL: You MUST include a Mermaid.js diagram block visualizing the reviewed architecture. Use the \`\`\`mermaid ... \`\`\` syntax.
-`;
+function buildConceptMetadata(ctx: PromptContext): string {
+  const s = ctx.session;
+  if (!s) return 'No concept metadata available.';
+  return [
+    s.projectName ? `**Project Name:** ${s.projectName}` : null,
+    s.type ? `**Review Type:** ${s.type}` : null,
+    s.appTier ? `**Application Tier:** ${s.appTier}` : null,
+    s.hostingModel ? `**Hosting Model:** ${s.hostingModel}` : null,
+    s.dataClassification ? `**Data Classification:** ${s.dataClassification}` : null,
+    s.networkPosture ? `**Network Posture:** ${s.networkPosture}` : null,
+    s.tags && s.tags.length > 0 ? `**Tags:** ${s.tags.join(', ')}` : null,
+  ].filter(Boolean).join('\n');
+}
+
+function buildPrinciplesText(principles: ArchitecturePrinciple[]): string {
+  if (!principles || principles.length === 0) return '_No architecture principles configured._';
+  return principles.map(p =>
+    `- **${p.name}**\n  Statement: ${p.statement}\n  Rationale: ${p.rationale}\n  Implications: ${p.implications}`
+  ).join('\n\n');
+}
+
+function buildHistoricalContext(historicalContext: string[]): string {
+  if (!historicalContext || historicalContext.length === 0) {
+    return 'No prior review history available for this system or domain.';
+  }
+  return historicalContext.map((c, i) => `[Historical Context ${i + 1}]: ${c}`).join('\n\n');
+}
+
+function replaceTags(template: string, ctx: PromptContext): string {
+  const s = ctx.session || {};
+  return template
+    .replace(/\{\{projectName\}\}/g, s.projectName || 'Unknown')
+    .replace(/\{\{reviewType\}\}/g, s.type || 'New System Implementation (NSI)')
+    .replace(/\{\{appTier\}\}/g, s.appTier || 'Not specified')
+    .replace(/\{\{hostingModel\}\}/g, s.hostingModel || 'Not specified')
+    .replace(/\{\{tags\}\}/g, (s.tags || []).join(', ') || 'None')
+    .replace(/\{\{dataClassification\}\}/g, s.dataClassification || 'Not specified')
+    .replace(/\{\{networkPosture\}\}/g, s.networkPosture || 'Not specified')
+    .replace(/\{\{concept_metadata\}\}/g, buildConceptMetadata(ctx))
+    .replace(/\{\{bdat_table\}\}/g, ctx.scorecard ? buildBDATVendorTable(ctx.scorecard) : '_No vendor scorecard._')
+    .replace(/\{\{report_structure\}\}/g, ctx.eacTemplateMarkdown || '')
+    .replace(/\{\{architectural_principles\}\}/g, ctx.principles ? buildPrinciplesText(ctx.principles) : '_No principles._')
+    .replace(/\{\{principles_text\}\}/g, ctx.principles ? buildPrinciplesText(ctx.principles) : '_No principles._')
+    .replace(/\{\{architecture_reference\}\}/g, ctx.architectureText || 'No architecture diagrams attached to this session.')
+    .replace(/\{\{historical_context\}\}/g, buildHistoricalContext(ctx.historicalContext || []))
+    .replace(/\{\{service_domain\}\}/g, ctx.domain ? `${ctx.domain.name} — ${ctx.domain.description}` : 'Not classified');
+}
+
+export async function buildPrompt(promptKey: string, ctx: PromptContext): Promise<string> {
+  const template = await db.prompt_templates.where('name').equals(promptKey).first();
+  if (!template) {
+    throw new Error(`[promptBuilder] Prompt template '${promptKey}' not found in prompt_templates table. Hint: ensure it has been seeded via seedData.ts or ea_seed_data.json.`);
+  }
+  return replaceTags(template.promptText, ctx);
 }

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { useStateContext } from '../../context/StateContext';
-import { isModelCached } from '../../lib/aiEngine';
-import { checkNetworkConsent, NetworkDisabledError } from '../../utils/networkGuard';
+import { OPFSManager } from '../../lib/storage/opfsManager';
 
 interface CacheButtonProps {
   modelId: string;
@@ -19,17 +18,15 @@ export default function CacheButton({ modelId, modelUrl, onPull, disabled, class
   useEffect(() => {
     const checkCache = async () => {
       if (!modelId) return;
-      const cached = await isModelCached(modelId);
+      const cached = await OPFSManager.isModelCached(modelId);
       setIsCached(cached);
     };
     checkCache();
-    
-    // Periodically check cache to catch external updates
+
     const interval = setInterval(checkCache, 5000);
     return () => clearInterval(interval);
   }, [modelId]);
 
-  // If global download state says this model is complete, update local state immediately
   useEffect(() => {
     if (downloadState.status === 'Complete' && downloadState.modelId === modelId) {
       setIsCached(true);
@@ -38,25 +35,10 @@ export default function CacheButton({ modelId, modelUrl, onPull, disabled, class
 
   const isDownloading = downloadState.status === 'Downloading' && downloadState.modelId === modelId;
 
-  const handlePullClick = async () => {
-    try {
-      await checkNetworkConsent();
-      onPull(modelId, modelUrl);
-    } catch (error) {
-      if (error instanceof NetworkDisabledError) {
-        window.dispatchEvent(new CustomEvent('EA_NETWORK_BLOCK_ALERT', {
-          detail: { 
-            title: 'External Network Disabled',
-            message: 'You must enable External Network Features in the Network & Privacy settings to download web caches. Air-gap mode is currently strictly enforced.'
-          }
-        }));
-      } else {
-        console.error('Network check failed:', error);
-      }
-    }
+  const handlePullClick = () => {
+    onPull(modelId, modelUrl);
   };
 
-  // 3. CACHED (Present)
   if (isCached) {
     return (
       <button
@@ -69,7 +51,6 @@ export default function CacheButton({ modelId, modelUrl, onPull, disabled, class
     );
   }
 
-  // 2. DOWNLOADING
   if (isDownloading) {
     return (
       <button
@@ -82,12 +63,11 @@ export default function CacheButton({ modelId, modelUrl, onPull, disabled, class
     );
   }
 
-  // 1. MISSING (Default)
   return (
     <button
       onClick={handlePullClick}
-      disabled={disabled}
-      className={`flex items-center justify-center h-8 transition-all duration-200 ease-in-out px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      disabled={disabled || !modelId}
+      className={`flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       <Download className="w-4 h-4 mr-2" />
       Cache

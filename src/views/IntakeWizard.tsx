@@ -3,12 +3,16 @@ import { UploadCloud, ChevronRight, ChevronLeft, Download, FileSpreadsheet, File
 import { useStateContext } from '../context/StateContext';
 import { generateDDQ } from '../lib/ddqEngine';
 import { db } from '../lib/db';
+import { Logger } from '../lib/logger';
+import { useNotification } from '../context/NotificationContext';
 import { encryptBlob } from '../lib/cryptoVault';
 import { useMasterData } from '../hooks/useMasterData';
 import { useLiveQuery } from 'dexie-react-hooks';
+import AIRewriteButton from '../components/ui/AIRewriteButton';
 
 export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
   const { activeBianDomains, activeTags } = useStateContext();
+  const { addNotification } = useNotification();
   const reviewTypes = useMasterData('Review Type');
   const appTiers = useMasterData('Application Tier');
   const hostingModels = useMasterData('Hosting Model');
@@ -45,7 +49,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
 
   const handleGenerateDDQ = () => {
     if (!formData.projectName) {
-      alert("Please enter a project name first.");
+      addNotification("Please enter a project name first.", 'warning', 3000);
       return;
     }
     generateDDQ(formData.projectName, formData.type, formData.tags, formData.appTier, formData.hostingModel);
@@ -58,7 +62,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
     if (validFiles.length > 0) {
       setVendorDdqFiles(prev => [...prev, ...validFiles]);
     } else {
-      alert("Please upload valid .xlsx DDQ files.");
+      addNotification("Please upload valid .xlsx DDQ files.", 'warning', 3000);
     }
   };
 
@@ -110,6 +114,10 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         .filter(wf => wf.triggerReviewType === formData.type && wf.status === 'Active')
         .first();
 
+      // Resolve MITRA Swarm context from the bound workflow
+      const domainContext = activeWorkflow?.domainTags?.[0] || 'EA';
+      const assignedMitraProfileId = activeWorkflow?.defaultMitraProfileId ?? 1;
+
       const encryptedDdqBlobs = await Promise.all(
         vendorDdqFiles.map(async f => ({ name: f.name, type: f.type, blob: await encryptBlob(f) }))
       );
@@ -126,6 +134,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
         serviceDomainId: formData.serviceDomainId ? parseInt(formData.serviceDomainId) : null,
         tags: formData.tags,
         status: 'Draft',
+        domainContext,
+        assignedMitraProfileId,
         ddqBlobs: encryptedDdqBlobs,
         architectureBlobs: encryptedArchitectureBlobs,
         humanThoughts: formData.humanThoughts,
@@ -134,8 +144,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
       });
       setIsSaved(true);
     } catch (error) {
-      console.error("Failed to save draft:", error);
-      alert("Failed to save draft. Check console for details.");
+      Logger.error("Failed to save draft:", error);
+      addNotification("Failed to save draft. Check console for details.", 'error', 5000);
     }
   };
 
@@ -189,6 +199,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Project Name</label>
               <input 
+                id="intake-project-name"
+                name="projectName"
                 type="text" 
                 value={formData.projectName}
                 onChange={e => setFormData({...formData, projectName: e.target.value})}
@@ -201,6 +213,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Review Type</label>
                 <select 
+                  id="intake-review-type"
+                  name="reviewType"
                   value={formData.type}
                   onChange={e => setFormData({...formData, type: e.target.value})}
                   aria-label="Select Review Type"
@@ -216,6 +230,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">BIAN Domain</label>
                 <select 
+                  id="intake-bian-domain"
+                  name="serviceDomain"
                   value={formData.serviceDomainId}
                   onChange={e => setFormData({...formData, serviceDomainId: e.target.value})}
                   aria-label="Select BIAN Domain"
@@ -234,6 +250,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Application Tier</label>
                 <select 
+                  id="intake-app-tier"
+                  name="appTier"
                   value={formData.appTier}
                   onChange={e => setFormData({...formData, appTier: e.target.value})}
                   aria-label="Select Application Tier"
@@ -249,6 +267,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Hosting Model</label>
                 <select 
+                  id="intake-hosting-model"
+                  name="hostingModel"
                   value={formData.hostingModel}
                   onChange={e => setFormData({...formData, hostingModel: e.target.value})}
                   aria-label="Select Hosting Model"
@@ -266,6 +286,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Report Template</label>
               <select 
+                id="intake-report-template"
+                name="reportTemplate"
                 value={formData.reportTemplateId}
                 onChange={e => setFormData({...formData, reportTemplateId: e.target.value})}
                 aria-label="Select Report Template"
@@ -279,9 +301,14 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Human Thoughts / Additional Knowledge</label>
-              <textarea 
+<div>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Human Thoughts / Additional Knowledge</label>
+            <AIRewriteButton currentText={formData.humanThoughts} onUpdate={(text) => setFormData({...formData, humanThoughts: text})} />
+          </div>
+          <textarea
+                id="intake-human-thoughts"
+                name="humanThoughts"
                 value={formData.humanThoughts}
                 onChange={e => setFormData({...formData, humanThoughts: e.target.value})}
                 placeholder="Enter any additional context, constraints, or thoughts for the AI..."
@@ -341,7 +368,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors cursor-pointer">
                   <UploadCloud size={18} />
                   Browse Files
-                  <input type="file" accept=".xlsx" multiple className="hidden" onChange={handleDdqUpload} />
+                  <input id="intake-ddq-upload" name="ddqFile" type="file" accept=".xlsx" multiple className="hidden" onChange={handleDdqUpload} />
                 </label>
               </div>
               
@@ -391,6 +418,8 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
                 Strictly accepts .pdf, .png, .jpg, and .svg files.
               </p>
               <input 
+                id="intake-artifact-upload"
+                name="artifactFile"
                 type="file" 
                 multiple 
                 accept=".pdf,.png,.jpg,.jpeg,.svg" 

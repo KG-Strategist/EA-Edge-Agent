@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/db';
 import { queryDirectoryPermission, type PermissionStatus } from '../lib/fileSystemPermissions';
+import { Logger } from '../lib/logger';
 
 export function useLocalBackupState() {
   const [permissionStatus, setPermissionStatus] = useState<PermissionStatus>('unknown');
@@ -35,7 +36,7 @@ export function useLocalBackupState() {
           const status = await queryDirectoryPermission(backupDirectoryHandle);
           setPermissionStatus(status);
         } catch (err) {
-          console.warn('Failed to check backup directory permission:', err);
+          Logger.warn('Failed to check backup directory permission:', err);
           setPermissionStatus('unknown');
         }
       } else {

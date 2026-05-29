@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ServiceDomain } from '../lib/db';
+import { Logger } from '../lib/logger';
 
 const SEED_DOMAINS: ServiceDomain[] = [
   {
@@ -84,7 +85,7 @@ export function useServiceDomains(searchTerm: string = '') {
           await db.master_categories.bulkAdd(masterAdditions as any);
         }
       } catch (error) {
-        console.error("Failed to seed Service domains:", error);
+        Logger.error("Failed to seed Service domains:", error);
       } finally {
         setIsSeeding(false);
       }

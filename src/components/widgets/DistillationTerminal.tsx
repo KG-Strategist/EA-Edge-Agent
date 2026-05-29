@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Terminal, Activity, Zap } from 'lucide-react';
-import { triggerSwarmSync } from '../../lib/aiEngine';
+import { Logger } from '../../lib/logger';
 
 interface LogEntry {
   timestamp: string;
@@ -9,6 +9,14 @@ interface LogEntry {
   message: string;
 }
 
+/**
+ * DistillationTerminal — displays epistemic distillation events from EpistemicShadow.
+ *
+ * Future: Swarm Sync button (disabled) — intended to fetch all distillation queries
+ * from IndexedDB that Tiny Triage logged during its learning sessions. The Primary
+ * model would then ingest those questions as learning material and add the knowledge
+ * to its persistent corpus memory. Reserved for future implementation.
+ */
 export default function DistillationTerminal() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -60,7 +68,10 @@ export default function DistillationTerminal() {
   }, [logs]);
 
   const handleSync = () => {
-    triggerSwarmSync();
+    // Future: Fetch all distillation queries from IndexedDB (db.distillation_queue)
+    // that Tiny Triage logged during learning sessions. Use Primary model to
+    // ingest those questions as learning material and persist knowledge to corpus.
+    Logger.info('[Swarm Sync] Reserved — distillation sync pipeline not yet implemented.');
   };
 
   return (
@@ -73,7 +84,9 @@ export default function DistillationTerminal() {
         <div className="flex items-center gap-4">
           <button 
             onClick={handleSync}
-            className="flex items-center gap-1 px-2 py-1 bg-green-900/30 hover:bg-green-900/50 text-green-400 rounded border border-green-800/50 text-xs font-mono transition-colors"
+            disabled={true}
+            title="Swarm Sync: Fetch Tiny Triage learning queries and ingest into Primary corpus memory (reserved for future implementation)"
+            className="flex items-center gap-1 px-2 py-1 bg-gray-800/50 text-gray-500 rounded border border-gray-700/50 text-xs font-mono cursor-not-allowed"
           >
             <Zap size={12} />
             Swarm Sync

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db } from '../lib/db';
-import { encryptString, decryptString } from '../lib/cryptoVault';
+import { secureGetThreatModel, securePutThreatModel } from '../lib/secureDb';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   DataFlowComponent, ComponentType, StrideThreat, ThreatModel,
@@ -11,6 +11,7 @@ import { generateReview } from '../lib/aiEngine';
 import SafeMermaid from '../components/ui/SafeMermaid';
 import { Plus, Trash2, Shield, BrainCircuit, Save, Download, Loader2, Link2, AlertTriangle, X, ArrowLeft, Wand2 } from 'lucide-react';
 import { Logger } from '../lib/logger';
+import AIRewriteButton from '../components/ui/AIRewriteButton';
 
 const COMPONENT_TYPES: ComponentType[] = ['External Entity', 'Process', 'Data Store', 'Data Flow', 'Trust Boundary'];
 const TYPE_ICONS: Record<ComponentType, string> = {
@@ -37,18 +38,17 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
 
   useEffect(() => {
     if (modelId) {
-      db.threat_models.get(modelId).then(async (model) => {
+      secureGetThreatModel(modelId).then((model) => {
         if (model) {
           setProjectName(model.projectName);
           setLinkedSessionId(model.sessionId);
           if (model.encryptedData) {
             try {
-              const decrypted = await decryptString(model.encryptedData);
-              const data = JSON.parse(decrypted);
-              setComponents(data.components || []);
-              if (data.dataClassification) setDataClassification(data.dataClassification);
-              if (data.networkPosture) setNetworkPosture(data.networkPosture);
-              if (data.hostingModel) setHostingModel(data.hostingModel);
+              const decrypted = JSON.parse(model.encryptedData);
+              setComponents(decrypted.components || []);
+              if (decrypted.dataClassification) setDataClassification(decrypted.dataClassification);
+              if (decrypted.networkPosture) setNetworkPosture(decrypted.networkPosture);
+              if (decrypted.hostingModel) setHostingModel(decrypted.hostingModel);
             } catch (e) {
               Logger.error('Failed to decrypt threat model', e);
             }
@@ -109,6 +109,48 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
     });
   }, []);
 
+  // Auto-save debouncer
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Prevent auto-saving an empty default model right after mount
+    if (!projectName && components.length === 0) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      const payload = { 
+        components, 
+        threats, 
+        mermaidDFD,
+        dataClassification,
+        networkPosture,
+        hostingModel
+      };
+      if (modelId) {
+        securePutThreatModel({
+          id: modelId,
+          projectName: projectName.trim(),
+          sessionId: linkedSessionId,
+          componentCount: components.length,
+          threatCount: threats.length,
+          ...payload,
+        }).catch(() => { /* silent fail for auto-save */ });
+      } else {
+        securePutThreatModel({
+          projectName: projectName.trim(),
+          sessionId: linkedSessionId,
+          componentCount: components.length,
+          threatCount: threats.length,
+          ...payload,
+        }).catch(() => { /* silent fail for auto-save */ });
+      }
+    }, 2000); // 2 second debounce
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [projectName, components, threats, mermaidDFD, dataClassification, networkPosture, hostingModel, linkedSessionId, modelId]);
+
   const handleSave = useCallback(async () => {
     if (!projectName.trim()) {
       setSaveMessage('Project name is required.');
@@ -117,34 +159,31 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
     }
     setIsSaving(true);
     try {
-      const payload = JSON.stringify({ 
+      const payload = { 
         components, 
         threats, 
         mermaidDFD,
         dataClassification,
         networkPosture,
         hostingModel
-      });
-      const encryptedData = await encryptString(payload);
+      };
 
       if (modelId) {
-        await db.threat_models.update(modelId, {
+        await securePutThreatModel({
+          id: modelId,
           projectName: projectName.trim(),
           sessionId: linkedSessionId,
-          encryptedData,
           componentCount: components.length,
           threatCount: threats.length,
-          updatedAt: new Date(),
+          ...payload,
         });
       } else {
-        await db.threat_models.add({
+        await securePutThreatModel({
           projectName: projectName.trim(),
           sessionId: linkedSessionId,
-          encryptedData,
           componentCount: components.length,
           threatCount: threats.length,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          ...payload,
         });
       }
       setSaveMessage('Threat model saved to local database.');
@@ -217,7 +256,7 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
       components
     };
     Logger.info('Synthesizing Threat Matrix with payload:', payload);
-    // In a future MVP, this will trigger the WebLLM engine
+    // In a future MVP, this will trigger the Sovereign WASM LLM Inference Engine
   };
 
   const threatStats = useMemo(() => getThreatStats(threats), [threats]);
@@ -246,6 +285,8 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
           <div>
             <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Project Name</label>
             <input
+              id="threat-editor-project-name"
+              name="projectName"
               type="text" value={projectName}
               onChange={e => setProjectName(e.target.value)}
               placeholder="e.g., Payment Gateway Redesign"
@@ -350,13 +391,17 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
 
             {showAddForm && (
               <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3">
-                <input type="text" value={newComp.name} onChange={e => setNewComp({ ...newComp, name: e.target.value })}
+                <input id="threat-editor-new-comp-name" name="componentName" type="text" value={newComp.name} onChange={e => setNewComp({ ...newComp, name: e.target.value })}
                   placeholder="Component name" className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none" />
-                <select aria-label="New component type" value={newComp.type} onChange={e => setNewComp({ ...newComp, type: e.target.value as ComponentType })}
+                <select id="threat-editor-new-comp-type" name="componentType" aria-label="New component type" value={newComp.type} onChange={e => setNewComp({ ...newComp, type: e.target.value as ComponentType })}
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none">
                   {COMPONENT_TYPES.map(t => <option key={t} value={t}>{TYPE_ICONS[t]} {t}</option>)}
                 </select>
-                <textarea value={newComp.description} onChange={e => setNewComp({ ...newComp, description: e.target.value })}
+                <div className="flex items-center gap-2 mb-1">
+          <label className="text-xs text-gray-500">Description:</label>
+          <AIRewriteButton currentText={newComp.description} onUpdate={(text) => setNewComp({ ...newComp, description: text })} />
+        </div>
+        <textarea id="threat-editor-new-comp-desc" name="componentDescription" value={newComp.description} onChange={e => setNewComp({ ...newComp, description: e.target.value })}
                   placeholder="Description..." className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none resize-none h-14" />
                 {components.length > 0 && (
                   <div>
@@ -503,9 +548,27 @@ export default function ThreatEditor({ onClose: _onClose, modelId }: { onClose?:
                 <BrainCircuit size={14} /> AI-Enriched Threat Analysis
               </h3>
               <div className="prose dark:prose-invert max-w-none text-sm">
-                <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-sans text-xs leading-relaxed bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                  {enrichedReport}
-                </pre>
+                {(() => {
+                  const mermaidMatch = enrichedReport.match(/```mermaid([\s\S]*?)```/);
+                  const mermaidCode = mermaidMatch ? mermaidMatch[1].trim() : null;
+                  const textContent = enrichedReport.replace(/```mermaid[\s\S]*?```/, '');
+                  
+                  return (
+                    <>
+                      <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-sans text-xs leading-relaxed bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                        {textContent.trim()}
+                      </pre>
+                      {mermaidCode && (
+                        <div className="mt-4">
+                          <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">AI-Generated Threat Diagram</h4>
+                          <div className="border border-purple-200 dark:border-purple-700/50 rounded-lg p-2 bg-gray-50 dark:bg-gray-900">
+                            <SafeMermaid chart={mermaidCode} />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}

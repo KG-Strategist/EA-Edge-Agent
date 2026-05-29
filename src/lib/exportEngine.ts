@@ -79,7 +79,7 @@ export function generateADRMarkdown(opts: {
   adr += `| Field | Value |\n|-------|-------|\n`;
   adr += `| **Project** | ${session.projectName} |\n`;
   adr += `| **Review Type** | ${session.type} |\n`;
-  adr += `| **BIAN Domain** | ${domainName || 'N/A'} |\n`;
+  adr += `| **Service Domain** | ${domainName || 'N/A'} |\n`;
   adr += `| **App Tier** | ${session.appTier || 'N/A'} |\n`;
   adr += `| **Hosting Model** | ${session.hostingModel || 'N/A'} |\n`;
   adr += `| **Data Classification** | ${session.dataClassification || 'N/A'} |\n`;

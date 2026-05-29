@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../../lib/db';
-import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw } from 'lucide-react';
+import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
 import { requestDirectoryPermission } from '../../lib/fileSystemPermissions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import PageHeader from '../ui/PageHeader';
@@ -8,9 +8,13 @@ import DataTable from '../ui/DataTable';
 import { useStateContext } from '../../context/StateContext';
 import { logoutUser } from '../../lib/authEngine';
 import { useLocalBackupState } from '../../hooks/useLocalBackupState';
+import { Logger } from '../../lib/logger';
+import { useNotification } from '../../context/NotificationContext';
+import { recoverEncryptedMessages, VaultRecoveryResult } from '../../lib/secureDb';
 
 export default function SystemTab() {
   const { identity, setIdentity } = useStateContext();
+  const { addNotification } = useNotification();
   const [isExporting, setIsExporting] = useState(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -45,7 +49,7 @@ export default function SystemTab() {
           setBackupError(null);
           return;
         }
-        console.error("Failed to select directory:", err);
+        Logger.error("Failed to select directory:", err);
         setBackupError("Persistent file system access is blocked in this preview environment. Please open the app in a standalone browser tab.");
       }
     };
@@ -102,7 +106,7 @@ export default function SystemTab() {
               setBackupError(null);
               return;
             }
-            console.error("Failed to select directory:", err);
+            Logger.error("Failed to select directory:", err);
             setBackupError("Persistent file system access is blocked in this preview environment. Please open the app in a standalone browser tab.");
           }
         } else {
@@ -120,7 +124,7 @@ export default function SystemTab() {
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
-      console.error("Failed to configure backup:", err);
+      Logger.error("Failed to configure backup:", err);
       setBackupError("Backup configuration failed. Please try again.");
     }
   };
@@ -137,7 +141,7 @@ export default function SystemTab() {
         }
       }));
     } catch (err) {
-      console.error("Failed to revoke backup configuration:", err);
+      Logger.error("Failed to revoke backup configuration:", err);
       setBackupError("Failed to revoke backup configuration. Please try again.");
     }
   };
@@ -179,7 +183,7 @@ export default function SystemTab() {
         });
       }
     } catch (err) {
-      console.error('Failed to restore backup access:', err);
+      Logger.error('Failed to restore backup access:', err);
       setBackupError('Failed to restore backup access. Please try again.');
       await db.audit_logs.add({
         timestamp: new Date(),
@@ -198,6 +202,11 @@ export default function SystemTab() {
   const [confirmInput, setConfirmInput] = useState('');
   const [isWiping, setIsWiping] = useState(false);
   const [wipeError, setWipeError] = useState('');
+
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryPin, setRecoveryPin] = useState('');
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryResult, setRecoveryResult] = useState<VaultRecoveryResult | null>(null);
 
   const WIPE_CONFIRMATION_PHRASE = 'DELETE';
   const isConfirmValid = confirmInput === WIPE_CONFIRMATION_PHRASE;
@@ -223,13 +232,13 @@ export default function SystemTab() {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
       } catch (cacheErr) {
-        console.warn('[SystemTab] CacheStorage wipe partial:', cacheErr);
+        Logger.warn('[SystemTab] CacheStorage wipe partial:', cacheErr);
       }
 
       logoutUser();
       setIdentity(null);
     } catch (err) {
-      console.error('[SystemTab] Global Data Wipe failed:', err);
+      Logger.error('[SystemTab] Global Data Wipe failed:', err);
       setWipeError(err instanceof Error ? err.message : 'Wipe failed. Check console for details.');
       setIsWiping(false);
     }
@@ -241,6 +250,37 @@ export default function SystemTab() {
     setShowWipeModal(false);
     setConfirmInput('');
     setWipeError('');
+  };
+
+  const handleVaultRecovery = async () => {
+    if (!recoveryPin || recoveryPin.length < 4) {
+      setRecoveryResult({ success: false, recoveredCount: 0, failedCount: 0, message: 'PIN must be at least 4 digits.' });
+      return;
+    }
+    setIsRecovering(true);
+    setRecoveryResult(null);
+    try {
+      const result = await recoverEncryptedMessages(recoveryPin);
+      setRecoveryResult(result);
+      if (result.success && result.recoveredCount > 0) {
+        addNotification(result.message, 'success', 8000);
+      } else if (result.success) {
+        addNotification(result.message, 'info', 5000);
+      } else {
+        addNotification(result.message, 'error', 5000);
+      }
+    } catch {
+      setRecoveryResult({ success: false, recoveredCount: 0, failedCount: 0, message: 'Recovery failed unexpectedly.' });
+      addNotification('Vault recovery failed.', 'error', 5000);
+    } finally {
+      setIsRecovering(false);
+    }
+  };
+
+  const handleCloseRecoveryModal = () => {
+    setShowRecoveryModal(false);
+    setRecoveryPin('');
+    setRecoveryResult(null);
   };
 
   // Fetch sync history from audit_logs table
@@ -335,7 +375,7 @@ try {
         tableName: 'system_portability',
         details: JSON.stringify({ event: 'EXPORT_BRAIN', status: 'Failed' })
       });
-      alert("Failed to export database: " + e);
+      addNotification("Failed to export database: " + e, 'error', 5000);
       setExportToast(null);
     } finally {
       setIsExporting(false);
@@ -414,7 +454,7 @@ try {
           details: JSON.stringify({ event: 'IMPORT_MERGE', status: 'Success' })
         });
 
-        alert("NITI Brain state successfully restored! The agent interface will reload to apply changes.");
+        addNotification("NITI Brain state successfully restored! The agent interface will reload to apply changes.", 'success', 5000);
         window.location.reload();
       } catch (err: any) {
         setImportError(err.message || 'Validation failed');
@@ -682,6 +722,88 @@ try {
           </div>
         )}
       </div>
+
+      {/* ── Vault Recovery ──────────────────────────────────────────── */}
+      <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
+        <div className="flex items-start gap-3">
+          <ShieldCheck size={20} className="text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400 mb-1">Recover Previous Chat History</h3>
+            <p className="text-sm text-amber-700 dark:text-amber-500/80 mb-4">
+              If you changed your PIN or re-created your vault, previous chat messages are still encrypted with your old key. Enter your old PIN to decrypt and re-encrypt them with your current vault.
+            </p>
+            <button
+              onClick={() => setShowRecoveryModal(true)}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              <KeyRound size={14} />
+              Recover Encrypted Chats
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Vault Recovery Modal ───────────────────────────────────── */}
+      {showRecoveryModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]" onClick={handleCloseRecoveryModal}>
+          <div className="bg-white dark:bg-gray-900 border border-amber-300 dark:border-amber-800 rounded-xl p-6 w-[95%] max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                <KeyRound size={20} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Recover Previous Chats</h3>
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Enter your old PIN to decrypt and re-encrypt messages</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              This will decrypt all chat messages encrypted with your old PIN and re-encrypt them with your current vault key.
+            </p>
+
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Old PIN (4-6 digits):
+            </label>
+            <input
+              type="password"
+              value={recoveryPin}
+              onChange={e => setRecoveryPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="Enter your old PIN"
+              autoFocus
+              autoComplete="off"
+              maxLength={6}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm tracking-widest text-center focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none mb-2"
+            />
+
+            {recoveryResult && (
+              <div className={`mb-3 p-3 rounded-lg text-sm ${recoveryResult.success ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'}`}>
+                {recoveryResult.message}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={handleCloseRecoveryModal} disabled={isRecovering} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors text-sm">Cancel</button>
+              <button
+                onClick={handleVaultRecovery}
+                disabled={!recoveryPin || recoveryPin.length < 4 || isRecovering}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                {isRecovering ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Recovering…
+                  </>
+                ) : (
+                  <>
+                    <KeyRound size={14} />
+                    Recover
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Danger Zone ─────────────────────────────────────────────── */}
       <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-xl p-6">

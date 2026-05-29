@@ -63,6 +63,7 @@ async function fetchWebSearchAPI(endpointUrl: string, apiKey: string, query: str
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    redirect: 'error',
   });
 
   if (!response.ok) {
@@ -98,7 +99,7 @@ async function fetchWebSearchAPI(endpointUrl: string, apiKey: string, query: str
   return formatSearchResults(results);
 }
 
-async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: string): Promise<string> {
+async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: string, modelName?: string): Promise<string> {
   validateEndpointUrl(endpointUrl);
   // Verify Master Network Toggle is enabled
   const settings = await db.app_settings.where('key').equals('enableNetworkIntegrations').first();
@@ -107,7 +108,7 @@ async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: stri
   }
 
   const payload = {
-    model: 'gpt-3.5-turbo',
+    model: modelName || 'gpt-3.5-turbo',
     messages: [
       { role: 'system', content: 'You are a enterprise architecture research assistant.' },
       { role: 'user', content: query },
@@ -123,6 +124,7 @@ async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: stri
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(payload),
+    redirect: 'error',
   });
 
   if (!response.ok) {
@@ -146,6 +148,7 @@ async function fetchCustomEnterprise(endpointUrl: string, apiKey: string, query:
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    redirect: 'error',
   });
 
   if (!response.ok) {
@@ -179,7 +182,8 @@ export async function fetchFromProvider(
   providerType: ProviderType,
   endpointUrl: string,
   apiKey: string,
-  query: string
+  query: string,
+  options?: { modelName?: string }
 ): Promise<string> {
   validateApiKey(apiKey);
   const sanitizedQuery = sanitizeQuery(query);
@@ -196,7 +200,7 @@ export async function fetchFromProvider(
   }
 
   if (providerType === 'CloudLLMAPI') {
-    return await fetchCloudLLMAPI(endpointUrl, apiKey, sanitizedQuery);
+    return await fetchCloudLLMAPI(endpointUrl, apiKey, sanitizedQuery, options?.modelName);
   }
 
   if (providerType === 'CustomEnterprise') {

@@ -1,311 +1,292 @@
 import { Logger } from './logger';
-import { CreateWebWorkerMLCEngine, InitProgressCallback, WebWorkerMLCEngine, hasModelInCache, AppConfig, prebuiltAppConfig } from '@mlc-ai/web-llm';
 import { db } from './db';
 import { decryptString } from './cryptoVault';
-import { checkNetworkConsent } from '../utils/networkGuard';
-import { findSimilarReviews, findRelevantEnterpriseContext } from './ragEngine';
-import { queryEAContext } from './ragOrchestrator';
-import { globalArena } from './SemanticArena';
-import { DeepParsedQuery } from './StructuralVectoriser';
+import { validateEndpointUrl } from './networkGuard';
+import { globalArena, vectoriser, parser, globalSynthesizer } from './SemanticArena';
+import { sovereignEngine } from './wasm/SovereignEngine';
+import { OPFSManager } from './storage/opfsManager';
+import { localDaemon } from './providers/LocalDaemonProvider';
+import { queryEAContextWithTags, ProcessQueryResult } from './ragOrchestrator';
+import { epistemicShadow } from './EpistemicShadow';
+import { clampGenerationBudget, getRuntimeModelProfile } from './modelRuntime';
+import type { DeepParsedQuery } from './StructuralVectoriser';
 
-export const DEFAULT_PRIMARY_MODEL_ID = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
-export const DEFAULT_TINY_MODEL_ID = 'gemma-2b-it-q4f16_1-MLC';
+// Active MITRA persona — set via EA_MITRA_CHANGED event from the UI
+interface ActiveMitraProfile {
+  id: number;
+  systemPrompt: string;
+  ragTags: string[];
+  domain?: string;
+}
 
-// Removed static CUSTOM_APP_CONFIG. We now build this dynamically via getDynamicAppConfig()
+let activeMitraProfile: ActiveMitraProfile | null = null;
 
+// Foolproof KV Cache Isolation — tracks the last persona that held the engine context
+let lastActivePersonaId: number | null = null;
 
-export async function getActiveModelId(type: 'Core' | 'Tiny'): Promise<string> {
+// On module load (including HMR reloads), read the active persona from DB
+if (typeof window !== 'undefined') {
+  db.mitra_profiles.filter(p => p.isActive).first().then(profile => {
+    if (profile) {
+      activeMitraProfile = {
+        id: profile.id!,
+        systemPrompt: profile.systemPrompt,
+        ragTags: profile.ragTags || [],
+        domain: profile.domain,
+      };
+    }
+  }).catch(() => {
+    // DB not ready yet — activeMitraProfile stays null, will be set by user action
+  });
+
+  window.addEventListener('EA_MITRA_CHANGED', (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail) {
+      activeMitraProfile = {
+        id: detail.profileId,
+        systemPrompt: detail.systemPrompt,
+        ragTags: detail.ragTags || [],
+        domain: detail.domain,
+      };
+      Logger.info(`[MITRA] Active persona switched to: ${detail.name}`);
+    } else {
+      // Profile was deleted — fall back to the default system persona
+      activeMitraProfile = null;
+      Logger.info('[MITRA] Active persona removed. Reverted to default.');
+    }
+  });
+}
+
+// ─── Dynamic Context Budget Calculator (Hybrid: Model Cap ∩ Hardware Cap) ────
+
+async function getModelContextCap(): Promise<number> {
   try {
     const models = await db.model_registry.toArray();
-    if (type === 'Core') {
-      const primary = models.find(m => m.type === 'PRIMARY' && m.isActive);
-      return primary?.name || DEFAULT_PRIMARY_MODEL_ID;
-    } else {
-      const secondary = models.find(m => m.type === 'SECONDARY' && m.isActive);
-      // Fallback to primary if no secondary is defined, avoiding null breaks
-      const fallback = models.find(m => m.type === 'PRIMARY' && m.isActive);
-      return secondary?.name || fallback?.name || DEFAULT_TINY_MODEL_ID;
-    }
+    const active = models.find(m => m.isActive);
+    if (active?.contextWindow && active.contextWindow > 0) return active.contextWindow;
   } catch {
-    return type === 'Core' ? DEFAULT_PRIMARY_MODEL_ID : DEFAULT_TINY_MODEL_ID;
+    // DB unavailable
   }
+  return 4096; // Sensible default when no model config exists
 }
 
-export async function getDynamicAppConfig(): Promise<AppConfig> {
-  // Pull core agents from app_settings
-  const primarySetting = await db.app_settings.get('core-primary');
-  const triageSetting = await db.app_settings.get('core-triage');
+function getHardwareCap(isDaemonActive: boolean): number {
+  if (isDaemonActive) return 32768; // Native OS bypasses browser VRAM limits
 
-  const primaryConfig = primarySetting?.value;
-  const triageConfig = triageSetting?.value;
+  const isApple = /iPhone|iPad|iPod|Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent);
+  if (isApple) return 2048; // Strict Safari/iOS VRAM limits
 
-  const model_list: any[] = [];
-
-  // NATIVE VERSION MATCHER: Extract WASM URL from installed @mlc-ai/web-llm package
-  const getNativeWasmUrl = (modelId: string, dbWasmUrl?: string): string => {
-    // 1. Check if this model is built-in to the installed WebLLM package
-    const builtInModel = prebuiltAppConfig.model_list.find(m => m.model_id === modelId);
-
-    // 2. If found in native registry, use it (guarantees ABI compatibility)
-    if (builtInModel?.model_lib) {
-      Logger.log(`[NATIVE MATCHER] Using version-matched WASM for ${modelId} from @mlc-ai/web-llm`);
-      return builtInModel.model_lib;
-    }
-
-    // 3. Otherwise, trust the DB (for custom/sideloaded models only)
-    return dbWasmUrl || '';
-  };
-
-  // Register Primary — use native matching for built-in models, DB for custom
-  if (primaryConfig && primaryConfig.modelSourceMode === 'Remote URL') {
-    const record: any = { model_id: primaryConfig.id, model: primaryConfig.url };
-    // Get WASM URL: native registry first, then DB config
-    const finalWasmUrl = getNativeWasmUrl(primaryConfig.id, primaryConfig.modelLibUrl);
-    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-      record.model_lib = finalWasmUrl;
-    }
-    model_list.push(record);
-  } else {
-    // Default primary fallback — extract native WASM if available
-    const record: any = { model_id: DEFAULT_PRIMARY_MODEL_ID, model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC/resolve/main/' };
-    const finalWasmUrl = getNativeWasmUrl(DEFAULT_PRIMARY_MODEL_ID);
-    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-      record.model_lib = finalWasmUrl;
-    }
-    model_list.push(record);
-  }
-
-  // Register Triage — use native matching for built-in models, DB for custom
-  if (triageConfig && triageConfig.modelSourceMode === 'Remote URL') {
-    const record: any = { model_id: triageConfig.id, model: triageConfig.url };
-    // Get WASM URL: native registry first, then DB config
-    const finalWasmUrl = getNativeWasmUrl(triageConfig.id, triageConfig.modelLibUrl);
-    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-      record.model_lib = finalWasmUrl;
-    }
-    model_list.push(record);
-  } else {
-    // Default triage fallback — extract native WASM if available
-    const record: any = { model_id: DEFAULT_TINY_MODEL_ID, model: 'https://huggingface.co/mlc-ai/gemma-2b-it-q4f16_1-MLC/resolve/main/' };
-    const finalWasmUrl = getNativeWasmUrl(DEFAULT_TINY_MODEL_ID);
-    if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-      record.model_lib = finalWasmUrl;
-    }
-    model_list.push(record);
-  }
-
-  const activeModels = await db.model_registry.filter(m => !!m.isActive).toArray();
-
-  if (activeModels.length > 0) {
-    activeModels.forEach(m => {
-      // For custom registry models, try native first, then DB
-      const finalWasmUrl = getNativeWasmUrl(m.name, m.wasmUrl);
-      const record: any = { model_id: m.name, model: m.modelUrl };
-      if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-        record.model_lib = finalWasmUrl;
-      }
-      model_list.push(record);
-    });
-  }
-
-  return { model_list };
+  // @ts-expect-error - deviceMemory is Chromium-only
+  const mem = navigator.deviceMemory || 4;
+  if (mem >= 16) return 8192;
+  if (mem >= 8) return 4096;
+  return 2048;
 }
 
-export async function getActiveModelUrl(modelId: string): Promise<string> {
-  const config = await getDynamicAppConfig();
-  const custom = config.model_list.find(m => m.model_id === modelId);
-  if (custom && custom.model) return custom.model;
-  return `https://huggingface.co/mlc-ai/${modelId}-GGUF`;
+async function calculateDynamicBudget(isDaemonActive: boolean): Promise<number> {
+  const modelCap = await getModelContextCap();
+  const hardwareCap = getHardwareCap(isDaemonActive);
+  return Math.min(modelCap, hardwareCap);
 }
 
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 
-let engine: WebWorkerMLCEngine | null = null;
-let currentActiveModelId: string | null = null;
-let activeWorker: Worker | null = null;
+// ─── Sentence-Boundary Truncation ────────────────────────────────────────────
 
-export let globalMoETarget: string = 'Auto-Route (MoE)';
+function truncateToBudget(text: string, maxTokens: number): string {
+  if (estimateTokens(text) <= maxTokens) return text;
 
-export function triggerSwarmSync() {
-  if (activeWorker) {
-    activeWorker.postMessage({ type: 'SWARM_SYNC_TRIGGER' });
-  } else {
-    // Fallback if worker not initialized yet
-    const channel = new BroadcastChannel('ea-niti-swarm');
-    channel.postMessage({ type: 'PING', agent: 'SME', intent: 'SYNC_RAG' });
-    setTimeout(() => {
-      channel.postMessage({ type: 'ACK', agent: 'SEC', status: 'RAG_SYNCED' });
-    }, 1500);
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  let accumulated = '';
+  for (const sentence of sentences) {
+    const candidate = accumulated ? `${accumulated} ${sentence}` : sentence;
+    if (estimateTokens(candidate) > maxTokens) break;
+    accumulated = candidate;
   }
+  return accumulated || text.slice(0, maxTokens * 4);
 }
 
-export function setGlobalMoETarget(target: string) {
-  globalMoETarget = target;
+// ─── RAG Context Enrichment (Parallel Fetch + Weighted Budget Allocation) ────
+
+interface EnrichedContext {
+  epistemicFacts: string;
+  epistemicStatus: ProcessQueryResult['status'];
+  reviewContext: string;
+  enterpriseContext: string;
+  allFacts: string;
 }
 
-export async function isModelCached(modelId: string): Promise<boolean> {
+interface RAGWeights {
+  epistemic: number;
+  vector: number;
+  enterprise: number;
+}
+
+async function getRAGWeights(): Promise<RAGWeights> {
   try {
-    const config = await getDynamicAppConfig();
-    return await hasModelInCache(modelId, config);
-  } catch (e) {
-    Logger.warn(`Could not check cache for ${modelId}:`, e);
-    return false;
+    const [ep, vec, ent] = await Promise.all([
+      db.app_settings.get('ragWeightEpistemic'),
+      db.app_settings.get('ragWeightVector'),
+      db.app_settings.get('ragWeightEnterprise'),
+    ]);
+    const epistemic = ep?.value ?? 0.5;
+    const vector = vec?.value ?? 0.3;
+    const enterprise = ent?.value ?? 0.2;
+    const total = epistemic + vector + enterprise;
+    return {
+      epistemic: epistemic / total,
+      vector: vector / total,
+      enterprise: enterprise / total,
+    };
+  } catch {
+    return { epistemic: 0.5, vector: 0.3, enterprise: 0.2 };
   }
 }
 
-export async function scanLocalModels(): Promise<{ modelId: string, isCached: boolean }[]> {
+async function enrichPrompt(
+  userPrompt: string,
+  tokenBudget: number,
+  ragTags?: string[],
+  chatHistory: { role: string; content: string }[] = []
+): Promise<EnrichedContext> {
+  const weights = await getRAGWeights();
+
+  const epistemicBudget = Math.floor(tokenBudget * weights.epistemic);
+  const vectorBudget = Math.floor(tokenBudget * weights.vector);
+  const enterpriseBudget = Math.floor(tokenBudget * weights.enterprise);
+
+  const [epistemicResult, arenaResult, enterpriseResult] = await Promise.allSettled([
+    queryEAContextWithTags(userPrompt, ragTags, chatHistory),
+    (async () => {
+      const parsed = parser.parse(userPrompt);
+      if (!parsed.Subject || !parsed.Intent) return [];
+      const queryVector = vectoriser.vectorise(parsed);
+      const results = globalArena.searchWithScores(queryVector, 0.18, ragTags);
+      return results.map(r => {
+        const comps = globalSynthesizer.getRawComponents(r.index);
+        return comps.sourceSentence
+          || (comps.orthogonal ? JSON.stringify(comps.orthogonal) : [comps.s, comps.i, comps.t].filter(Boolean).join(' '));
+      });
+    })(),
+    (async () => {
+      const memories = await db.semantic_memory
+        .where('source')
+        .anyOf(['enterprise_ingestion', 'legacy_embedding'])
+        .toArray();
+      if (memories.length === 0) return [];
+      const parsed = parser.parse(userPrompt);
+      const queryVector = vectoriser.vectorise(parsed);
+      const scored = memories
+        .filter(m => m.vector && m.vector.length === 64)
+        .map(m => {
+          let intersection = 0;
+          let union = 0;
+          for (let j = 0; j < 64; j++) {
+            intersection += popcnt32(queryVector[j] & m.vector[j]);
+            union += popcnt32(queryVector[j] | m.vector[j]);
+          }
+          return { memory: m, score: union > 0 ? intersection / union : 0 };
+        })
+        .filter(x => x.score >= 0.18)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(x => x.memory.context || `${x.memory.subject} ${x.memory.predicate} ${x.memory.object}`);
+      return scored;
+    })(),
+  ]);
+
+  const epistemicFacts = epistemicResult.status === 'fulfilled'
+    ? truncateToBudget((epistemicResult.value as ProcessQueryResult).text || '', epistemicBudget)
+    : '';
+  const epistemicStatus = epistemicResult.status === 'fulfilled'
+    ? (epistemicResult.value as ProcessQueryResult).status
+    : 'fallback';
+
+  const reviewContext = arenaResult.status === 'fulfilled'
+    ? truncateToBudget((arenaResult.value as string[]).join('\n\n'), vectorBudget)
+    : '';
+
+  const enterpriseContext = enterpriseResult.status === 'fulfilled'
+    ? truncateToBudget((enterpriseResult.value as string[]).join('\n\n'), enterpriseBudget)
+    : '';
+
+  const allFacts = [epistemicFacts, reviewContext, enterpriseContext]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return { epistemicFacts, epistemicStatus, reviewContext, enterpriseContext, allFacts };
+}
+
+function popcnt32(n: number): number {
+  n = n - ((n >>> 1) & 0x55555555);
+  n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
+  return ((n + (n >>> 4) & 0x0F0F0F0F) * 0x01010101) >>> 24;
+}
+
+// ─── 3-Tier MoE Cognitive Routing (Arena-Based Scoring) ──────────────────────
+
+type MoETier = 'EPISTEMIC' | 'TINY' | 'PRIMARY';
+
+export type ChatEngineKind = 'epistemic' | 'sovereign-wasm' | 'daemon' | 'byom-network';
+
+export interface ChatWithAgentResult {
+  text: string;
+  engineUsed: ChatEngineKind;
+  routeReason: string;
+  epistemicStatus?: ProcessQueryResult['status'];
+}
+
+async function getMoEThreshold(): Promise<number> {
   try {
-    const config = await getDynamicAppConfig();
-    const results = [];
-    for (const model of config.model_list) {
-      const isCached = await hasModelInCache(model.model_id, config);
-      results.push({ modelId: model.model_id, isCached });
+    const setting = await db.app_settings.get('moEThreshold');
+    return setting?.value ?? 0.18;
+  } catch {
+    return 0.18;
+  }
+}
+
+async function routeMoE(
+  prompt: string,
+  executionTarget: string,
+  epistemicStatus?: ProcessQueryResult['status']
+): Promise<MoETier> {
+  if (executionTarget === 'Tiny Triage Agent (Epistemic)') return 'EPISTEMIC';
+  if (executionTarget === 'Primary EA Agent') return 'PRIMARY';
+  if (executionTarget === 'Tiny Triage Agent') return 'TINY';
+
+  if (executionTarget === 'Auto-Route (MoE)') {
+    if (epistemicStatus && ['hit', 'guardrail', 'disambiguate', 'curiosity'].includes(epistemicStatus)) {
+      return 'EPISTEMIC';
     }
-    return results;
-  } catch (e) {
-    Logger.warn("Error scanning local models:", e);
-    return [];
   }
-}
 
-export async function unloadAIEngine(): Promise<void> {
-  if (engine) {
-    Logger.log(`Unloading active AI Engine (${currentActiveModelId}) from VRAM...`);
-    await engine.unload();
-    engine = null;
-    currentActiveModelId = null;
-  }
-}
+  if (globalMoETarget === 'Tiny Triage Agent (Epistemic)') return 'EPISTEMIC';
 
-export async function purgeWebLLMCache(): Promise<void> {
   try {
-    const cacheKeys = await caches.keys();
-    for (const key of cacheKeys) {
-      if (key.toLowerCase().includes('webllm') || key.toLowerCase().includes('mlc')) {
-        await caches.delete(key);
-        Logger.log(`[Cache Purge] Deleted orphaned AI cache: ${key}`);
-      }
+    const parsed = parser.parse(prompt);
+    if (!parsed.Subject || !parsed.Intent) {
+      return 'TINY'; // Insufficient structure for arena search
     }
-  } catch (e) {
-    Logger.warn('[Cache Purge] Failed to purge WebLLM caches:', e);
+
+    const queryVector = vectoriser.vectorise(parsed);
+    const threshold = await getMoEThreshold();
+    const results = globalArena.searchWithScores(queryVector, threshold);
+
+    if (results.length > 0 && results[0].weightedScore >= threshold && !(results[0].target === 'concept' && !results[0].hasSource)) {
+      return 'EPISTEMIC'; // High-confidence arena match — deterministic synthesis
+    }
+
+    return 'TINY'; // Below threshold — escalate to LLM
+  } catch {
+    return 'TINY'; // Arena unavailable — escalate to LLM
   }
 }
-
-export async function initAIEngine(
-  progressCallback: InitProgressCallback,
-  forceDownload: boolean = false,
-  requestedTarget: string = 'Tiny Triage Agent',
-  targetUrl?: string
-): Promise<WebWorkerMLCEngine> {
-  let targetModelId = requestedTarget;
-  if (requestedTarget === 'Primary EA Agent') {
-    const configSetting = await db.app_settings.get('core-primary');
-    targetModelId = configSetting?.value?.id || DEFAULT_PRIMARY_MODEL_ID;
-  } else if (requestedTarget === 'Tiny Triage Agent' || requestedTarget === 'Tiny Triage Agent') {
-    const configSetting = await db.app_settings.get('core-triage');
-    targetModelId = configSetting?.value?.id || DEFAULT_TINY_MODEL_ID;
-  }
-
-  // If engine is already loaded with the requested model, return it
-  if (engine && currentActiveModelId === targetModelId) {
-    return engine;
-  }
-
-  // If a different model is loaded, we heavily prioritize VRAM by unloading it first
-  if (engine && currentActiveModelId !== targetModelId) {
-    await unloadAIEngine();
-  }
-
-  const isModelAvailable = await isModelCached(targetModelId);
-  const needsDownload = !isModelAvailable;
-
-  // Consent and security blocking
-  if (needsDownload && !forceDownload) {
-    let networkEnabled = false;
-    try {
-      networkEnabled = await checkNetworkConsent();
-    } catch {
-      networkEnabled = false;
-    }
-    
-    // Trigger global UI modal
-    window.dispatchEvent(new CustomEvent('EA_AI_CONSENT_REQUIRED', {
-      detail: { networkEnabled, targetModelId, executionTarget: requestedTarget }
-    }));
-    
-    if (!networkEnabled) {
-      throw new Error(`CONSENT_REQUIRED_OFFLINE: ${targetModelId} is missing. Please enable explicit Internet Access in Network & Privacy to download it.`);
-    } else {
-      throw new Error(`CONSENT_REQUIRED: Action requires downloading ${targetModelId} weights. Do you consent?`);
-    }
-  }
-
-  const worker = new Worker(new URL('./aiWorker.ts', import.meta.url), { type: 'module' });
-  activeWorker = worker;
-
-  const killSwitchHandler = async () => {
-    Logger.warn("KILL SWITCH ACTIVATED: Terminating AI Worker and purging cache.");
-    if (activeWorker) {
-      activeWorker.terminate();
-      activeWorker = null;
-    }
-    engine = null;
-    currentActiveModelId = null;
-    await purgeWebLLMCache();
-    window.dispatchEvent(new CustomEvent('EA_AI_PROGRESS', { 
-      detail: { text: 'Download aborted by user.', progress: 0 }
-    }));
-    window.removeEventListener('APP_NETWORK_FORCE_KILLED', killSwitchHandler);
-  };
-  window.addEventListener('APP_NETWORK_FORCE_KILLED', killSwitchHandler);
-  
-  currentActiveModelId = targetModelId;
-  const interceptProgress: InitProgressCallback = (progress) => {
-    // Bubble to any global listeners (e.g. EngineDiagnostics UI)
-    window.dispatchEvent(new CustomEvent('EA_AI_PROGRESS', { 
-      detail: { text: progress.text, progress: progress.progress }
-    }));
-    // Call the original caller's callback (e.g. ModelConsentModal)
-    progressCallback(progress);
-  };
-
-  const config = await getDynamicAppConfig();
-
-  if (targetUrl) {
-    // NATIVE VERSION MATCHER: Use package's built-in WASM for native models
-    const dbConfig = (await db.app_settings.get('core-primary'))?.value?.id === targetModelId
-      ? (await db.app_settings.get('core-primary'))?.value
-      : (await db.app_settings.get('core-triage'))?.value;
-
-    // Check for native WASM first, then fall back to DB config
-    const builtInModel = prebuiltAppConfig.model_list.find(m => m.model_id === targetModelId);
-    const finalWasmUrl = builtInModel?.model_lib || dbConfig?.modelLibUrl;
-
-    if (!config.model_list.some(m => m.model_id === targetModelId)) {
-      const record: any = { model_id: targetModelId, model: targetUrl };
-      // WebLLM demands explicit model_lib for custom model URLs
-      if (finalWasmUrl && finalWasmUrl.trim() !== '') {
-        record.model_lib = finalWasmUrl;
-      }
-      config.model_list.push(record);
-    }
-  }
-  
-  engine = await CreateWebWorkerMLCEngine(
-    worker,
-    targetModelId,
-    { 
-      initProgressCallback: interceptProgress,
-      appConfig: config
-    }
-  );
-  
-  return engine;
-}
-
 
 export async function getSystemPrompt(currentScope: string = 'GLOBAL'): Promise<string> {
-  let basePrompt = "You are EA-NITI (Network-isolated, In-browser, Triage & Inference). Elite, air-gapped Enterprise Architecture AI. Strict TOGAF/BIAN/0-trust focus. 0 cloud egress.";
-  
+  let basePrompt = "You are the EA-NITI Synthesis Engine. You do not hallucinate. You will be provided with a user query and a list of verified [FACTS]. Your ONLY job is to synthesize these [FACTS] into a polite, professional, and crisp response. Do not add outside knowledge. If the [FACTS] do not contain the answer, output exactly: 'I lack the structural data to answer this query.'";
+
   try {
     const masterPersona = await db.prompt_templates.where('name').equals('Master System Persona').first();
     if (masterPersona && masterPersona.promptText) {
@@ -315,13 +296,10 @@ export async function getSystemPrompt(currentScope: string = 'GLOBAL'): Promise<
     Logger.warn("Failed to fetch Master System Persona, falling back to default.", e);
   }
 
-  // Inject active Privacy Guardrails as strict boundary conditions
   try {
     const activeGuardrails = await db.privacy_guardrails.filter(g => g.isActive === true).toArray();
-    
-    // Filter by enforcement scope
     const scopedGuardrails = activeGuardrails.filter(g => {
-      if (!g.enforcementScope || g.enforcementScope.length === 0) return true; // Default to global if no scope defined
+      if (!g.enforcementScope || g.enforcementScope.length === 0) return true;
       return g.enforcementScope.includes('GLOBAL') || g.enforcementScope.includes(currentScope);
     });
 
@@ -338,76 +316,213 @@ export async function getSystemPrompt(currentScope: string = 'GLOBAL'): Promise<
   return basePrompt;
 }
 
+// ─── Greeting Resolution (Identity over Domain) ──────────────────────────────
+
+async function resolveGreeting(mitraProfileId: number | null): Promise<string> {
+  try {
+    // If a specific persona is requested, try to find a greeting for that persona's domain
+    if (mitraProfileId) {
+      const profile = await db.mitra_profiles.get(mitraProfileId);
+      if (profile?.domain) {
+        const domainGreeting = await db.prompt_templates
+          .where('type').equals('greeting')
+          .and(p => p.category === profile.domain)
+          .first();
+        if (domainGreeting?.promptText) return domainGreeting.promptText;
+      }
+    }
+
+    // Fall back to global EA_CHAT_GREETING
+    const globalGreeting = await db.prompt_templates
+      .where('name').equals('EA_CHAT_GREETING')
+      .first();
+    if (globalGreeting?.promptText) return globalGreeting.promptText;
+  } catch {
+    // DB unavailable — use hardcoded fallback
+  }
+
+  return "Hello! I am **EA-NITI**, your enterprise-grade edge AI agent. I run completely air-gapped in your browser with Sovereign Engine (OPFS pipeline active).\n\nI can assist with any **SAMIKSHA** review process — Enhancement Reviews (ER), New System Implementation (NSI) — as well as DDQ audits, threat modeling, and all pre-configured workflows in your vault. How can I help?";
+}
+
+// ─── Foolproof KV Cache Isolation Gatekeeper ──────────────────────────────────
+
+async function ensurePersonaActive(mitraProfileId: number | null): Promise<void> {
+  if (mitraProfileId !== lastActivePersonaId) {
+    sovereignEngine.clearContext();
+    if (localDaemon.isConnected) localDaemon.resetSession();
+    lastActivePersonaId = mitraProfileId;
+    Logger.info(`[KV Cache] Persona switched to ${mitraProfileId ?? 'default'}. Context flushed.`);
+  }
+}
+
+// ─── Persona Resolution Helper ───────────────────────────────────────────────
+
+async function resolvePersona(mitraProfileId: number | null): Promise<ActiveMitraProfile | null> {
+  if (!mitraProfileId) return activeMitraProfile;
+
+  try {
+    const profile = await db.mitra_profiles.get(mitraProfileId);
+    if (profile) {
+      return {
+        id: profile.id!,
+        systemPrompt: profile.systemPrompt,
+        ragTags: profile.ragTags || [],
+        domain: profile.domain,
+      };
+    }
+  } catch {
+    // DB unavailable — fall back to active global persona
+  }
+
+  return activeMitraProfile;
+}
+
+// ─── Model ID Resolution from Execution Target ───────────────────────────────
+
+async function resolveModelId(executionTarget: string): Promise<string | null> {
+  try {
+    const dbKey = executionTarget === 'Primary EA Agent' ? 'core-primary' : 'core-triage';
+    const config = await db.app_settings.get(dbKey);
+    if (config?.value?.id) {
+      return config.value.id;
+    }
+  } catch {
+    Logger.warn(`[ModelResolver] Failed to resolve modelId for target: ${executionTarget}`);
+  }
+  return null;
+}
+
+async function ensureModelCached(modelId: string): Promise<void> {
+  const hasModel = await OPFSManager.hasModel(modelId);
+  if (!hasModel) {
+    throw new Error(`MODEL_NOT_CACHED: Model "${modelId}" is not cached in OPFS. Please download it first via System Health or sideload via Upload Model.`);
+  }
+  await sovereignEngine.ensureInitialized(modelId);
+}
+
+function resolveBrowserGenerationBudget(modelId: string | null, requested?: number): number {
+  return clampGenerationBudget(modelId, requested);
+}
+
+function isRecoverableWasmGenerationError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  return [
+    'TIMEOUT',
+    'WATCHDOG_TIMEOUT',
+    'NO_VISIBLE_TOKENS',
+    'Single token generation exceeded',
+    'Total generation exceeded',
+  ].some(marker => msg.includes(marker));
+}
+
+function synthesizeEpistemicFallback(enrichedContext: EnrichedContext): string | null {
+  const facts = enrichedContext.epistemicFacts || enrichedContext.reviewContext || enrichedContext.enterpriseContext;
+  if (!facts.trim()) return null;
+  return facts.trim();
+}
+
+// ─── generateReview: Multi-Persona Workflow Handoff ──────────────────────────
+
 export async function generateReview(
   prompt: string,
   onUpdate: (text: string) => void,
-  executionTarget: string = 'Tiny Triage Agent'
+  _executionTarget?: string,
+  options?: { mitraProfileId?: number }
 ): Promise<string> {
-  // If Auto-Route (MoE) is selected, we parse the prompt intent.
-  // We identify "DDQ", "Architecture Layer", or "STRIDE" to route to the Primary EA Agent.
-  let target = globalMoETarget !== 'Auto-Route (MoE)' ? globalMoETarget : executionTarget;
-  if (target === 'Auto-Route (MoE)') {
-    const isCoreEA = /DDQ|scorecard|architecture layer|STRIDE/i.test(prompt);
-    target = isCoreEA ? 'Primary EA Agent' : 'Tiny Triage Agent';
-    Logger.info(`[Auto-Router] Identified intent. Routing to ${target}...`);
+  const requestedPersonaId = options?.mitraProfileId ?? activeMitraProfile?.id ?? null;
+  await ensurePersonaActive(requestedPersonaId);
+
+  const persona = await resolvePersona(requestedPersonaId);
+  const ragTags = persona?.ragTags;
+
+  const isDaemonActive = localDaemon.isConnected;
+  const tokenBudget = await calculateDynamicBudget(isDaemonActive);
+  const enrichedContext = await enrichPrompt(prompt, tokenBudget, ragTags);
+
+  const taskPrompt = `[FACTS]\n${enrichedContext.allFacts}\n\n[USER]\n${prompt}`;
+
+  // Build message array: persona identity + neuro-symbolic grounding in a single system message
+  const personaPrompt = persona?.systemPrompt || await getSystemPrompt();
+  const systemContent = `${personaPrompt}\n\nCRITICAL DIRECTIVE: You are the EA-NITI Synthesis Engine. Answer EXCLUSIVELY using the [VERIFIED ARCHITECTURAL CONTEXT].`;
+
+  const messages = [
+    { role: 'system' as const, content: systemContent },
+    { role: 'user' as const, content: taskPrompt },
+  ];
+
+  if (isDaemonActive) {
+    return localDaemon.generateText(messages, (token) => { if (onUpdate) onUpdate(token); });
   }
 
-  let finalPrompt = prompt;
-  if (target === 'Primary EA Agent' || target === 'Tiny Triage Agent' || globalMoETarget === 'Auto-Route (MoE)') {
-    Logger.info(`[RAG Engine] Querying Long-Term Semantic Memory & Enterprise Context...`);
-    try {
-      const historicalContextsPromise = findSimilarReviews(prompt);
-      const enterpriseContextsPromise = findRelevantEnterpriseContext(prompt);
-      
-      const [historicalContexts, enterpriseContexts] = await Promise.all([historicalContextsPromise, enterpriseContextsPromise]);
-      
-      let contextInjection = "";
+  const modelId = await resolveModelId(_executionTarget || 'Primary EA Agent');
+  if (!modelId) {
+    throw new Error('NO_MODEL_CONFIGURED: No model is configured for this execution target. Please configure a model in Agent Settings.');
+  }
+  await ensureModelCached(modelId);
+  const maxNewTokens = resolveBrowserGenerationBudget(modelId);
+  return sovereignEngine.generateText(messages, (token) => { if (onUpdate) onUpdate(token); }, maxNewTokens);
+}
 
-      if (enterpriseContexts.length > 0) {
-        Logger.info(`[RAG Engine] Found ${enterpriseContexts.length} relevant proprietary enterprise facts.`);
-        contextInjection += `[PROPRIETARY ENTERPRISE CONTEXT]\nThe following are mandatory rules, constraints, and facts specific to this enterprise. You MUST abide by them:\n\n${enterpriseContexts.join("\n\n")}\n[END PROPRIETARY CONTEXT]\n\n`;
-      }
+// --- Small Talk Regex: matches common greetings / identity queries ---
+const SMALL_TALK_RE = /^\s*(h(i|ello|ey|owdy)|yo|sup|good\s*(morning|afternoon|evening)|greetings|what'?s\s*up|who\s+are\s+you|what\s+are\s+you|are\s+you\s+an?\s+ai|thanks?|thank\s*you|ok|okay|bye|goodbye|see\s*ya)[!?.,\s]*$/i;
 
-      if (historicalContexts.length > 0) {
-        Logger.info(`[RAG Engine] Found ${historicalContexts.length} relevant historical architectural decisions.`);
-        contextInjection += `[ENTERPRISE HISTORICAL CONTEXT]\nThe following are historical architectural decisions previously made by this enterprise. Use them to ensure your current review does not blindly conflict with past approved architectures:\n\n${historicalContexts.join("\n\n")}\n[END HISTORICAL CONTEXT]\n\n`;
-      }
-      
-      if (contextInjection) {
-         finalPrompt = contextInjection + prompt;
-      }
-      
-    } catch (e) {
-      Logger.warn("RAG query failed, proceeding without extended context.", e);
-    }
+export async function chatWithAgentDetailed(
+  messages: { role: 'user' | 'assistant' | 'system', content: string }[],
+  onUpdate: (text: string) => void,
+  _executionTarget: string = 'Tiny Triage Agent'
+): Promise<ChatWithAgentResult> {
+  const userPrompt = messages[messages.length - 1]?.content || '';
+
+  if (SMALL_TALK_RE.test(userPrompt) && userPrompt.length < 50) {
+    const greeting = await resolveGreeting(activeMitraProfile?.id ?? null);
+    onUpdate(greeting);
+    return { text: greeting, engineUsed: 'epistemic', routeReason: 'small-talk' };
   }
 
-  let eaContext = "";
-  try {
-    eaContext = await queryEAContext(prompt);
-  } catch (e) {
-    Logger.warn("Failed to fetch EA Context", e);
+  // Foolproof KV Cache Isolation — gatekeeper at the very beginning
+  await ensurePersonaActive(activeMitraProfile?.id ?? null);
+
+  // Stop any background distillation and abort in-flight generations — user prompt takes priority
+  epistemicShadow.interrupt();
+  if (localDaemon.isConnected) localDaemon.abortGeneration();
+  if (sovereignEngine.isIdle === false) sovereignEngine.abortGeneration();
+
+  // RAG tag boundary from the active persona — filters the corpus to relevant domain
+  const activeRagTags = activeMitraProfile?.ragTags;
+  const chatHistory = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+
+  // Inject the active MITRA persona's system prompt, or fall back to the default
+  let effectiveSystemPrompt: string;
+  if (activeMitraProfile?.systemPrompt) {
+    effectiveSystemPrompt = activeMitraProfile.systemPrompt;
+  } else {
+    effectiveSystemPrompt = await getSystemPrompt();
   }
 
-  const sysPrompt = await getSystemPrompt();
-  const systemMessage = eaContext 
-    ? `${sysPrompt}\n\n${eaContext}` 
-    : sysPrompt;
-
-  // Check if target is a BYOM_NETWORK model
+  // BYOM Network Model routing (preserved — external API, not Sovereign Engine)
   const models = await db.model_registry.toArray();
-  const targetModel = models.find(m => m.name === target);
+  const targetModel = models.find(m => m.name === _executionTarget);
 
   if (targetModel && targetModel.type === 'BYOM_NETWORK') {
     Logger.info(`[BYOM Router] Routing to Custom Enterprise Endpoint: ${targetModel.name}...`);
-    let bearerToken = targetModel.apiKey;
-    if (!bearerToken && targetModel.encryptedApiKey) {
-      try {
-        bearerToken = await decryptString(targetModel.encryptedApiKey);
-      } catch (e) {
-        Logger.warn('[BYOM Router] Failed to decrypt model registry API key. Falling back to empty Authorization header.', e);
-      }
+    try { validateEndpointUrl(targetModel.modelUrl); } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      onUpdate(`\n\n[Security Block] Endpoint validation failed: ${msg}`);
+      throw new Error(`Endpoint blocked: ${msg}`);
     }
+
+    let bearerToken: string | undefined;
+    if (targetModel.encryptedApiKey) {
+      try { bearerToken = await decryptString(targetModel.encryptedApiKey); } catch { /* fallback to empty */ }
+    }
+
+    // Concatenate persona + grounding into a single system message for tokenizer safety
+    const systemContent = `${effectiveSystemPrompt}\n\nCRITICAL DIRECTIVE: You are the EA-NITI Synthesis Engine. Answer EXCLUSIVELY using the [VERIFIED ARCHITECTURAL CONTEXT].`;
+
+    const hasSystemMessage = messages.some(m => m.role === 'system');
+    const routedMessages = hasSystemMessage
+      ? messages.map(m => m.role === 'system' ? { ...m, content: systemContent } : m)
+      : [{ role: 'system' as const, content: systemContent }, ...messages];
 
     try {
       const response = await fetch(targetModel.modelUrl, {
@@ -418,241 +533,132 @@ export async function generateReview(
         },
         body: JSON.stringify({
           model: targetModel.name,
-          messages: [
-            { role: 'system', content: systemMessage },
-            { role: 'user', content: finalPrompt }
-          ],
-          temperature: target === 'Primary EA Agent' ? 0.2 : 0.7,
+          messages: routedMessages,
+          temperature: 0.3,
           stream: false
-        })
+        }),
+        redirect: 'error',
       });
 
-      if (!response.ok) {
-        throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content || JSON.stringify(data);
       onUpdate(content);
-      return content;
+
+      // Queue this exchange for background learning
+      epistemicShadow.enqueueDelta(userPrompt, content);
+
+      return { text: content, engineUsed: 'byom-network', routeReason: `byom:${targetModel.name}` };
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      const failMsg = `[BYOM Router Error] Failed to reach endpoint ${targetModel.modelUrl}. Ensure your local server (e.g., Ollama) is running and accessible. Error: ${errorMsg}`;
+      const failMsg = `[BYOM Router Error] Failed to reach endpoint. Error: ${errorMsg}`;
       onUpdate(failMsg);
       throw new Error(failMsg);
     }
   }
 
-  // Ensure the appropriate model is initialized, swapping VRAM if needed.
-  await initAIEngine(() => {}, false, target);
+  // ── Phase 1.6: Decoupled Context → Cognition → Execution ──
 
-  if (!engine) throw new Error('AI Engine failed to initialize');
+  // 1. Context Enrichment
+  const isDaemonActive = localDaemon.isConnected;
+  const tokenBudget = await calculateDynamicBudget(isDaemonActive);
+  const enrichedContext = await enrichPrompt(userPrompt, tokenBudget, activeRagTags, chatHistory);
 
-  const chunks = await engine.chat.completions.create({
-    messages: [
-      { role: 'system', content: systemMessage },
-      { role: 'user', content: finalPrompt }
-    ],
-    temperature: target === 'Primary EA Agent' ? 0.2 : 0.7, // Lower temperature for Primary EA Agent to prevent hallucination
-    stream: true,
-  });
-  
-  let reply = "";
-  for await (const chunk of chunks) {
-    const content = chunk.choices[0]?.delta?.content || "";
-    reply += content;
-    onUpdate(reply);
+  // 2. Cognitive Routing (MoE) — Arena-based scoring (Grammar Orthogonal Vector Synthesis)
+  const moETier = await routeMoE(userPrompt, _executionTarget, enrichedContext.epistemicStatus);
+
+  // TIER 1: EPISTEMIC — Pure deterministic synthesis via MoatVectoriser + SemanticArena
+  // O(1) mathematical lookup. No Wasm. No Daemon. TypeScript-only.
+  if (moETier === 'EPISTEMIC') {
+    const response = enrichedContext.epistemicFacts || 'I lack the structural data to answer this query.';
+    onUpdate(response);
+
+    return {
+      text: response,
+      engineUsed: 'epistemic',
+      routeReason: `epistemic:${enrichedContext.epistemicStatus}`,
+      epistemicStatus: enrichedContext.epistemicStatus,
+    };
   }
-  
-  return reply;
+
+  // 3. Execution Routing (Tiers 2 & 3) — Local Daemon > Sovereign Wasm
+  const taskPrompt = `[FACTS]\n${enrichedContext.allFacts}\n\n[USER]\n${userPrompt}`;
+
+  // Concatenate persona + grounding into a single system message
+  const systemContent = `${effectiveSystemPrompt}\n\nCRITICAL DIRECTIVE: You are the EA-NITI Synthesis Engine. Answer EXCLUSIVELY using the [VERIFIED ARCHITECTURAL CONTEXT].`;
+  const engineMessages = [
+    { role: 'system' as const, content: systemContent },
+    { role: 'user' as const, content: taskPrompt },
+  ];
+
+  let response: string;
+  if (isDaemonActive) {
+    Logger.info('[Router] Local Daemon active. Offloading to native OS.');
+    response = await localDaemon.generateText(engineMessages, (token) => { if (onUpdate) onUpdate(token); });
+  } else {
+    Logger.info('[Router] Daemon offline. Using Sovereign Wasm Engine.');
+    const modelId = await resolveModelId(_executionTarget);
+    if (!modelId) {
+      throw new Error('NO_MODEL_CONFIGURED: No model is configured for this execution target. Please configure a model in Agent Settings.');
+    }
+    await ensureModelCached(modelId);
+    const profile = getRuntimeModelProfile(modelId);
+    const maxNewTokens = resolveBrowserGenerationBudget(modelId);
+    Logger.info(`[Router] Sovereign Wasm profile=${profile.modelId} template=${profile.templateFamily} maxNewTokens=${maxNewTokens}`);
+    try {
+      response = await sovereignEngine.generateText(engineMessages, (token) => { if (onUpdate) onUpdate(token); }, maxNewTokens);
+    } catch (error) {
+      if (isRecoverableWasmGenerationError(error)) {
+        const fallback = synthesizeEpistemicFallback(enrichedContext);
+        if (fallback) {
+          Logger.warn('[Router] Sovereign Wasm failed before a usable answer. Returning deterministic epistemic fallback.', error);
+          onUpdate(fallback);
+          return {
+            text: fallback,
+            engineUsed: 'epistemic',
+            routeReason: `wasm-recoverable-fallback:${error instanceof Error ? error.message : String(error)}`,
+            epistemicStatus: enrichedContext.epistemicStatus,
+          };
+        }
+      }
+      throw error;
+    }
+  }
+
+  // Phase 1.8: Enqueue for background distillation
+  epistemicShadow.enqueueDelta(userPrompt, response);
+
+  return {
+    text: response,
+    engineUsed: isDaemonActive ? 'daemon' : 'sovereign-wasm',
+    routeReason: moETier === 'PRIMARY' ? 'llm-primary' : 'llm-triage',
+    epistemicStatus: enrichedContext.epistemicStatus,
+  };
 }
-
-/**
- * ARCHITECTURAL PLACEHOLDER: In-Browser LoRA Tuning
- * 
- * Future implementation for Epic 7: Train via Web.
- * This will utilize WebGPU to perform low-rank adaptation (LoRA) 
- * on the base model using the local EADatabase as the training corpus.
- * Weights will be saved strictly to OPFS.
- */
-export async function initiateLocalLoRATraining(_corpus: string[], onProgress: (p: number) => void): Promise<void> {
-  Logger.warn("LoRA training is currently an architectural placeholder. WebLLM training support pending.");
-  // 1. Load base model into WebGPU
-  // 2. Initialize LoRA adapters
-  // 3. Iterate over corpus, compute gradients, update adapters
-  // 4. Save adapted weights to OPFS
-  onProgress(100);
-}
-
-// --- Small Talk Regex: matches common greetings / identity queries ---
-const SMALL_TALK_RE = /^\s*(h(i|ello|ey|owdy)|yo|sup|good\s*(morning|afternoon|evening)|greetings|what'?s\s*up|who\s+are\s+you|what\s+are\s+you|are\s+you\s+an?\s+ai|thanks?|thank\s*you|ok|okay|bye|goodbye|see\s*ya)[!?.,\s]*$/i;
-
-const GREETING_RESPONSE =
-  "Hello! I am **EA-NITI**, your air-gapped Enterprise Architecture assistant. " +
-  "I am currently operating in **lightweight mode** (RAG-only — no generative LLM loaded).\n\n" +
-  "I can still search your local knowledge base for architecture principles, BIAN domains, " +
-  "and historical review context. How can I assist with your architecture reviews today?";
 
 export async function chatWithAgent(
   messages: { role: 'user' | 'assistant' | 'system', content: string }[],
   onUpdate: (text: string) => void,
   executionTarget: string = 'Tiny Triage Agent'
 ): Promise<string> {
-  const userPrompt = messages[messages.length - 1]?.content || '';
-
-  // ── 1. Small-Talk Interceptor ─────────────────────────────────────
-  // Bypass vector search + LLM entirely for trivial greetings.
-  if (SMALL_TALK_RE.test(userPrompt)) {
-    onUpdate(GREETING_RESPONSE);
-    return GREETING_RESPONSE;
-  }
-
-  // ── 2. MoE Auto-Routing ───────────────────────────────────────────
-  let target = globalMoETarget !== 'Auto-Route (MoE)' ? globalMoETarget : executionTarget;
-  if (target === 'Auto-Route (MoE)') {
-    const isCoreEA = /DDQ|scorecard|architecture layer|STRIDE/i.test(userPrompt);
-    target = isCoreEA ? 'Primary EA Agent' : 'Tiny Triage Agent';
-    Logger.info(`[Auto-Router] Routing to ${target}...`);
-  }
-
-  // ── 3. Gather EA Context (lightweight Dexie lookup) ───────────────
-  let eaContext = "";
-  try {
-    eaContext = await queryEAContext(userPrompt);
-  } catch (e) {
-    Logger.warn("Failed to fetch EA Context", e);
-  }
-
-  const sysPrompt = await getSystemPrompt();
-  const systemMessage = eaContext 
-    ? `${sysPrompt}\n\n${eaContext}` 
-    : sysPrompt;
-
-  const messagesWithSystem = [...messages];
-  if (messagesWithSystem.length === 0 || messagesWithSystem[0].role !== 'system') {
-    messagesWithSystem.unshift({ role: 'system', content: systemMessage });
-  } else {
-    messagesWithSystem[0].content = `${systemMessage}\n\n${messagesWithSystem[0].content}`;
-  }
-
-  // ── 4. BYOM Network Model ─────────────────────────────────────────
-  const models = await db.model_registry.toArray();
-  const targetModel = models.find(m => m.name === target);
-
-  if (targetModel && targetModel.type === 'BYOM_NETWORK') {
-    Logger.info(`[BYOM Router] Routing to Custom Enterprise Endpoint: ${targetModel.name}...`);
-    try {
-      const response = await fetch(targetModel.modelUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(targetModel.apiKey ? { 'Authorization': `Bearer ${targetModel.apiKey}` } : {})
-        },
-        body: JSON.stringify({
-          model: targetModel.name,
-          messages: messagesWithSystem,
-          temperature: executionTarget === 'Primary EA Agent' ? 0.3 : 0.7,
-          stream: false
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || JSON.stringify(data);
-      onUpdate(content);
-      return content;
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      const failMsg = `\n\n[BYOM Router Error] Failed to reach endpoint ${targetModel.modelUrl}. Ensure your local server (e.g., Ollama) is running and accessible. Error: ${errorMsg}`;
-      onUpdate(failMsg);
-      throw new Error(failMsg);
-    }
-  }
-
-  // ── 5. Local LLM — with tiered generative fallback ─────────────────
-  // Priority: requested model → any cached model → RAG-only (no generation)
-  
-  let targetModelId = target;
-  if (target === 'Primary EA Agent') {
-    targetModelId = (await db.app_settings.get('core-primary'))?.value?.id || DEFAULT_PRIMARY_MODEL_ID;
-  } else if (target === 'Tiny Triage Agent') {
-    targetModelId = (await db.app_settings.get('core-triage'))?.value?.id || DEFAULT_TINY_MODEL_ID;
-  }
-
-  const cachedModels = await scanLocalModels();
-  const available = cachedModels.filter(m => m.isCached);
-
-  if (available.length === 0) {
-    // No generative models cached at all → RAG-only
-    return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
-  }
-
-  const isTargetCached = available.some(m => m.modelId === targetModelId);
-
-  if (isTargetCached) {
-    await initAIEngine(() => {}, false, target);
-  } else {
-    Logger.warn(`[chatWithAgent] Primary target "${targetModelId}" unavailable. Scanning for cached fallback…`);
-    
-    // Prefer SECONDARY (tiny) over PRIMARY (heavy) for fast fallback
-    const tinyModelId = await getActiveModelId('Tiny');
-    const preferTiny = available.find(m => m.modelId === tinyModelId);
-    const fallbackId = preferTiny ? preferTiny.modelId : available[0].modelId;
-
-    Logger.warn(`[chatWithAgent] Primary model unavailable. Falling back to cached model: ${fallbackId}…`);
-    
-    // Pass the fallbackId directly to initAIEngine. Since we know it's cached, 
-    // it will NOT trigger the download/consent loop.
-    await initAIEngine(() => {}, false, fallbackId); 
-  }
-
-  if (!engine) {
-    // Engine ref null after init (should not happen, but guard anyway)
-    return await buildRagOnlyResponse(userPrompt, eaContext, onUpdate);
-  }
-
-  const chunks = await engine.chat.completions.create({
-    messages: messagesWithSystem,
-    temperature: executionTarget === 'Primary EA Agent' ? 0.3 : 0.7,
-    stream: true,
-  });
-  
-  let reply = "";
-  for await (const chunk of chunks) {
-    const content = chunk.choices[0]?.delta?.content || "";
-    reply += content;
-    onUpdate(reply);
-  }
-  
-  return reply;
+  const result = await chatWithAgentDetailed(messages, onUpdate, executionTarget);
+  return result.text;
 }
 
-/**
- * Constructs a formatted RAG-only response when no generative LLM is loaded.
- * Merges lightweight Dexie context + vector store results into a readable reply.
- */
 export async function buildRagOnlyResponse(
   _userPrompt: string,
   eaContext: string,
   onUpdate: (text: string) => void
 ): Promise<string> {
-  // 1. Check for Deterministic Guardrail Block
   if (eaContext.includes('[CRITICAL GUARDRAIL INTERCEPT]')) {
     onUpdate(eaContext);
     return eaContext;
   }
-
-  // 2. Check for Empty Context
   if (!eaContext || eaContext.length === 0) {
-    const fallbackMsg = `⚡ **Neuro-Symbolic Fallback**\n\nI currently have no structural data, policies, or architectural blueprints in my local vault regarding your query. Please adjust your search or import the relevant Service Domains into the EA-NITI database.`;
+    const fallbackMsg = `⚡ **Neuro-Symbolic Fallback**\n\nI currently have no structural data, policies, or architectural blueprints in my local vault regarding your query.`;
     onUpdate(fallbackMsg);
     return fallbackMsg;
   }
-
-  // 3. Output the Synthesized Tier-3 Response (clean — no markdown header)
   onUpdate(eaContext);
   return eaContext;
 }
@@ -661,36 +667,58 @@ export async function analyzeWebTrends(
   webData: string,
   onUpdate: (text: string) => void
 ): Promise<string> {
-  if (!engine) throw new Error('AI Engine not initialized');
-
-  const prompt = `Analyze these recent internet search results regarding Enterprise Architecture. Extract 3 new, critical principles. Output as JSON matching our architecture_principles schema.
+  const prompt = `Analyze these recent internet search results regarding Enterprise Architecture. Extract 3 new, critical principles as plain English sentences.
 
 Search Results:
 ${webData}
 
-Output format must be a raw JSON array of objects with the following keys:
-- name (string)
-- statement (string)
-- rationale (string)
-- implications (string)
-- layerId (number, use 1 as default)
-- status (string, use "Needs Review")
+Output exactly ONE plain English sentence per line. No markdown, no bullet points, no JSON.
+Each sentence must follow the pattern: Subject performs-action on Target.
+Example:
+TOGAF governs enterprise architecture development
+BIAN standardizes banking service domains
+Zero-trust architecture eliminates implicit network trust`;
 
-Do not include any markdown formatting or explanation, just the raw JSON array.`;
+  const persona = activeMitraProfile;
+  const isDaemonActive = localDaemon.isConnected;
+  const tokenBudget = await calculateDynamicBudget(isDaemonActive);
+  const enrichedContext = await enrichPrompt(prompt, tokenBudget, persona?.ragTags);
 
-  const chunks = await engine.chat.completions.create({
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    stream: true,
-  });
+  const personaPrompt = persona?.systemPrompt || await getSystemPrompt();
+  const systemContent = `${personaPrompt}\n\nCRITICAL DIRECTIVE: You are the EA-NITI Synthesis Engine. Answer EXCLUSIVELY using the [VERIFIED ARCHITECTURAL CONTEXT].`;
 
-  let reply = "";
-  for await (const chunk of chunks) {
-    const content = chunk.choices[0]?.delta?.content || "";
-    reply += content;
-    onUpdate(reply);
+  const messages = [
+    { role: 'system' as const, content: systemContent },
+    { role: 'user' as const, content: `[FACTS]\n${enrichedContext.enterpriseContext}\n\n[PROMPT]\n${prompt}` },
+  ];
+
+  let reply: string;
+  if (isDaemonActive) {
+    reply = await localDaemon.generateText(messages, (token) => { if (onUpdate) onUpdate(token); });
+  } else {
+    const modelId = await resolveModelId('Primary EA Agent');
+    if (!modelId) {
+      throw new Error('NO_MODEL_CONFIGURED: No model is configured. Please configure a model in Agent Settings.');
+    }
+    await ensureModelCached(modelId);
+    reply = await sovereignEngine.generateText(messages, (token) => { if (onUpdate) onUpdate(token); }, resolveBrowserGenerationBudget(modelId, 64));
   }
-  distillTripletsFromResponse(reply);
+
+  // Non-blocking distillation: continuous learning in background
+  setTimeout(() => {
+    try {
+      const triplets = parser.parseOrthogonalLayersFromText(reply);
+      for (const triplet of triplets) {
+        globalArena.addMemory(triplet, 2);
+      }
+      if (triplets.length > 0) {
+        Logger.info(`[Distillation] Absorbed ${triplets.length} new facts from web analysis.`);
+      }
+    } catch (e) {
+      Logger.warn('[Distillation] Failed to parse LLM output for distillation', e);
+    }
+  }, 0);
+
   return reply;
 }
 
@@ -703,28 +731,18 @@ export async function analyzeWithHybridProvider(
     if (providerType === 'WebSearchAPI' || providerType === 'CustomEnterprise') {
       return await analyzeWebTrends(webData, onUpdate);
     }
-
     if (providerType === 'CloudLLMAPI') {
       onUpdate('Parsing Cloud LLM response...');
       try {
         const parsed = JSON.parse(webData);
-
-        if (Array.isArray(parsed)) {
-          return JSON.stringify(parsed);
-        }
-
+        if (Array.isArray(parsed)) return JSON.stringify(parsed);
         if (parsed.choices && Array.isArray(parsed.choices)) {
           const content = parsed.choices[0]?.message?.content || parsed.choices[0]?.delta?.content || '';
           return content;
         }
-
         return JSON.stringify(parsed);
-      } catch {
-        // Treat as text response
-        return webData;
-      }
+      } catch { return webData; }
     }
-
     throw new Error(`Unknown provider type: ${providerType}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -733,17 +751,63 @@ export async function analyzeWithHybridProvider(
   }
 }
 
-// --- LLM Distillation Gatekeeper ---
 export function distillTripletsFromResponse(responseText: string): void {
-  try {
-    const jsonMatch = responseText.match(/\[\s*\{.*?\}\s*\]/s);
-    if (!jsonMatch) return;
-    const tripletArray = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(tripletArray)) return;
-    for (const triplet of tripletArray) {
-      if (triplet.s && triplet.i && triplet.t) {
-        globalArena.addMemory({ Subject: triplet.s, Intent: triplet.i, Target: triplet.t } as DeepParsedQuery, 2);
+  setTimeout(() => {
+    try {
+      const triplets = parser.parseOrthogonalLayersFromText(responseText).filter(isDistillableTriplet);
+      for (const triplet of triplets) {
+        globalArena.addMemory(triplet, 2, false, responseText);
       }
+      if (triplets.length > 0) {
+        Logger.info(`[Distillation] Absorbed ${triplets.length} new facts from response.`);
+      }
+    } catch (e) {
+      Logger.warn('[Distillation] Failed to distill triplets from response', e);
     }
-  } catch { /* best-effort */ }
+  }, 0);
+}
+
+function isDistillableTriplet(triplet: DeepParsedQuery): boolean {
+  const subject = (triplet.Subject || '').trim().toLowerCase();
+  const intent = (triplet.Intent || '').trim().toLowerCase();
+  const target = (triplet.Target || '').trim().toLowerCase();
+  if (!subject || !intent || !target) return false;
+  if (target === 'concept') return false;
+
+  const text = `${subject} ${intent} ${target}`;
+  if (text.length < 8) return false;
+  if (/\b(updats|areincorporat|reincorporat)\b/.test(text)) return false;
+
+  const blocked = [
+    'structurally',
+    'unsupported_tensor_type',
+    'cached gguf',
+    'worker not available',
+    'watchdog_timeout',
+    'neuro-symbolic fallback',
+    'critical guardrail intercept',
+  ];
+
+  return !blocked.some(marker => text.includes(marker));
+}
+
+/**
+ * Parse triplets from conversation text and persist as unverified beliefs.
+ * Respects AbortSignal so the foreground user prompt can cancel mid-flight.
+ */
+export async function distillDelta(text: string, signal: AbortSignal): Promise<void> {
+  const triplets = parser.parseOrthogonalLayersFromText(text).filter(isDistillableTriplet);
+  for (const triplet of triplets) {
+    if (signal.aborted) throw new Error('AbortError');
+    globalArena.addMemory(triplet, 1, false, text); // Unverified — background distillation
+  }
+  if (triplets.length > 0) {
+    Logger.info(`[Distillation] Background absorbed ${triplets.length} facts (belief=Unverified).`);
+  }
+}
+
+export let globalMoETarget = 'Tiny Triage Agent (Epistemic)';
+
+export function setGlobalMoETarget(target: string) {
+  globalMoETarget = target;
 }

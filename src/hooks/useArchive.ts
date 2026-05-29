@@ -35,12 +35,12 @@ export function useArchive({ tableName, statusField, archivedValue, activeValue,
 
     if (isRagEntity && typeof identifier === 'string') {
       // ─── TASK 1: HYBRID-PURGE FOR RAG ENTITIES ───
-      // 1. Hard Delete vectors form enterprise_knowledge
+      // 1. Hard Delete vectors from semantic_memory
       // 2. Soft Delete metadata in training_jobs
-      await db.transaction('rw', db.enterprise_knowledge, db.training_jobs, async () => {
+      await db.transaction('rw', db.semantic_memory, db.training_jobs, async () => {
         // Hard Delete (Vectors)
-        const chunksToPurge = await db.enterprise_knowledge.where('sourceFile').equals(identifier).primaryKeys();
-        await db.enterprise_knowledge.bulkDelete(chunksToPurge);
+        const chunksToPurge = await db.semantic_memory.where('source').equals(identifier).primaryKeys();
+        await db.semantic_memory.bulkDelete(chunksToPurge);
         
         // Soft Delete (Metadata)
         const jobsToPurge = await db.training_jobs.where('filename').equals(identifier).toArray();

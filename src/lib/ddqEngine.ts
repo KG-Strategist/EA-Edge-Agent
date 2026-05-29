@@ -1,6 +1,10 @@
 import * as XLSX from 'xlsx';
 import { getFilteredQuestions, DDQMetadata, DDQQuestion, DDQScorecard, DDQScoreEntry, DDQ_QUESTION_BANK } from './ddqRules';
 
+// Pre-built question ID → definition lookup — avoids rebuilding Map on every parseDDQResponse call
+const QUESTION_MAP = new Map<string, DDQQuestion>();
+DDQ_QUESTION_BANK.forEach((q: DDQQuestion) => QUESTION_MAP.set(q.id, q));
+
 /**
  * Generates a Dynamic Due Diligence Questionnaire Excel file with dropdown validation.
  * Questions are filtered based on review metadata (tier, type, tags, etc.)
@@ -11,7 +15,7 @@ export function generateDDQ(
   tags: string[],
   appTier: string = '',
   hostingModel: string = ''
-) {
+): Blob {
   const metadata: DDQMetadata = { reviewType, appTier, hostingModel, tags };
   const questions = getFilteredQuestions(metadata);
 
@@ -101,12 +105,17 @@ export function generateDDQ(
   wsRef['!cols'] = [{ wch: 12 }, { wch: 40 }, { wch: 8 }];
   XLSX.utils.book_append_sheet(wb, wsRef, 'Score Reference');
 
-  // ── Generate file ──
+  // ── Generate Blob ──
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  // Also trigger browser download for immediate use
   const safeProjectName = projectName ? projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'untitled';
   const dateStr = new Date().toISOString().split('T')[0];
   const fileName = `DDQ_${safeProjectName}_${dateStr}.xlsx`;
-
   XLSX.writeFile(wb, fileName);
+
+  return blob;
 }
 
 /**
@@ -114,8 +123,27 @@ export function generateDDQ(
  * Returns a structured DDQScorecard object ready for storage.
  */
 export function parseDDQResponse(workbook: XLSX.WorkBook): DDQScorecard {
-  const sheet = workbook.Sheets['DDQ Scorecard'];
-  if (!sheet) throw new Error('DDQ Scorecard sheet not found in the uploaded file.');
+  // Try exact match first, then fall back to case-insensitive search
+  let sheet = workbook.Sheets['DDQ Scorecard'];
+  if (!sheet) {
+    const sheetNames = Object.keys(workbook.Sheets);
+    const scorecardSheet = sheetNames.find(name =>
+      name.toLowerCase().includes('scorecard') ||
+      name.toLowerCase().includes('ddq') ||
+      name.toLowerCase().includes('response')
+    );
+    if (scorecardSheet) {
+      sheet = workbook.Sheets[scorecardSheet];
+    }
+  }
+
+  if (!sheet) {
+    const availableSheets = Object.keys(workbook.Sheets).join(', ');
+    throw new Error(
+      `DDQ Scorecard sheet not found. Available sheets: ${availableSheets}. ` +
+      `Please ensure your upload contains a "DDQ Scorecard" sheet with columns: Question ID, Design Principle, Question, Vendor Response, Max Score.`
+    );
+  }
 
   const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
   
@@ -123,9 +151,7 @@ export function parseDDQResponse(workbook: XLSX.WorkBook): DDQScorecard {
   const entries: DDQScoreEntry[] = [];
   const principleAccum: Record<string, { score: number; maxScore: number; count: number }> = {};
 
-  // Build a quick lookup from Question ID → DDQQuestion for option score mapping
-  const questionMap = new Map<string, DDQQuestion>();
-  DDQ_QUESTION_BANK.forEach((q: DDQQuestion) => questionMap.set(q.id, q));
+  // Use pre-built question map (module-level constant)
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -139,7 +165,7 @@ export function parseDDQResponse(workbook: XLSX.WorkBook): DDQScorecard {
 
     // Look up the score based on the selected option text
     let score = 0;
-    const qDef = questionMap.get(questionId);
+    const qDef = QUESTION_MAP.get(questionId);
     if (qDef && selectedOption) {
       const match = qDef.options.find((o: any) => o.text === selectedOption);
       if (match) score = match.score;

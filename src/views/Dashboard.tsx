@@ -3,6 +3,7 @@ import SystemHealth from '../components/widgets/SystemHealth';
 import DistillationTerminal from '../components/widgets/DistillationTerminal';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import { Logger } from '../lib/logger';
 import { FileText, Edit2, Save, LayoutGrid, CheckCircle } from 'lucide-react';
 import { StatCard, NativeBarChart, NativeProgressRing } from '../components/widgets/WidgetLibrary';
 
@@ -60,7 +61,7 @@ export default function Dashboard() {
       });
       setIsEditMode(false);
     } catch (e) {
-      console.error(e);
+      Logger.error(e);
     }
   };
 

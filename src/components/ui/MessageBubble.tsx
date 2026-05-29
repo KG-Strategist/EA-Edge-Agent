@@ -17,7 +17,7 @@ const MessageBubble = React.memo(
     const isGuardrailBlock = content.startsWith('[CRITICAL GUARDRAIL INTERCEPT]');
 
     return (
-      <div className={`flex gap-3 ${role === 'user' ? 'flex-row-reverse' : ''}`}>
+      <div data-testid={`message-${role}`} className={`flex gap-3 ${role === 'user' ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 flex items-center justify-center shrink-0 ${role === 'user' ? 'rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : ''}`}>
           {role === 'user' ? <User size={16} /> : <Logo className="w-5 h-5 drop-shadow-sm" animated={false} />}
         </div>

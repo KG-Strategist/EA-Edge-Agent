@@ -1,20 +1,42 @@
 import { hashSecret } from './authEngine';
+import { Logger } from './logger';
 
-// Store the DEK in sessionStorage
-const DEK_STORAGE_KEY = 'ea_niti_dek';
+// ── Typed Errors ─────────────────────────────────────────────────────────────
 
-export async function initializeVault(pin: string, salt: string) {
-  // Derive a Master DEK from the PIN and Salt
-  const dek = await hashSecret(pin, salt + "_dek_vault");
-  sessionStorage.setItem(DEK_STORAGE_KEY, dek);
+export class VaultLockedError extends Error {
+  constructor(message = 'VaultLockedError: Vault is locked. DEK not available.') {
+    super(message);
+    this.name = 'VaultLockedError';
+  }
+}
+
+// ── True In-Memory Vault (No sessionStorage for DEK) ─────────────────────────
+// The DEK exists only in RAM within the V8 closure. No persistence to browser storage.
+
+let activeDEK: string | null = null;
+
+export function isVaultUnlocked(): boolean {
+  return activeDEK !== null;
 }
 
 export function getVaultKey(): string | null {
-  return sessionStorage.getItem(DEK_STORAGE_KEY);
+  if (!activeDEK) {
+    throw new VaultLockedError();
+  }
+  return activeDEK;
 }
 
-export function clearVault() {
-  sessionStorage.removeItem(DEK_STORAGE_KEY);
+export function getVaultKeySafe(): string | null {
+  return activeDEK;
+}
+
+export async function initializeVault(pin: string, salt: string): Promise<void> {
+  const dek = await hashSecret(pin, salt + "_dek_vault");
+  activeDEK = dek;
+}
+
+export function clearVault(): void {
+  activeDEK = null;
 }
 
 // Convert string to ArrayBuffer
@@ -24,7 +46,7 @@ function getMessageEncoding(message: string) {
 }
 
 // Helper to get a CryptoKey from the hex DEK
-async function getCryptoKey(dekHex: string): Promise<CryptoKey> {
+async function getCryptoKey(dekHex: string, extractable = false): Promise<CryptoKey> {
   const hexPairs = dekHex.match(/.{1,2}/g);
   if (!hexPairs) {
     throw new Error('Invalid vault key format');
@@ -34,7 +56,7 @@ async function getCryptoKey(dekHex: string): Promise<CryptoKey> {
     "raw",
     keyBuffer,
     "AES-GCM",
-    false,
+    extractable,
     ["encrypt", "decrypt"]
   );
 }
@@ -83,7 +105,7 @@ export async function decryptBlob(blob: Blob): Promise<Blob> {
     );
     return new Blob([decrypted], { type: blob.type });
   } catch (e) {
-    console.error("Failed to decrypt blob", e);
+    Logger.error('Failed to decrypt blob', e);
     throw new Error('Failed to decrypt blob');
   }
 }
@@ -134,7 +156,139 @@ export async function decryptString(ciphertext: string): Promise<string> {
     const dec = new TextDecoder();
     return dec.decode(decrypted);
   } catch (e) {
-    console.error("Failed to decrypt string", e);
+    Logger.error('Failed to decrypt string', e);
     throw new Error('Failed to decrypt string');
   }
+}
+
+// ── Track 2: HMAC-SHA256 Session Tamper-Proofing ─────────────────────────────
+
+let activeHmacKey: CryptoKey | null = null;
+
+async function getHmacCryptoKey(dekHex: string): Promise<CryptoKey> {
+  const hexPairs = dekHex.match(/.{1,2}/g);
+  if (!hexPairs) {
+    throw new Error('Invalid vault key format');
+  }
+  const keyBuffer = new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
+  return await window.crypto.subtle.importKey(
+    "raw",
+    keyBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+export async function initializeHmacKey(): Promise<void> {
+  const dekHex = getVaultKey();
+  if (!dekHex) {
+    throw new Error('CRITICAL: Vault locked. No Data Encryption Key available for HMAC.');
+  }
+  activeHmacKey = await getHmacCryptoKey(dekHex);
+}
+
+export function clearHmacKey(): void {
+  activeHmacKey = null;
+}
+
+export async function signHMAC(data: string): Promise<string> {
+  if (!activeHmacKey) {
+    throw new Error('HMAC key not initialized. Call initializeHmacKey() first.');
+  }
+  const encoder = new TextEncoder();
+  const signature = await window.crypto.subtle.sign(
+    "HMAC",
+    activeHmacKey,
+    encoder.encode(data)
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+export async function verifyHMAC(data: string, hmac: string): Promise<boolean> {
+  if (!activeHmacKey) {
+    throw new Error('HMAC key not initialized. Call initializeHmacKey() first.');
+  }
+  const encoder = new TextEncoder();
+  const sigBytes = Uint8Array.from(atob(hmac), c => c.charCodeAt(0));
+  return await window.crypto.subtle.verify(
+    "HMAC",
+    activeHmacKey,
+    sigBytes,
+    encoder.encode(data)
+  );
+}
+
+// ── Sealed Vault Session (non-extractable wrapping key) ───────────────────────
+
+export interface SealedVaultSession {
+  wrappedDEK: string;
+  iv: string;
+  salt: string;
+  wrappingKey: CryptoKey;
+}
+
+export async function createSealedVaultSession(_pin: string, salt: string): Promise<SealedVaultSession> {
+  const dekHex = getVaultKey();
+  if (!dekHex) throw new VaultLockedError('Cannot create sealed session: vault is locked.');
+
+  const wrappingKey = await window.crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["wrapKey", "unwrapKey"]
+  );
+
+  const dekKey = await getCryptoKey(dekHex, true);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+  const wrappedDEK = await window.crypto.subtle.wrapKey(
+    "raw",
+    dekKey,
+    wrappingKey,
+    { name: "AES-GCM", iv }
+  );
+
+  return {
+    wrappedDEK: bufToHex(new Uint8Array(wrappedDEK)),
+    iv: bufToHex(iv),
+    salt,
+    wrappingKey,
+  };
+}
+
+export async function restoreVaultKey(sealedSession: SealedVaultSession): Promise<void> {
+  const wrappedDEKBytes = hexToBuf(sealedSession.wrappedDEK);
+  const iv = hexToBuf(sealedSession.iv);
+
+  const unwrappedDEK = await window.crypto.subtle.unwrapKey(
+    "raw",
+    toArrayBuffer(wrappedDEKBytes),
+    sealedSession.wrappingKey,
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
+    { name: "AES-GCM" },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  const exportedDEK = await window.crypto.subtle.exportKey("raw", unwrappedDEK);
+  activeDEK = bufToHex(new Uint8Array(exportedDEK));
+}
+
+export async function clearVaultAndSession(): Promise<void> {
+  activeDEK = null;
+  activeHmacKey = null;
+}
+
+function bufToHex(buf: Uint8Array): string {
+  return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBuf(hex: string): Uint8Array {
+  const pairs = hex.match(/.{1,2}/g);
+  if (!pairs) throw new Error('Invalid hex string');
+  return new Uint8Array(pairs.map(p => parseInt(p, 16)));
+}
+
+function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
 }

@@ -3,7 +3,9 @@ import { ShieldAlert, Trash2, AlertTriangle, Plus, ToggleRight, Shield, X, Archi
 import { db, PrivacyGuardrail, logForensicAudit } from '../../lib/db';
 import { logoutUser } from '../../lib/authEngine';
 import { useStateContext } from '../../context/StateContext';
+import { Logger } from '../../lib/logger';
 import { useArchive } from '../../hooks/useArchive';
+import AIRewriteButton from '../ui/AIRewriteButton';
 
 const WIPE_CONFIRMATION_PHRASE = 'DELETE';
 
@@ -38,7 +40,7 @@ export default function ComplianceGuardrailsTab() {
       const data = await db.privacy_guardrails.toArray();
       setGuardrails(data);
     } catch (e) {
-      console.error('[DpdpTab] Failed to load guardrails:', e);
+      Logger.error('[DpdpTab] Failed to load guardrails:', e);
     }
   }, []);
 
@@ -99,13 +101,13 @@ export default function ComplianceGuardrailsTab() {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
       } catch (cacheErr) {
-        console.warn('[DpdpTab] CacheStorage wipe partial:', cacheErr);
+        Logger.warn('[DpdpTab] CacheStorage wipe partial:', cacheErr);
       }
 
       logoutUser();
       setIdentity(null);
     } catch (err) {
-      console.error('[DpdpTab] Global Data Wipe failed:', err);
+      Logger.error('[DpdpTab] Global Data Wipe failed:', err);
       setWipeError(err instanceof Error ? err.message : 'Wipe failed. Check console for details.');
       setIsWiping(false);
     }
@@ -273,7 +275,10 @@ export default function ComplianceGuardrailsTab() {
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-4"
             />
 
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Rule Text</label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rule Text</label>
+              <AIRewriteButton currentText={newRuleText} onUpdate={setNewRuleText} />
+            </div>
             <textarea
               value={newRuleText}
               onChange={e => setNewRuleText(e.target.value)}

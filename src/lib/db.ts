@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { MASTER_CATEGORY_TYPES } from './constants';
+import type { DeepParsedQuery } from './StructuralVectoriser';
 
 export interface MasterCategory {
   id?: number;
@@ -93,12 +94,15 @@ export interface ReviewWorkflow {
   description: string;
   version?: string;
   triggerReviewType: string; // The Review Type that automatically invokes this workflow
+  domainTags: string[]; // Domain contexts (from master_categories type 'mitra_domain')
+  defaultMitraProfileId: number | null; // Default persona for stages without override
   stages: {
     id: string; // UUID or string id
     name: string; // e.g., 'ABR', 'AIA', 'Final Selection'
     type: 'AI_EVALUATION' | 'HUMAN_APPROVAL';
     linkedPromptTemplateId?: number; // For AI Stages
     linkedReportTemplateId?: number; // For rendering
+    mitraProfileId: number | null; // Per-stage persona override (null = use workflow default)
     orderIndex: number;
     requiresManualSignoff: boolean;
   }[];
@@ -116,12 +120,17 @@ export interface ReviewSession {
   dataClassification?: string;
   networkPosture?: string;
   businessJustification?: string;
-  
+
   // State Machine Pointers
   status: 'Draft' | 'Pending' | 'In Progress' | 'Completed' | 'Rejected';
+  workflowState?: NSIWorkflowState; // 5-stage NSI state machine
   workflowId?: number; // Maps to ReviewWorkflow
   currentStageIndex?: number; // Pointer to current step in workflow.stages
-  
+
+  // MITRA Swarm Context (Phase 1.10)
+  domainContext: string; // Resolved domain from workflow's domainTags
+  assignedMitraProfileId: number | null; // Resolved persona from workflow's defaultMitraProfileId
+
   // Storage
   ddqBlobs?: ArchitectureBlob[]; // Multiple vendor DDQs
   architectureBlobs?: ArchitectureBlob[];
@@ -129,7 +138,8 @@ export interface ReviewSession {
   reportMarkdown?: string;
   humanThoughts?: string;
   reportTemplateId?: number;
-  
+  eacReportTemplateId?: number; // Points to the NSI EAC Council Report template
+
   // Final Board Overrides
   humanOverrides?: {
     winningVendorOverride?: string;
@@ -137,10 +147,18 @@ export interface ReviewSession {
     overrideTimestamp?: string;
     overriddenBy?: string;
   };
-  
+
   createdAt: Date;
 }
 
+export type NSIWorkflowState =
+  | 'CONCEPT_RECEIVED'
+  | 'DDQ_GENERATED'
+  | 'VENDOR_UPLOADED'
+  | 'HITL_REVIEW'
+  | 'COMPLETED';
+
+/** @remarks RESERVED FOR PHASE 4.x: Human-In-The-Loop (HITL) Quarantine Zone. Prevents unverified review vectors from corrupting the core Semantic Arena. */
 export interface ReviewEmbedding {
   id?: number;
   sessionId: number;
@@ -162,6 +180,7 @@ export interface ThreatModelRecord {
   updatedAt: Date;
 }
 
+/** @remarks RESERVED FOR PHASE 4.x: Staging ground for Autonomous Curiosity and front-end training before local Wasm compilation into an OPFS-backed .bin.gz corpus. */
 export interface EnterpriseEmbedding {
   id?: number;
   sourceFile: string;
@@ -238,16 +257,15 @@ export interface AIModelRecord {
   id?: number;
   name: string; // e.g., 'EA-NITI Core' or 'Llama-3-BYOM'
   type: 'PRIMARY' | 'SECONDARY' | 'BYOM_NETWORK';
-  modelUrl: string; // Points to WebLLM config root or endpoint URL
+  modelUrl: string; // Points to SovereignEngine config root or BYOM endpoint URL
   wasmUrl?: string; // Optional custom WASM binder
   isLocalhost: boolean; // Resolves against window.location.origin
   isActive: boolean;
   allowDistillation?: boolean; // For Secondary models
-  apiKey?: string;
   encryptedApiKey?: string; // AES-GCM encrypted API key for BYOM network models
   contextWindow?: number;
   engineType?: 'Localhost API' | 'Air-Gapped Network' | 'Cloud VPC (Internet Required)' | 'Air-Gapped Sideload';
-  contextSource?: 'Global Corpus' | 'Architecture Reviews' | 'Threat Models';
+  contextSource?: 'Global Corpus' | 'SAMIKSHA' | 'Threat Models';
 }
 
 export interface NetworkIntegration {
@@ -255,7 +273,6 @@ export interface NetworkIntegration {
   providerType: 'WebSearchAPI' | 'CloudLLMAPI' | 'CustomEnterprise';
   displayName: string;
   endpointUrl: string;
-  apiKey?: string; // @deprecated Use encryptedApiKey instead
   encryptedApiKey?: string; // NEW: AES-GCM encrypted API key (hex format)
   isDefault: boolean;
   status: 'active' | 'inactive';
@@ -276,6 +293,8 @@ export interface GlobalSetting {
     ldapUrl: string;
     baseDn: string;
   };
+  encryptedSsoConfig?: string; // AES-GCM encrypted JSON of local_enterprise_sso
+  encryptedLdapConfig?: string; // AES-GCM encrypted JSON of local_ldap
   authType?: 'S2FA' | 'SSO' | 'LDAP' | 'OAUTH';
   public_sso_enabled: boolean;
 }
@@ -284,6 +303,7 @@ export interface PromptTemplate {
   id?: number;
   name: string;
   category: string;
+  type?: 'greeting' | 'system' | 'stage';
   executionTarget?: 'Primary EA Agent' | 'Tiny Triage Agent' | 'Auto-Route (MoE)';
   promptText: string;
   version?: string;
@@ -339,17 +359,23 @@ export interface ChatMessage {
   id?: number;
   threadId: number;
   role: 'user' | 'assistant' | 'system';
-  content: string;
-  inferenceEngine: 'webllm' | 'neuro-symbolic' | 'pending';
+  content?: string; // Legacy plaintext — cleared after migration
+  encryptedContent?: string; // AES-256-GCM encrypted message body
+  inferenceEngine: 'sovereign' | 'neuro-symbolic' | 'pending';
   timestamp: number;
 }
 
 export interface SemanticMemory {
   id?: number;
-  text: string;
-  embedding: number[];
-  metadata?: any;
+  subject: string;
+  predicate: string;
+  object: string;
+  context: string;
+  vector: Uint32Array;
+  beliefState: number;
+  source?: string;
   createdAt: Date;
+  orthogonal_components?: DeepParsedQuery;
 }
 
 export interface LocalTelemetry {
@@ -359,6 +385,27 @@ export interface LocalTelemetry {
   engineUsed: string;
   executionTimeMs: number;
   distillationTriggered: boolean;
+}
+
+export interface MitraProfile {
+  id?: number;
+  name: string;
+  systemPrompt: string;
+  domain: string;
+  ragTags: string[];
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface VaultSession {
+  id?: number;
+  pseudokey: string;
+  wrappedDEK: string;
+  iv: string;
+  salt: string;
+  wrappingKey: CryptoKey;
+  createdAt: Date;
 }
 
 export class EADatabase extends Dexie {
@@ -391,6 +438,8 @@ export class EADatabase extends Dexie {
   semantic_memory!: Table<SemanticMemory>;
   local_telemetry_vault!: Table<LocalTelemetry>;
   distillation_queue!: Table<DistillationTask>;
+  mitra_profiles!: Table<MitraProfile>;
+  vault_sessions!: Table<VaultSession>;
 
   constructor() {
     super('EADatabase');
@@ -751,19 +800,23 @@ export class EADatabase extends Dexie {
       if ((await tx.table('model_registry').count()) === 0) {
         await tx.table('model_registry').bulkAdd([
           {
-            name: 'EA-NITI Core (Llama-3-8B-Instruct-q4f16_1-MLC)',
+            name: 'EA-NITI Core (Gemma-4-E2B-it-Q4_0)',
             type: 'PRIMARY',
-            modelUrl: 'https://huggingface.co/mlc-ai/Llama-3-8B-Instruct-q4f16_1-MLC',
+            modelUrl: 'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_0.gguf',
             isLocalhost: false,
-            isActive: true
+            isActive: true,
+            contextWindow: 4096,
+            engineType: 'Air-Gapped Sideload'
           },
           {
-            name: 'EA-NITI-Alt',
+            name: 'EA-NITI-Alt (SmolLM2-1.7B-Instruct-Q4_0)',
             type: 'SECONDARY',
-            modelUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-MLC',
-            wasmUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/SmolLM-360M-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm',
+            modelUrl: 'https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_0.gguf',
             isLocalhost: false,
-            isActive: true
+            isActive: true,
+            allowDistillation: true,
+            contextWindow: 2048,
+            engineType: 'Air-Gapped Sideload'
           }
         ]);
       }
@@ -951,7 +1004,7 @@ export class EADatabase extends Dexie {
       custom_agents: '++id, name, agentCategory, status',
       chat_threads: '++id, threadId, updatedAt',
       chat_messages: '++id, threadId, timestamp, role',
-      semantic_memory: '++id, createdAt',
+      semantic_memory: '++id, createdAt, source',
       local_telemetry_vault: '++id, timestamp'
     });
 
@@ -983,7 +1036,7 @@ export class EADatabase extends Dexie {
       custom_agents: '++id, name, agentCategory, status',
       chat_threads: '++id, threadId, updatedAt',
       chat_messages: '++id, threadId, timestamp, role',
-      semantic_memory: '++id, createdAt',
+      semantic_memory: '++id, createdAt, source',
       local_telemetry_vault: '++id, timestamp'
     }).upgrade(async tx => {
       // 1. Migrate data from bian_domains to service_domains
@@ -1024,7 +1077,7 @@ export class EADatabase extends Dexie {
       custom_agents: '++id, name, agentCategory, status',
       chat_threads: '++id, threadId, updatedAt',
       chat_messages: '++id, threadId, timestamp, role',
-      semantic_memory: '++id, createdAt',
+      semantic_memory: '++id, createdAt, source',
       local_telemetry_vault: '++id, timestamp'
     });
 
@@ -1056,7 +1109,7 @@ export class EADatabase extends Dexie {
       custom_agents: '++id, name, agentCategory, status',
       chat_threads: '++id, threadId, updatedAt',
       chat_messages: '++id, threadId, timestamp, role',
-      semantic_memory: '++id, createdAt',
+      semantic_memory: '++id, createdAt, source',
       local_telemetry_vault: '++id, timestamp'
     });
 
@@ -1088,9 +1141,398 @@ export class EADatabase extends Dexie {
       custom_agents: '++id, name, agentCategory, status',
       chat_threads: '++id, title, updatedAt',
       chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
-      semantic_memory: '++id, createdAt',
+      semantic_memory: '++id, createdAt, source',
       local_telemetry_vault: '++id, timestamp',
       distillation_queue: '++id, query, status, createdAt'
+    });
+
+    // v33: SOVEREIGN ENGINE MIGRATION — Purge orphaned WebLLM Cache API data (2GB+ disk recovery)
+    this.version(33).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt'
+    }).upgrade(async () => {
+      try {
+        const cacheKeys = await caches.keys();
+        for (const key of cacheKeys) {
+          if (key.toLowerCase().includes('webllm') || key.toLowerCase().includes('mlc')) {
+            await caches.delete(key);
+          }
+        }
+        await caches.delete('webllm/model');
+      } catch {
+        // Best-effort — don't block migration if cache purge fails
+      }
+    });
+
+    // v34: EPISTEMIC PERSISTENCE — Pre-computed vectors, zero-compute hydration
+    this.version(34).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt'
+    }).upgrade(async (tx) => {
+      const { parser, vectoriser } = await import('./SemanticArena');
+
+      const oldRecords = await tx.table('semantic_memory').toArray();
+      for (const rec of oldRecords) {
+        if (rec.vector && rec.vector instanceof Uint32Array) continue;
+
+        const subject = rec.metadata?.entity || 'System';
+        const predicate = rec.metadata?.intent || 'defines';
+        const object = rec.text || '';
+        const parsed = parser.parse(`${subject} ${predicate} ${object}`);
+        const vector = vectoriser.vectorise(parsed);
+
+        await tx.table('semantic_memory').put({
+          id: rec.id,
+          subject,
+          predicate,
+          object,
+          context: rec.text || '',
+          vector: vector.slice(),
+          beliefState: rec.metadata?.belief ?? 2,
+          source: rec.metadata?.source || 'legacy_migration',
+          createdAt: rec.createdAt || new Date()
+        });
+      }
+    });
+
+    // v35: MITRA LOGICAL SWARM — Persona profiles with RAG tag filtering
+    this.version(35).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive'
+    }).upgrade(async (tx) => {
+      if ((await tx.table('mitra_profiles').count()) === 0) {
+        await tx.table('mitra_profiles').bulkAdd([
+          {
+            name: 'Enterprise Architect',
+            systemPrompt: 'You are EA-NITI, an elite Enterprise Architecture council member. Focus on TOGAF ADM phases, BIAN service domains, and architectural governance principles. Provide structured, framework-aligned responses.',
+            domain: 'EA',
+            ragTags: ['TOGAF', 'BIAN'],
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            name: 'Security Analyst',
+            systemPrompt: 'You are a security architect specializing in STRIDE threat modeling and Zero-Trust Architecture. Analyze all inputs through the lens of threat vectors, attack surfaces, and security controls. Reference STRIDE categories explicitly.',
+            domain: 'SecOps',
+            ragTags: ['STRIDE', 'Zero-Trust'],
+            isActive: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            name: 'Legal Compliance',
+            systemPrompt: 'You are a legal compliance officer specializing in DPDP (Digital Personal Data Protection) and GDPR regulations. Evaluate all architecture decisions for data privacy compliance, data localization requirements, and user consent obligations.',
+            domain: 'Legal',
+            ragTags: ['DPDP', 'GDPR'],
+            isActive: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        ]);
+      }
+    });
+
+    // v36: Phase 1.10 — MITRA Swarm UI & Multi-Persona Workflow Handoff
+    // Adds: prompt_templates.type, ReviewWorkflow.domainTags/defaultMitraProfileId,
+    // stage.mitraProfileId, ReviewSession.domainContext/assignedMitraProfileId
+    this.version(36).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive'
+    }).upgrade(async (tx) => {
+      // Set type='system' on all existing prompt templates
+      await tx.table('prompt_templates').toCollection().modify((item: any) => {
+        if (!item.type) item.type = 'system';
+      });
+
+      // Add domainTags and defaultMitraProfileId to all workflows
+      await tx.table('review_workflows').toCollection().modify((wf: any) => {
+        if (!wf.domainTags) wf.domainTags = [];
+        if (wf.defaultMitraProfileId === undefined) wf.defaultMitraProfileId = null;
+        // Add mitraProfileId to each stage
+        if (wf.stages) {
+          wf.stages = wf.stages.map((s: any) => ({
+            ...s,
+            mitraProfileId: s.mitraProfileId ?? null
+          }));
+        }
+      });
+
+      // Add domainContext and assignedMitraProfileId to all sessions
+      // Default to EA domain and Enterprise Architect profile (id=1)
+      await tx.table('review_sessions').toCollection().modify((s: any) => {
+        if (!s.domainContext) s.domainContext = 'EA';
+        if (s.assignedMitraProfileId === undefined) s.assignedMitraProfileId = 1;
+      });
+    });
+
+    // v37: ENCRYPTION AT REST — AES-256-GCM for chat messages and threat models
+    // Adds encryptedContent to chat_messages, encryptedData to threat_models
+    // Idempotent migration: skips rows where encrypted fields already exist
+    this.version(37).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      enterprise_knowledge: '++id, sourceFile',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive'
+    }).upgrade(async (tx) => {
+      // Import cryptoVault dynamically to avoid circular deps during migration
+      const { encryptString } = await import('./cryptoVault');
+
+      // Migrate chat_messages: content -> encryptedContent (idempotent)
+      const chatMessages = await tx.table('chat_messages').toArray();
+      for (const msg of chatMessages) {
+        if (msg.content && !msg.encryptedContent) {
+          try {
+            const encrypted = await encryptString(msg.content);
+            await tx.table('chat_messages').update(msg.id!, {
+              encryptedContent: encrypted,
+            });
+          } catch {
+            // If vault is not initialized during migration, skip — will be retried on next boot
+          }
+        }
+      }
+
+      // Migrate threat_models: plaintext fields -> encryptedData (idempotent)
+      const threatModels = await tx.table('threat_models').toArray();
+      for (const tm of threatModels) {
+        if ((tm.components || tm.threats || tm.mermaidDFD) && !tm.encryptedData) {
+          try {
+            const payload = JSON.stringify({
+              components: tm.components,
+              threats: tm.threats,
+              mermaidDFD: tm.mermaidDFD,
+            });
+            const encrypted = await encryptString(payload);
+            await tx.table('threat_models').update(tm.id!, {
+              encryptedData: encrypted,
+            });
+          } catch {
+            // Same as above — vault may not be ready
+          }
+        }
+      }
+    });
+
+    // v38: ORTHOGONAL BIT-ARENA — Remove enterprise_knowledge, migrate to semantic_memory
+    // Legacy Float32 embeddings are tagged as 'legacy_embedding' with placeholder bitfields
+    this.version(38).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive'
+    }).upgrade(async (tx) => {
+      // Migrate enterprise_knowledge records to semantic_memory
+      const oldRecords = await tx.table('enterprise_knowledge').toArray();
+      for (const rec of oldRecords) {
+        await tx.table('semantic_memory').add({
+          subject: rec.sourceFile || 'unknown_source',
+          predicate: 'ingested_from',
+          object: (rec.textChunk || '').substring(0, 500),
+          context: rec.textChunk || '',
+          vector: new Uint32Array(64),
+          beliefState: 1,
+          source: 'legacy_embedding',
+          createdAt: rec.ingestedAt || new Date()
+        });
+      }
+      // Drop the enterprise_knowledge table
+      await tx.table('enterprise_knowledge').clear();
+    });
+
+    // v39: Sealed vault sessions — non-extractable wrapping key, persisted in IndexedDB
+    this.version(39).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive',
+      vault_sessions: '++id, pseudokey, createdAt',
     });
   }
 }
@@ -1119,8 +1561,10 @@ export async function pruneOldChats(): Promise<void> {
   } catch (e) {
     // Silently log to avoid disrupting UI
     if (typeof window !== 'undefined') {
-      // Logger not imported here to avoid circular deps
-      console.warn('[pruneOldChats] Error during chat history pruning:', e);
+      // Dynamic import to avoid circular dependencies
+      import('./logger').then(({ Logger }) => {
+        Logger.warn('[pruneOldChats] Error during chat history pruning:', e);
+      }).catch(err => void err);
     }
   }
 }
@@ -1128,11 +1572,10 @@ export async function pruneOldChats(): Promise<void> {
 // Setup Audit Hooks globally across all tables (excluding audit_logs itself)
 db.on('ready', () => {
   db.tables.forEach(table => {
-    if (table.name === 'audit_logs' || table.name === 'users' || table.name === 'privacy_guardrails') return; // Don't audit the audit or identity table loops
+    if (table.name === 'audit_logs' || table.name === 'users' || table.name === 'privacy_guardrails') return;
 
     table.hook('creating', function () {
       const pseudokey = sessionStorage.getItem('ea_niti_session') || 'SYSTEM';
-      // Create separate async transaction to avoid blocking main CRUD
       Dexie.ignoreTransaction(() => {
         db.audit_logs.add({
           timestamp: new Date(),

@@ -1,36 +1,44 @@
 # ===================================================
-# EA-NITI PRODUCTION GITIGNORE
+# EA-NITI PUBLIC REPO GITIGNORE
 # ===================================================
 
-# --- [1] Dependencies & Builds ---
+# --- [1] Dependencies, Builds & Generated Outputs ---
 node_modules/
 dist/
 dist-ssr/
 .vite/
+coverage/
+test-results/
+playwright-report/
 *.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp
 
-# --- [2] AI Core Brain (REQUIRED FOR RUNTIME) ---
-# We explicitly allow these compiled binaries so the agent functions.
-!public/baseline_corpus.bin.gz
-!public/baseline_meta.json
-!public/lexicon.json
+# --- [2] Public Markdown Policy ---
+*.md
+!README.md
+!RELEASE_NOTES.md
+!TESTING_GUIDE.md
 
-# --- [3] Raw Source Data (INTERNAL ONLY) ---
-# Ignore the raw uncompressed CSVs/TXTs used to build the brain.
-public/ee.csv
-public/words.txt
-public/EnterpriseArchitectureLearnings.txt
-public/*.bin
-*.gguf
+# --- [3] Corpus Sources & Generated Runtime Brain ---
+/public/dataAssets/
+/public/baseline_meta.json
+/public/lexicon.json
+/public/lexicon_roles.json
+corpus-artifacts/
+
+# Large local models and generated binaries
 *.onnx
+public/*.bin
 
 # --- [4] Database, Cache & Traces ---
 .cache/
 *.idb
 *.dexie
 *.sqlite
-*.tmp
-trace_hydration.json.json.gz
 
 # --- [5] Environment & Security (CRITICAL) ---
 .env
@@ -39,6 +47,7 @@ trace_hydration.json.json.gz
 
 # --- [6] OS & IDE Junk ---
 .DS_Store
+**/.DS_Store
 Thumbs.db
 .vscode/
 .idea/
@@ -46,29 +55,25 @@ Thumbs.db
 *.swo
 *.code-workspace
 
-# --- [7] Internal Agent Metadata & Research ---
-# These files contain internal developer instructions/IP.
-.agents/
-.claude/
-CLAUDE.md
-GEMINI.md
-AGENTS.md
-BIT_ARENA_LLD.md
-PROJECT_STATUS.md
-copilot-instructions.md
-architecture.md
-features.md
-miner.ps1
+# --- [7] Private Docs & Local Scripts ---
+/artefacts/
+/scripts/private_execution/
+debug-*.mjs
 
-# --- [8] Build, Test & Debug Logs ---
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-coverage/
+# --- [8] Tool Output Snapshots ---
 tsc_output.txt
 eslint_out.json
 int_res.txt
 ts_errors.txt
-vitest.config.ts
-src/__tests__/
+
+# --- [9] Rust Source Lives In A Separate Repo ---
+/src-rust/
+
+# --- [10] Keep Compiled WASM Runtime Trackable ---
+!src/lib/wasm/
+!src/lib/wasm/pkg/
+!src/lib/wasm/pkg/eaniti_engine.js
+!src/lib/wasm/pkg/eaniti_engine_bg.wasm
+!src/lib/wasm/pkg/eaniti_engine.d.ts
+!src/lib/wasm/pkg/eaniti_engine_bg.wasm.d.ts
+!src/lib/wasm/pkg/package.json

@@ -3,6 +3,7 @@
  * These functions implement constant-time operations to prevent side-channel attacks.
  */
 
+import { Logger } from './logger';
 /**
  * Constant-time string comparison to prevent timing side-channel attacks.
  * Compares two strings in fixed time regardless of where they differ.
@@ -138,7 +139,7 @@ export async function verifyRequestSignature(
     // Compare signatures in constant time
     return await constantTimeCompare(recomputedSignature, signature);
   } catch (error) {
-    console.error('[SECURITY] Signature verification failed:', error);
+    Logger.error('[SECURITY] Signature verification failed:', error);
     return false;
   }
 }

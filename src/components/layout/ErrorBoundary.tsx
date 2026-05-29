@@ -1,6 +1,7 @@
 import React, { ReactNode, ErrorInfo } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { db } from '../../lib/db';
+import { Logger } from '../../lib/logger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -29,8 +30,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[ErrorBoundary] Caught error:', error);
-    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+    Logger.error('[ErrorBoundary] Caught error:', error);
+    Logger.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
     
     this.setState(prevState => ({
       error,
@@ -53,7 +54,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
         timestamp: new Date()
       });
     } catch (dbErr) {
-      console.error('[ErrorBoundary] Failed to log error to database:', dbErr);
+      Logger.error('[ErrorBoundary] Failed to log error to database:', dbErr);
     }
   };
 
@@ -69,8 +70,29 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     window.location.reload();
   };
 
+  private isInferenceRelatedError(error: Error | null): boolean {
+    if (!error) return false;
+    const msg = error.message || '';
+    return (
+      msg.includes('Sovereign Engine') ||
+      msg.includes('sovereign') ||
+      msg.includes('OPFS') ||
+      msg.includes('webgpu') ||
+      msg.includes('WebGPU') ||
+      msg.includes('model weights') ||
+      msg.includes('Download') ||
+      msg.includes('Cache') ||
+      msg.includes('cache') ||
+      msg.includes('wasm') ||
+      msg.includes('WASM') ||
+      msg.includes('BLIT') ||
+      msg.includes('GGUF')
+    );
+  }
+
   render() {
     if (this.state.hasError) {
+      const isInferenceError = this.isInferenceRelatedError(this.state.error);
       return (
         <div className="flex flex-col items-center justify-center w-full min-h-screen bg-gray-950 text-gray-100 p-8">
           <div className="max-w-md text-center">
@@ -93,6 +115,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 </p>
               </div>
             )}
+
+            {isInferenceError && (
+              <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-3 mb-4 text-left text-xs text-amber-300">
+                <strong>Sovereign Engine Error Detected.</strong> This is not a fatal application error. Click "Try Again" to reset. If the problem persists, clear your browser cache (F12 → Application → Clear site data) and refresh manually.
+              </div>
+            )}
             
             <p className="text-xs text-gray-500 mb-6">
               Error #{this.state.errorCount}
@@ -106,14 +134,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 <RotateCcw size={18} />
                 Try Again
               </button>
-              
-              <button
-                onClick={this.handleReload}
-                className="flex items-center gap-2 px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
-              >
-                <RotateCcw size={18} />
-                Reload Page
-              </button>
+
+              {!isInferenceError && (
+                <button
+                  onClick={this.handleReload}
+                  className="flex items-center gap-2 px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+                >
+                  <RotateCcw size={18} />
+                  Reload Page
+                </button>
+              )}
             </div>
             
             <p className="text-xs text-gray-500 mt-8">

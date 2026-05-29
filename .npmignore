@@ -22,6 +22,7 @@ Thumbs.db
 coverage/
 *.test.*
 *.spec.*
+__tests__/
 
 # Development files
 *.log
@@ -29,3 +30,18 @@ tsconfig.json
 vite.config.ts
 .editorconfig
 .gitignore
+
+# Rust source
+src-rust/
+
+# Scripts
+scripts/
+
+# E2E tests
+e2e/
+
+# Internal docs
+artefacts/
+
+# Test fixtures
+src/__tests__/fixtures/*.gguf

@@ -6,6 +6,8 @@ import ConfirmModal from '../ui/ConfirmModal';
 import DataTable from '../ui/DataTable';
 import PageHeader from '../ui/PageHeader';
 import { encryptString, decryptString, getVaultKey } from '../../lib/cryptoVault';
+import { NetworkIntegrationSchema } from '../../lib/validation';
+import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 
 export default function WebProvidersTab() {
@@ -31,8 +33,12 @@ export default function WebProvidersTab() {
   const [isPullingLive, setIsPullingLive] = useState(false);
 
   useEffect(() => {
-    const vaultKey = getVaultKey();
-    setIsVaultLocked(!vaultKey);
+    try {
+      const vaultKey = getVaultKey();
+      setIsVaultLocked(!vaultKey);
+    } catch {
+      setIsVaultLocked(true);
+    }
   }, []);
 
   const resetForm = () => {
@@ -63,12 +69,10 @@ export default function WebProvidersTab() {
     if (provider.encryptedApiKey) {
       try {
         decryptedKey = await decryptString(provider.encryptedApiKey);
-      } catch (e) {
-        console.error('[SECURITY] Failed to decrypt API key:', e);
+    } catch (err) {
+        Logger.error('[SECURITY] Failed to decrypt API key:', err);
         setError('Failed to decrypt stored API key. It may be corrupted.');
       }
-    } else if (provider.apiKey) {
-      decryptedKey = provider.apiKey;
     }
 
     setFormData({
@@ -114,52 +118,58 @@ export default function WebProvidersTab() {
     e.preventDefault();
     if (!validateForm()) return;
 
+    const providerData: Omit<NetworkIntegration, 'id' | 'encryptedApiKey'> = {
+      displayName: formData.displayName,
+      endpointUrl: formData.endpointUrl,
+      providerType: formData.providerType,
+      isDefault: formData.isDefault,
+      modelName: formData.modelName || undefined,
+      status: formData.status,
+      createdAt: selectedProvider?.createdAt || new Date(),
+    };
+
+    const result = NetworkIntegrationSchema.safeParse(providerData);
+    if (!result.success) {
+      const errorMsg = result.error.issues.map((err: any) => `${err.path.join('.')}: ${err.message}`).join('; ');
+      setSaveMessage({ type: 'error', text: `Validation: ${errorMsg}` });
+      return;
+    }
+
     try {
       const encryptedApiKey = formData.apiKey ? await encryptString(formData.apiKey) : undefined;
-
-      const providerData: NetworkIntegration = {
-        displayName: formData.displayName,
-        endpointUrl: formData.endpointUrl,
-        encryptedApiKey: encryptedApiKey,
-        providerType: formData.providerType,
-        isDefault: formData.isDefault,
-        modelName: formData.modelName || undefined,
-        status: formData.status,
-        createdAt: selectedProvider?.createdAt || new Date(),
-      };
+      const validatedData: NetworkIntegration = { ...result.data, encryptedApiKey, status: formData.status, createdAt: selectedProvider?.createdAt || new Date(), isDefault: result.data.isDefault ?? false };
 
       if (formMode === 'add') {
-        await db.network_integrations.add(providerData);
-        if (providerData.providerType === 'CustomEnterprise' && providerData.modelName) {
+        await db.network_integrations.add(validatedData);
+        if (validatedData.providerType === 'CustomEnterprise' && validatedData.modelName) {
           await db.model_registry.add({
-            name: providerData.modelName,
+            name: validatedData.modelName,
             type: 'BYOM_NETWORK',
-            modelUrl: providerData.endpointUrl,
+            modelUrl: validatedData.endpointUrl,
             encryptedApiKey: encryptedApiKey,
-            isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1'),
+            isLocalhost: validatedData.endpointUrl.includes('localhost') || validatedData.endpointUrl.includes('127.0.0.1'),
             isActive: true
           });
         }
         setSaveMessage({ type: 'success', text: 'Provider added successfully!' });
       } else if (formMode === 'edit' && selectedProvider?.id) {
-        await db.network_integrations.update(selectedProvider.id, providerData);
-        if (providerData.providerType === 'CustomEnterprise' && providerData.modelName) {
+        await db.network_integrations.update(selectedProvider.id, validatedData);
+        if (validatedData.providerType === 'CustomEnterprise' && validatedData.modelName) {
           const existingModel = await db.model_registry.where('modelUrl').equals(selectedProvider.endpointUrl).first();
           if (existingModel && existingModel.id) {
             await db.model_registry.update(existingModel.id, {
-              name: providerData.modelName,
-              modelUrl: providerData.endpointUrl,
+              name: validatedData.modelName,
+              modelUrl: validatedData.endpointUrl,
               encryptedApiKey: encryptedApiKey,
-              apiKey: undefined,
-              isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1')
+              isLocalhost: validatedData.endpointUrl.includes('localhost') || validatedData.endpointUrl.includes('127.0.0.1')
             });
           } else {
             await db.model_registry.add({
-              name: providerData.modelName,
+              name: validatedData.modelName,
               type: 'BYOM_NETWORK',
-              modelUrl: providerData.endpointUrl,
+              modelUrl: validatedData.endpointUrl,
               encryptedApiKey: encryptedApiKey,
-              isLocalhost: providerData.endpointUrl.includes('localhost') || providerData.endpointUrl.includes('127.0.0.1'),
+              isLocalhost: validatedData.endpointUrl.includes('localhost') || validatedData.endpointUrl.includes('127.0.0.1'),
               isActive: true
             });
           }
@@ -171,7 +181,7 @@ export default function WebProvidersTab() {
       setFormMode(null);
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (err) {
-      console.error('[WebProvidersTab] Save Provider Error:', err);
+      Logger.error('[WebProvidersTab] Save Provider Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during encryption/save.';
       setSaveMessage({ type: 'error', text: errorMessage });
     }

@@ -3,11 +3,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ReportTemplate } from '../../lib/db';
 import { Plus, Edit2, Trash2, Check, X, FileText } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
+import { useNotification } from '../../context/NotificationContext';
 import { useMasterData } from '../../hooks/useMasterData';
 import StatusToggle from '../ui/StatusToggle';
 import PageHeader from '../ui/PageHeader';
+import AIRewriteButton from '../ui/AIRewriteButton';
 
 export default function TemplatesTab() {
+  const { addNotification } = useNotification();
   const templates = useLiveQuery(() => db.report_templates.toArray()) || [];
   const reviewTypes = useMasterData('Review Type');
   
@@ -43,7 +46,7 @@ export default function TemplatesTab() {
 
   const handleSave = async () => {
     if (!formData.name || !formData.markdownStructure) {
-       alert("Name and Markdown Structure are required.");
+       addNotification("Name and Markdown Structure are required.", 'warning', 3000);
        return;
     }
 
@@ -186,18 +189,24 @@ export default function TemplatesTab() {
               </div>
               
               <div className="h-96 flex flex-col">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Markdown Structure Framework</label>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                   Valid injection tags: <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{"{{projectName}}"}</code>, 
-                   <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{"{{winningVendor}}"}</code>, 
+<div className="flex justify-between items-center mb-2">
+                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Markdown Structure Framework</label>
+                   <AIRewriteButton
+                     currentText={formData.markdownStructure || ''}
+                     onUpdate={(text) => setFormData({...formData, markdownStructure: text})}
+                   />
+                 </div>
+                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Valid injection tags: <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{"{{projectName}}"}</code>,
+                   <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{"{{winningVendor}}"}</code>,
                    <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{"{{vendorMatrix}}"}</code>
-                </div>
-                <textarea
-                  className="w-full flex-1 font-mono text-sm bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-4 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  value={formData.markdownStructure || ''}
-                  onChange={e => setFormData({...formData, markdownStructure: e.target.value})}
-                  placeholder="# Architecture Decision Record\n\n## Overview..."
-                />
+                 </div>
+                 <textarea
+                   className="w-full flex-1 font-mono text-sm bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-4 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                   value={formData.markdownStructure || ''}
+                   onChange={e => setFormData({...formData, markdownStructure: e.target.value})}
+                   placeholder="# Architecture Decision Record\n\n## Overview..."
+                 />
               </div>
             </div>
             

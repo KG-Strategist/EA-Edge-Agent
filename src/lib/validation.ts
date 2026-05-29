@@ -165,7 +165,7 @@ export const NetworkIntegrationSchema = z.object({
     .string()
     .min(1, 'Endpoint URL is required')
     .url('Endpoint URL must be a valid URL'),
-  apiKey: z.string().optional(),
+  encryptedApiKey: z.string().optional(),
   providerType: ProviderTypeEnum,
   isDefault: z.boolean().optional(),
   modelName: z
@@ -197,3 +197,95 @@ export function validateInput<T>(
 
   return { success: true, data: result.data };
 }
+
+/**
+ * Maps table names to their respective validation schemas.
+ */
+export const TableSchemas: Record<string, z.ZodSchema<any>> = { // TODO: Refactor any to explicit type (DEBT-1.1.3-LOGS)
+  service_domains: ServiceDomainSchema,
+  architecture_layers: ArchitectureLayerSchema,
+  master_categories: MasterCategorySchema,
+  bespoke_tags: BespokeTagSchema,
+  network_integrations: NetworkIntegrationSchema,
+};
+
+// ── Track 2: Core Entity Schemas ─────────────────────────────────────────────
+
+const AuthModeEnum = z.enum(['Air-Gapped', 'Hybrid']);
+const ModelTypeEnum = z.enum(['PRIMARY', 'SECONDARY', 'BYOM_NETWORK']);
+const EngineTypeEnum = z.enum(['Localhost API', 'Air-Gapped Network', 'Cloud VPC (Internet Required)', 'Air-Gapped Sideload']);
+const ContextSourceEnum = z.enum(['Global Corpus', 'SAMIKSHA', 'Threat Models']);
+
+export const UserSchema = z.object({
+  id: z.number().optional(),
+  pseudokey: z.string().min(3, 'Pseudokey must be at least 3 characters').max(64),
+  passwordHash: z.string(),
+  pinHash: z.string(),
+  salt: z.string(),
+  tempPasswordHash: z.string().optional(),
+  requiresPinSetup: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  providerId: z.string().optional(),
+  authMode: AuthModeEnum,
+  createdAt: z.coerce.date(),
+  securityQuestions: z.array(z.object({
+    questionId: z.string(),
+    answerHash: z.string(),
+  })).optional(),
+  demographics: z.object({
+    regionToken: z.string(),
+    roleToken: z.string(),
+  }).optional(),
+  consentHistory: z.array(z.object({
+    type: z.enum(['TELEMETRY', 'OFFLINE_LIMITS', 'MULTI_UAM', 'PAM_PIM', 'HYBRID_LIMITED', 'EXTERNAL_IDENTITY', 'HYBRID_NETWORK', 'AIRGAP_STRICT']),
+    grantedAt: z.coerce.date(),
+    version: z.string(),
+    revokedAt: z.coerce.date().optional(),
+  })).optional(),
+});
+
+export type UserInput = z.infer<typeof UserSchema>;
+
+export const UserFormSchema = z.object({
+  pseudokey: z.string().min(3, 'Agent ID must be at least 3 characters').max(64),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  role: z.enum(['System Admin', 'Architect', 'Reviewer', 'Viewer']),
+});
+
+export type UserFormInput = z.infer<typeof UserFormSchema>;
+
+export const GlobalSettingSchema = z.object({
+  id: z.string(),
+  connection_mode: z.enum(['HYBRID', 'AIR_GAPPED']).nullable(),
+  local_enterprise_sso: z.object({
+    providerName: z.string(),
+    authUrl: z.string().url(),
+    clientId: z.string(),
+    tokenUrl: z.string().url().optional(),
+  }).optional(),
+  local_ldap: z.object({
+    ldapUrl: z.string().url(),
+    baseDn: z.string(),
+  }).optional(),
+  authType: z.enum(['S2FA', 'SSO', 'LDAP', 'OAUTH']).optional(),
+  public_sso_enabled: z.boolean(),
+});
+
+export type GlobalSettingInput = z.infer<typeof GlobalSettingSchema>;
+
+export const ModelRegistrySchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1, 'Model name is required').max(64),
+  type: ModelTypeEnum,
+  modelUrl: z.string().min(1, 'Model URL is required'),
+  wasmUrl: z.string().optional(),
+  isLocalhost: z.boolean(),
+  isActive: z.boolean(),
+  allowDistillation: z.boolean().optional(),
+  encryptedApiKey: z.string().optional(),
+  contextWindow: z.number().int().min(128).max(131072).optional(),
+  engineType: EngineTypeEnum.optional(),
+  contextSource: ContextSourceEnum.optional(),
+});
+
+export type ModelRegistryInput = z.infer<typeof ModelRegistrySchema>;

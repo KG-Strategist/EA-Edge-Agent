@@ -1,4 +1,5 @@
 import { validateEndpointUrl } from './networkGuard';
+import { Logger } from './logger';
 
 // Secure Web Fetch Worker
 // This utility is strictly designed to fetch external data without leaking local context.
@@ -54,7 +55,7 @@ export async function fetchWebTrends(query: string, apiKey: string, endpointUrl:
 
     return summaries;
   } catch (error) {
-    console.error('Web Fetch Worker Error:', error);
+    Logger.error('Web Fetch Worker Error:', error);
     throw error;
   }
 }

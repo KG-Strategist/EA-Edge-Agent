@@ -271,7 +271,7 @@ export default function MetamodelTab() {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-sm text-gray-600 dark:text-gray-400">Description</label>
-                  <AIRewriteButton context={descriptionValue} onResult={(text) => setDescriptionValue(text)} />
+                  <AIRewriteButton currentText={descriptionValue} onUpdate={(text) => setDescriptionValue(text)} />
                 </div>
                 <textarea name="description" value={descriptionValue} onChange={(e) => setDescriptionValue(e.target.value)} required className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500 h-20" placeholder="Brief description of the artifact..." />
               </div>

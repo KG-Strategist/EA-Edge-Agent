@@ -147,7 +147,7 @@ export default function Logo({
 
   // Floating animation for the whole container to give it that "AI Agent" vibe
   const floatVariants = {
-    animate: { y: [0, -4, 0], transition: { duration: 4, repeat: Infinity, ease: "easeInOut" } },
+    animate: { y: [0, -4, 0], transition: { duration: 4, repeat: Infinity, ease: "easeInOut" as const } },
     static: { y: 0 }
   };
 

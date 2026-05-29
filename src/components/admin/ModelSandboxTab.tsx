@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
+import { encryptString } from '../../lib/cryptoVault';
+import { ModelRegistrySchema } from '../../lib/validation';
+import { epistemicShadow } from '../../lib/EpistemicShadow';
 import { Database, Server, Plus, Info, FolderUp, TerminalSquare, Trash2 } from 'lucide-react';
 import { SideloadService } from '../../services/SideloadService';
-import { getActiveModelUrl } from '../../lib/aiEngine';
 import CreatableDropdown from '../ui/CreatableDropdown';
-import FolderUploadButton from '../ui/FolderUploadButton';
+import FileUploadButton from '../ui/FileUploadButton';
 import PageHeader from '../ui/PageHeader';
 import DataTable from '../ui/DataTable';
 import { Logger } from '../../lib/logger';
@@ -25,8 +27,7 @@ function EngineDiagnostics({ selectedModelId }: { selectedModelId?: string }) {
       }
       
       setActiveModel(selectedModelId);
-      const url = await getActiveModelUrl(selectedModelId);
-      setSourceUrl(url || 'Local Cache');
+      setSourceUrl('Sovereign Wasm / Daemon');
     };
     
     updateMonitor();
@@ -59,20 +60,13 @@ function EngineDiagnostics({ selectedModelId }: { selectedModelId?: string }) {
           Engine Diagnostics Terminal
         </h3>
         <div className="flex items-center gap-2">
-           <button 
-             onClick={() => {
-               const event = new CustomEvent('DISTILLATION_EVENT', { 
-                 detail: { message: 'Mock HARVEST payload dispatched...', status: 'INFO', progress: 0 } 
-               });
-               window.dispatchEvent(event);
-               if ((window as any).distillationWorker) {
-                 (window as any).distillationWorker.postMessage({ type: 'HARVEST' });
-               }
-             }}
-             className="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded border border-gray-700 transition-colors"
-           >
-             Test Distillation Pipeline
-           </button>
+            <button
+               disabled
+               title="Phase 4.x — Local OPFS Corpus Compilation & autonomous knowledge harvesting"
+               className="text-[10px] bg-gray-800/50 text-gray-600 px-2 py-1 rounded border border-gray-700/50 cursor-not-allowed"
+            >
+              Distillation — Phase 4.x Reserved
+            </button>
            <span className="flex h-2 w-2 relative ml-2">
              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
@@ -130,7 +124,7 @@ export default function ModelSandboxTab() {
     apiKey: string;
     contextWindow: number;
     engineType: 'Localhost API' | 'Air-Gapped Network' | 'Cloud VPC (Internet Required)';
-    contextSource: 'Global Corpus' | 'Architecture Reviews' | 'Threat Models';
+    contextSource: 'Global Corpus' | 'SAMIKSHA' | 'Threat Models';
   }>({ 
     name: '', 
     modelUrl: '', 
@@ -145,7 +139,6 @@ export default function ModelSandboxTab() {
   const [isSideloading, setIsSideloading] = useState(false);
   const [sideloadProgress, setSideloadProgress] = useState({ text: '', percent: 0 });
   const [sideloadModelName, setSideloadModelName] = useState('');
-  const [sideloadModelUrl, setSideloadModelUrl] = useState('');
 
   const [routingThreshold, setRoutingThreshold] = useState(50);
   const [telemetryOptIn, setTelemetryOptIn] = useState(false);
@@ -154,7 +147,7 @@ export default function ModelSandboxTab() {
     const loadSettings = async () => {
       const thresholdSetting = await db.app_settings.get('routingThreshold');
       if (thresholdSetting) setRoutingThreshold(thresholdSetting.value);
-      
+
       const telemetrySetting = await db.app_settings.get('telemetryOptIn');
       if (telemetrySetting) setTelemetryOptIn(telemetrySetting.value);
     };
@@ -179,14 +172,22 @@ export default function ModelSandboxTab() {
       isLocalhost: newModel.modelUrl.includes('localhost') || newModel.modelUrl.startsWith('/'),
       isActive: true,
       allowDistillation: newModel.allowDistillation,
-      apiKey: newModel.apiKey,
       contextWindow: newModel.contextWindow,
       engineType: newModel.engineType,
       contextSource: newModel.contextSource
     };
 
-    await db.model_registry.add(payload);
-    Logger.info("DB Write Success", payload);
+    const result = ModelRegistrySchema.safeParse(payload);
+    if (!result.success) {
+      const errorMsg = result.error.issues.map((err: any) => `${err.path.join('.')}: ${err.message}`).join('; ');
+      addNotification(`Validation error: ${errorMsg}`, 'error', 5000);
+      return;
+    }
+
+    const encryptedApiKey = newModel.apiKey ? await encryptString(newModel.apiKey) : undefined;
+
+    await db.model_registry.add({ ...result.data, encryptedApiKey });
+    addNotification('Model saved successfully', 'success', 2000);
     
     setNewModel({ 
       name: '', 
@@ -203,46 +204,36 @@ export default function ModelSandboxTab() {
   const toggleDistillation = async (id: number, currentVal: boolean) => {
     const newVal = !currentVal;
     await db.model_registry.update(id, { allowDistillation: newVal });
-    if (!newVal && (window as any).distillationWorker) {
-      (window as any).distillationWorker.postMessage({ type: 'DISPOSE' });
+    if (!newVal) {
+      epistemicShadow.interrupt();
     }
   };
 
-  const handleSideloadClick = (files: FileList) => {
-    if (!sideloadModelName || !sideloadModelUrl) {
-      alert("Please enter a Model Name and Configuration URL before selecting a folder.");
-      return;
-    }
-    handleFolderSelect(files);
+  const handleFileSelect = async (file: File) => {
+    const modelId = sideloadModelName || file.name.replace('.gguf', '');
+    if (!sideloadModelName) setSideloadModelName(file.name.replace('.gguf', ''));
+    await performSideload(file, modelId);
   };
 
-  const handleFolderSelect = async (files: FileList) => {
+  const performSideload = async (ggufFile: File, modelId: string) => {
     setIsSideloading(true);
     setSideloadProgress({ text: 'Reading files...', percent: 0 });
 
     try {
-      // Robustness check for WebLLM config payload
-      let hasConfig = false;
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.name === 'mlc-chat-config.json' || (file.webkitRelativePath && file.webkitRelativePath.endsWith('mlc-chat-config.json'))) {
-          hasConfig = true;
-          break;
-        }
-      }
+      await SideloadService.processModelSideload(ggufFile, modelId, (bytesWritten, totalBytes) => {
+        const percent = Math.round((bytesWritten / totalBytes) * 100);
+        setSideloadProgress({ text: `Writing ${ggufFile.name} to OPFS...`, percent });
+      });
 
-      if (!hasConfig) {
-        throw new Error('Invalid Model Folder: mlc-chat-config.json missing.');
-      }
-
-      await SideloadService.processSideloadFolder(files, sideloadModelName, sideloadModelUrl, (text, percent) => {
-        setSideloadProgress({ text, percent });
+      await SideloadService.registerSideloadedModel({
+        name: modelId,
+        modelId,
+        contextWindow: 4096,
       });
 
       setSideloadProgress({ text: 'Sideload complete! Model is now available offline.', percent: 100 });
       setSideloadModelName('');
-      setSideloadModelUrl('');
-      
+
       setTimeout(() => {
         setIsSideloading(false);
         setSideloadProgress({ text: '', percent: 0 });
@@ -260,11 +251,11 @@ export default function ModelSandboxTab() {
   const sideloadedModels = models?.filter(m => m.isLocalhost && m.type === 'SECONDARY') || [];
 
   return (
-    <div className="w-full max-w-5xl">
+    <div data-testid="model-sandbox-tab" className="w-full max-w-5xl">
       <PageHeader 
         icon={<Database className="text-purple-500" />}
         title="Model Sandbox & Edge Routing"
-        description="Configure WebLLM endpoints. Add secondary models for Bring-Your-Own-Model (BYOM) telemetry processing."
+        description="Configure Sovereign Engine endpoints. Add secondary models for Bring-Your-Own-Model (BYOM) telemetry processing."
       />
 
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-8">
@@ -315,7 +306,7 @@ export default function ModelSandboxTab() {
                    onChange={val => setNewModel({...newModel, contextSource: val as any})}
                    options={contextSourceOptions.length > 0 ? contextSourceOptions : [
                      { label: 'Global Corpus', value: 'Global Corpus' },
-                     { label: 'Architecture Reviews', value: 'Architecture Reviews' },
+                     { label: 'SAMIKSHA', value: 'SAMIKSHA' },
                      { label: 'Threat Models', value: 'Threat Models' }
                    ]}
                    categoryType="Context Source"
@@ -498,30 +489,33 @@ containerClassName="flex flex-col"
         </div>
         <div className="p-5 grid gap-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Securely load multiple WebLLM model weights directly from a local folder (e.g., USB drive). This bypasses all network requests and writes directly to the browser's IndexedDB CacheStorage, ensuring 100% air-gapped compliance. You can upload multiple models sequentially.
+            Securely load GGUF model weights directly from a local folder (e.g., USB drive). This bypasses all network requests and writes directly to OPFS for zero-copy Sovereign Engine access, ensuring 100% air-gapped compliance. You can upload multiple models sequentially.
           </p>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Name / Alias</label>
-              <input type="text" value={sideloadModelName} onChange={e => setSideloadModelName(e.target.value)} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-Sideloaded" disabled={isSideloading} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Configuration URL (Base URL)</label>
-              <input type="url" value={sideloadModelUrl} onChange={e => setSideloadModelUrl(e.target.value)} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2 outline-none focus:border-blue-500" placeholder="https://huggingface.co/..." disabled={isSideloading} />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Name / Alias</label>
+            <input data-testid="sideload-model-name" type="text" value={sideloadModelName} onChange={e => setSideloadModelName(e.target.value)} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-Sideloaded" disabled={isSideloading} />
           </div>
 
+          <details className="mb-4 p-4 bg-[var(--color-surface-hover)] border border-[var(--color-border)] rounded-lg text-sm text-gray-300">
+            <summary className="font-medium text-gray-200 cursor-pointer select-none">What file do I need to upload?</summary>
+            <ul className="mt-2 list-disc list-inside pl-4 space-y-1 text-xs text-gray-400">
+              <li>You only need <strong>one file</strong>: a quantized model weights file ending in <code className="text-blue-400 bg-slate-950 px-1 rounded">.gguf</code>.</li>
+              <li>You do NOT need to download an entire HuggingFace repository clone.</li>
+              <li>Example model filename: <code>tinyllama-1.1b-chat-v1.0.Q4_0.gguf</code></li>
+            </ul>
+          </details>
+
           <div className="mt-2">
-            <FolderUploadButton 
-              onFolderSelect={handleSideloadClick}
+            <FileUploadButton
+              onFileSelect={handleFileSelect}
               isLoading={isSideloading}
               id="sandbox-sideload-input"
             />
           </div>
 
           {isSideloading && (
-            <div className="mt-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div data-testid="sideload-progress" className="mt-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <span>{sideloadProgress.text}</span>
                 <span>{sideloadProgress.percent}%</span>
@@ -555,7 +549,7 @@ containerClassName="flex flex-col"
                   await db.model_registry.bulkPut(parsedData);
                   addNotification('Import successful!', 'success', 3000);
                 } catch (_error: any) {
-                  console.error('Import failed', _error);
+                  Logger.error('Import failed', _error);
                   addNotification('Import failed', 'error', 3000);
                 }
               }}
@@ -583,7 +577,8 @@ containerClassName="flex flex-col"
                   icon: <Trash2 size={12} />,
                   onClick: async (row) => {
                     if (row.id) {
-                      await SideloadService.deleteSideloadedModel(row.modelUrl);
+                      const modelId = row.name || 'niti_sovereign';
+                      await SideloadService.deleteModel(modelId);
                       await db.model_registry.delete(row.id);
                     }
                   },

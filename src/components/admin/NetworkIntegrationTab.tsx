@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../lib/db';
+import { securePutGlobalSetting } from '../../lib/secureDb';
+import { GlobalSettingSchema } from '../../lib/validation';
+import { Logger } from '../../lib/logger';
 import { ShieldAlert, Save, Globe, KeyRound, ExternalLink, CheckCircle2, Network, Server, FolderKey, AlertTriangle } from 'lucide-react';
 import { OAUTH_PROVIDERS, getRedirectUri } from '../../lib/oauthConfig';
 import { getCurrentUser } from '../../lib/authEngine';
@@ -106,7 +109,7 @@ export default function NetworkIntegrationTab() {
       }
       addNotification(enabled ? 'Network access enabled.' : 'Network access disabled. Active background processes terminated.', 'success', 3000);
     } catch (err) {
-      console.error("Toggle error:", err);
+      Logger.error("Toggle error:", err);
       addNotification('Failed to update network settings.', 'error');
     }
   };
@@ -150,11 +153,11 @@ export default function NetworkIntegrationTab() {
           await db.app_settings.delete('SSO_MICROSOFT_CLIENT_ID');
         }
         const existing = await db.global_settings.get('SSO_CONFIG');
-        await db.global_settings.put({
+        await securePutGlobalSetting({
           ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
           id: 'SSO_CONFIG',
           authType: 'OAUTH'
-        });
+        } as any);
         setSsoSaveMessage({ type: 'success', text: 'Public OAuth configuration saved.' });
         setTimeout(() => setSsoSaveMessage(null), 3000);
       } catch {
@@ -170,11 +173,10 @@ export default function NetworkIntegrationTab() {
     setConsentModalType('save_sso');
     setPendingConsentAction(() => async () => {
       try {
-        await appendConsentRecord('EXTERNAL_IDENTITY');
-        const existing = await db.global_settings.get('SSO_CONFIG');
-        await db.global_settings.put({
-          ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
+        const validationResult = GlobalSettingSchema.safeParse({
           id: 'SSO_CONFIG',
+          connection_mode: null,
+          public_sso_enabled: false,
           authType: 'SSO',
           local_enterprise_sso: {
             providerName: entProviderName.trim(),
@@ -182,6 +184,12 @@ export default function NetworkIntegrationTab() {
             clientId: entClientId.trim(),
           }
         });
+        if (!validationResult.success) {
+          addNotification(`Validation error: ${validationResult.error.message}`, 'error');
+          return;
+        }
+        await appendConsentRecord('EXTERNAL_IDENTITY');
+        await securePutGlobalSetting(validationResult.data);
         addNotification('Enterprise SSO configuration saved.', 'success', 3000);
       } catch {
         addNotification('Failed to save Enterprise SSO config.', 'error');
@@ -195,11 +203,10 @@ export default function NetworkIntegrationTab() {
     setConsentModalType('save_ldap');
     setPendingConsentAction(() => async () => {
       try {
-        await appendConsentRecord('EXTERNAL_IDENTITY');
-        const existing = await db.global_settings.get('SSO_CONFIG');
-        await db.global_settings.put({
-          ...(existing || { id: 'SSO_CONFIG', connection_mode: null, public_sso_enabled: false }),
+        const validationResult = GlobalSettingSchema.safeParse({
           id: 'SSO_CONFIG',
+          connection_mode: null,
+          public_sso_enabled: false,
           authType: 'LDAP',
           local_ldap: {
             ldapUrl: ldapUrl.trim(),
@@ -212,6 +219,12 @@ export default function NetworkIntegrationTab() {
             tokenUrl: ''
           }
         });
+        if (!validationResult.success) {
+          addNotification(`Validation error: ${validationResult.error.message}`, 'error');
+          return;
+        }
+        await appendConsentRecord('EXTERNAL_IDENTITY');
+        await securePutGlobalSetting(validationResult.data);
         addNotification('LDAP configuration saved.', 'success', 3000);
       } catch {
         addNotification('Failed to save LDAP config.', 'error');

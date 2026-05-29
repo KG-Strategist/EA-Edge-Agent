@@ -21,6 +21,8 @@ export interface GlobalDownloadState {
   status: 'Downloading' | 'Complete' | 'Error' | 'Idle';
 }
 
+export type AuthStatus = 'anonymous' | 'locked' | 'unlocked';
+
 interface StateContextType {
   pendingReviews: number;
   setPendingReviews: (count: number) => void;
@@ -48,8 +50,17 @@ interface StateContextType {
   setConsentModalType?: (type: ConsentModalType) => void;
   pendingConsentAction?: (() => Promise<void>) | null;
   setPendingConsentAction?: React.Dispatch<React.SetStateAction<(() => Promise<void>) | null>>;
+  // MITRA Swarm Context — workflow-aware persona resolution for AgentChat
+  activeWorkflowId: number | null;
+  setActiveWorkflowId: (id: number | null) => void;
+  activeStageId: string | null;
+  setActiveStageId: (id: string | null) => void;
+  authStatus: AuthStatus;
+  setAuthStatus: (status: AuthStatus) => void;
 }
 const StateContext = createContext<StateContextType | undefined>(undefined);
+const EXECUTION_MODE_STORAGE_KEY = 'ea-execution-mode';
+const DEFAULT_EXECUTION_MODE = 'Tiny Triage Agent (Epistemic)';
 
 export function StateProvider({ children, initialIdentity = null }: { children: ReactNode, initialIdentity?: UserIdentity | null }) {
   const [identity, setIdentity] = useState<UserIdentity | null>(initialIdentity);
@@ -72,8 +83,35 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
     progressText: '',
     status: 'Idle'
   });
+
+  // Global download state sync — all download state changes flow through this one listener
+  useEffect(() => {
+    const handleDownloadStateUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setDownloadState(prev => ({
+        ...prev,
+        ...detail
+      }));
+    };
+    window.addEventListener('EA_DOWNLOAD_STATE_UPDATE', handleDownloadStateUpdate);
+    return () => window.removeEventListener('EA_DOWNLOAD_STATE_UPDATE', handleDownloadStateUpdate);
+  }, []);
   
-  const [executionMode, setExecutionMode] = useState<string>('Auto-Route (MoE)');
+  const [executionModeState, setExecutionModeState] = useState<string>(() => {
+    if (typeof window === 'undefined') return DEFAULT_EXECUTION_MODE;
+    return localStorage.getItem(EXECUTION_MODE_STORAGE_KEY) || DEFAULT_EXECUTION_MODE;
+  });
+
+  const setExecutionMode = useCallback((mode: string) => {
+    setExecutionModeState(mode);
+    localStorage.setItem(EXECUTION_MODE_STORAGE_KEY, mode);
+    window.dispatchEvent(new CustomEvent('EA_EXECUTION_MODE_CHANGED', { detail: { mode } }));
+  }, []);
+
+  // MITRA Swarm Context — workflow-aware persona resolution for AgentChat
+  const [activeWorkflowId, setActiveWorkflowId] = useState<number | null>(null);
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('anonymous');
   
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('ea-theme') as 'light' | 'dark' | null;
@@ -130,8 +168,14 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
         setIdentity,
         downloadState,
         setDownloadState,
-        executionMode,
+        executionMode: executionModeState,
         setExecutionMode,
+        activeWorkflowId,
+        setActiveWorkflowId,
+        activeStageId,
+        setActiveStageId,
+        authStatus,
+        setAuthStatus,
   }), [
         pendingReviews,
         setPendingReviews,
@@ -147,8 +191,14 @@ export function StateProvider({ children, initialIdentity = null }: { children: 
         setIdentity,
         downloadState,
         setDownloadState,
-        executionMode,
-        setExecutionMode
+        executionModeState,
+        setExecutionMode,
+        activeWorkflowId,
+        setActiveWorkflowId,
+        activeStageId,
+        setActiveStageId,
+        authStatus,
+        setAuthStatus,
   ]);
 
   return (

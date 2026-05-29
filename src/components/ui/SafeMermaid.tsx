@@ -79,6 +79,9 @@ export default function SafeMermaid({ chart }: SafeMermaidProps) {
       className="flex justify-center my-4 bg-gray-900 p-4 rounded-lg overflow-x-auto"
       dangerouslySetInnerHTML={{
         __html: DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true },
+          FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'object', 'embed', 'img', 'video', 'audio'],
+          FORBID_ATTR: ['on*', 'data', 'src', 'href', 'xlink:href'],
           ALLOWED_TAGS: ['svg', 'path', 'rect', 'circle', 'line', 'text', 'g', 'defs', 'style', 'tspan', 'polyline', 'polygon', 'ellipse'],
           ALLOWED_ATTR: ['x', 'y', 'width', 'height', 'viewBox', 'xmlns', 'id', 'class', 'd', 'fill', 'stroke', 'stroke-width', 'r', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'points', 'rx', 'ry', 'font-size', 'font-family', 'text-anchor', 'font-weight']
         })

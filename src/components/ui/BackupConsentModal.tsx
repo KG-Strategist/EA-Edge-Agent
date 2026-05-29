@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { HardDriveDownload, AlertTriangle, Trash2, FolderOutput } from 'lucide-react';
 import { db } from '../../lib/db';
 import { useStateContext } from '../../context/StateContext';
+import { Logger } from '../../lib/logger';
+import { useNotification } from '../../context/NotificationContext';
 
 type ConsentMode = 'initial' | 'reconfigure' | 'revoke';
 
@@ -19,6 +21,7 @@ export default function BackupConsentModal() {
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const { identity } = useStateContext();
+  const { addNotification } = useNotification();
 
   useEffect(() => {
     const handleConsentEvent = (e: Event) => {
@@ -79,9 +82,9 @@ export default function BackupConsentModal() {
       setIsOpen(false);
       setIsProcessing(false);
     } catch (error) {
-      console.error('Failed to log backup consent to IDB:', error);
+      Logger.error('Failed to log backup consent to IDB:', error);
       setIsProcessing(false);
-      alert('Security Audit Error: Failed to write to Audit Log. Operation aborted to maintain compliance.');
+      addNotification('Security Audit Error: Failed to write to Audit Log. Operation aborted to maintain compliance.', 'error', 5000);
     }
   };
 

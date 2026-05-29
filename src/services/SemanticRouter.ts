@@ -1,5 +1,6 @@
 import { db } from '../lib/db';
-import { chatWithAgent } from '../lib/aiEngine';
+import { chatWithAgentDetailed } from '../lib/aiEngine';
+import { epistemicShadow } from '../lib/EpistemicShadow';
 
 export class EdgeRouter {
   /**
@@ -51,10 +52,11 @@ export class EdgeRouter {
   static async routeInference(
     prompt: string,
     messages: { role: 'user' | 'assistant' | 'system', content: string }[],
-    onUpdate: (text: string) => void
+    onUpdate: (text: string) => void,
+    executionMode?: string
   ): Promise<{ response: string, engineUsed: string, routingScore: number }> {
     const startTime = performance.now();
-    
+
     // 1. Fetch threshold
     const thresholdSetting = await db.app_settings.get('routingThreshold');
     const threshold = thresholdSetting?.value || 50;
@@ -62,38 +64,23 @@ export class EdgeRouter {
     // 2. Evaluate complexity
     const score = this.evaluateComplexity(prompt);
 
-    // 3. Determine engine
-    let engineUsed = 'Primary EA Agent';
-    if (score >= threshold) {
-      // Check if a secondary BYOM model is available
-      const models = await db.model_registry.toArray();
-      const secondary = models.find(m => m.type === 'SECONDARY' && m.isActive);
-      if (secondary) {
-        engineUsed = secondary.name;
-      }
-    }
-
-    // 4. Execute inference
-    const response = await chatWithAgent(messages, onUpdate, engineUsed);
+    // 3. Execute through the central router. Auto-Route is deterministic-first
+    // inside aiEngine, so telemetry reflects the actual engine used.
+    const target = executionMode || (score >= threshold ? 'Primary EA Agent' : 'Tiny Triage Agent');
+    const result = await chatWithAgentDetailed(messages, onUpdate, target);
+    const response = result.text;
+    const engineUsed = result.engineUsed;
 
     const executionTimeMs = performance.now() - startTime;
 
     // 5. Check distillation
     let distillationTriggered = false;
-    if (engineUsed !== 'Primary EA Agent' && engineUsed !== 'Tiny Triage Agent') {
+    if (engineUsed !== 'epistemic') {
       const models = await db.model_registry.toArray();
       const usedModel = models.find(m => m.name === engineUsed);
       if (usedModel && usedModel.allowDistillation) {
-        if ((window as any).distillationWorker) {
-          (window as any).distillationWorker.postMessage({
-            type: 'HARVEST',
-            payload: {
-              text: `Prompt: ${prompt}\n\nResponse: ${response}`,
-              metadata: { source: engineUsed, score }
-            }
-          });
-          distillationTriggered = true;
-        }
+        epistemicShadow.enqueueDelta(prompt, response);
+        distillationTriggered = true;
       }
     }
 

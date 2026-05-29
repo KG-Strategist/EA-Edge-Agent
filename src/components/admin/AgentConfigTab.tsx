@@ -1,15 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, CustomAgent } from '../../lib/db';
-import { CheckCircle2, AlertTriangle, Activity, Plus, Edit, Archive as ArchiveIcon, ToggleLeft, ToggleRight, Loader2, X, Zap, Bot } from 'lucide-react';
+import { db, CustomAgent, MitraProfile } from '../../lib/db';
+import { CheckCircle2, AlertTriangle, Activity, Plus, Edit, Archive as ArchiveIcon, ToggleLeft, ToggleRight, Loader2, X, Zap, Bot, Brain, Users, Trash2 } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import CacheButton from '../ui/CacheButton';
+import AIRewriteButton from '../ui/AIRewriteButton';
 import { useMasterData } from '../../hooks/useMasterData';
 import { useArchive } from '../../hooks/useArchive';
 import DataTable from '../ui/DataTable';
 import { SUPPORTED_MLC_MODELS } from '../../lib/constants';
 import PageHeader from '../ui/PageHeader';
+import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
+import { validateEndpointUrl, checkNetworkConsent } from '../../lib/networkGuard';
+import { OPFSManager } from '../../lib/storage/opfsManager';
+import { sovereignEngine } from '../../lib/wasm/SovereignEngine';
 
 interface BaseConfig {
   id: string;
@@ -34,26 +39,26 @@ export default function AgentConfigTab() {
 
 
   const defaultPrimary: BaseConfig = { 
-    id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC', 
-    url: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC', 
-    modelLibUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/Phi-3-mini-4k-instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm',
-    context: 8192,
+id: 'gemma-4-e2b-it-q4_0',
+    url: 'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_0.gguf',
+    modelLibUrl: '',
+    context: 4096,
     isActive: true,
     agentCategory: 'MOE (Mixture of Experts)',
-    engineType: 'WebLLM (Browser Cache)',
+    engineType: 'Sovereign Engine (OPFS)',
     personaInstruction: 'You are EA-NITI. Elite, air-gapped Enterprise Architecture AI.',
     modelSourceMode: 'Remote URL',
     baseApiEndpoint: getDynamicEndpoint()
   };
 
   const defaultTriage: BaseConfig = { 
-    id: 'gemma-2b-it-q4f16_1-MLC', 
-    url: 'https://huggingface.co/mlc-ai/gemma-2b-it-q4f16_1-MLC', 
-    modelLibUrl: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/gemma-2b-it-q4f16_1-ctx4k_cs1k-webgpu.wasm',
-    context: 4096,
+id: 'tinyllama-1.1b-chat-v1.0-q4_0',
+    url: 'https://huggingface.co/bartowski/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Q4_0.gguf',
+    modelLibUrl: '',
+    context: 2048,
     isActive: true,
     agentCategory: 'Tiny Triage',
-    engineType: 'WebLLM (Browser Cache)',
+    engineType: 'Sovereign Engine (OPFS)',
     personaInstruction: 'You are a Triage Agent. Analyze and categorize input.',
     modelSourceMode: 'Remote URL',
     baseApiEndpoint: getDynamicEndpoint()
@@ -62,6 +67,8 @@ export default function AgentConfigTab() {
   const [primaryConfig, setPrimaryConfig] = useState<BaseConfig>(defaultPrimary);
   const [triageConfig, setTriageConfig] = useState<BaseConfig>(defaultTriage);
 
+  const lastDownloadAttemptRef = useRef<{ modelId: string; modelUrl: string } | null>(null);
+
   const [savedPrimary, setSavedPrimary] = useState<BaseConfig>(defaultPrimary);
   const [savedTriage, setSavedTriage] = useState<BaseConfig>(defaultTriage);
 
@@ -69,6 +76,38 @@ export default function AgentConfigTab() {
   const [triageSaveError, setTriageSaveError] = useState<string | null>(null);
   const [isSavingPrimary, setIsSavingPrimary] = useState(false);
   const [isSavingTriage, setIsSavingTriage] = useState(false);
+  const [primaryPersonaInstruction, setPrimaryPersonaInstruction] = useState(defaultPrimary.personaInstruction);
+  const [triagePersonaInstruction, setTriagePersonaInstruction] = useState(defaultTriage.personaInstruction);
+  const [modalPersonaInstruction, setModalPersonaInstruction] = useState('');
+
+  const [backgroundDistillation, setBackgroundDistillation] = useState<'off' | 'auto' | 'wasm' | 'daemon'>('auto');
+
+  // Phase 1.10: MITRA Persona Profiles
+  const mitraProfiles = useLiveQuery(() => db.mitra_profiles.toArray()) || [];
+  const [isMitraModalOpen, setIsMitraModalOpen] = useState(false);
+  const [editingMitraId, setEditingMitraId] = useState<number | null>(null);
+  const [mitraForm, setMitraForm] = useState({
+    name: '',
+    domain: 'EA',
+    systemPrompt: '',
+    ragTags: [] as string[],
+  });
+  const [customTag, setCustomTag] = useState('');
+
+  const DOMAIN_OPTIONS = ['EA', 'SecOps', 'Legal', 'HR', 'Custom'];
+  const COMMON_TAGS = ['TOGAF', 'BIAN', 'STRIDE', 'Zero-Trust', 'DPDP', 'GDPR', 'SOC2', 'NIST', 'ISO27001'];
+
+  useEffect(() => {
+    if (primaryConfig.personaInstruction !== primaryPersonaInstruction) {
+      setPrimaryConfig(prev => ({ ...prev, personaInstruction: primaryPersonaInstruction }));
+    }
+  }, [primaryPersonaInstruction, primaryConfig.personaInstruction]);
+
+  useEffect(() => {
+    if (triageConfig.personaInstruction !== triagePersonaInstruction) {
+      setTriageConfig(prev => ({ ...prev, personaInstruction: triagePersonaInstruction }));
+    }
+  }, [triagePersonaInstruction, triageConfig.personaInstruction]);
 
   const defaultCategories = useMasterData('AGENT_CATEGORIES');
   const defaultEngineTypes = useMasterData('AGENT_ENGINE_TYPES');
@@ -87,11 +126,17 @@ export default function AgentConfigTab() {
       if (p?.value) {
         setPrimaryConfig(p.value);
         setSavedPrimary(p.value);
+        setPrimaryPersonaInstruction(p.value.personaInstruction);
       }
       const t = await db.app_settings.get('core-triage');
       if (t?.value) {
         setTriageConfig(t.value);
         setSavedTriage(t.value);
+        setTriagePersonaInstruction(t.value.personaInstruction);
+      }
+      const bd = await db.app_settings.get('backgroundDistillation');
+      if (bd?.value) {
+        setBackgroundDistillation(bd.value as 'off' | 'auto' | 'wasm' | 'daemon');
       }
     };
     loadCoreConfigs();
@@ -148,15 +193,116 @@ export default function AgentConfigTab() {
     checkGPU();
   }, []);
 
-  const handlePullWebCache = (modelId: string, modelUrl: string) => {
-    if (!navigator.onLine) {
-       alert("Air-gap mode active. Please use sideloaded models.");
+  const handlePullWebCache = async (modelId: string, modelUrl: string) => {
+    // Primary gate: respect app-level network consent (IndexedDB)
+    const networkAllowed = await checkNetworkConsent();
+    if (!networkAllowed) {
+       addNotification('Network access is disabled. Enable it in Network & Privacy Settings to download models.', 'warning', 5000);
        return;
     }
+
+    // Soft warning: browser reports offline but user has consented — warn but don't block
+    if (!navigator.onLine) {
+       addNotification('Browser reports offline. If the download fails, check your connection and retry.', 'warning', 5000);
+    }
+
+    // Check if user already consented to this exact model (Strike 4.8)
+    try {
+      const consentSetting = await db.app_settings.get('modelConsent');
+      const consents = consentSetting?.value || {};
+      const existingConsent = consents[modelId];
+      if (existingConsent && existingConsent.modelUrl === modelUrl) {
+        // Consent already granted for this model — skip modal, start download directly
+        addNotification(`Starting download for ${modelId}...`, 'info', 3000);
+        window.dispatchEvent(new CustomEvent('EA_MODEL_DOWNLOAD_START', {
+          detail: {
+            modelId,
+            modelUrl,
+            onProgress: (_bytesDownloaded: number, _totalBytes: number) => {},
+            onComplete: () => {},
+            onError: (_error: string) => {},
+          },
+        }));
+        return;
+      }
+    } catch {
+      // If consent check fails, proceed with normal flow
+    }
+
+    const modelSize = (modelId === primaryConfig.id ? primaryConfig.modelSize : triageConfig.modelSize) || 'Varies';
     window.dispatchEvent(new CustomEvent('EA_AI_CONSENT_REQUIRED', {
-        detail: { networkEnabled: true, targetModelId: modelId, targetModelUrl: modelUrl, modelSize: (modelId === primaryConfig.id ? primaryConfig.modelSize : triageConfig.modelSize) || 'Size: Varies (Check documentation)' } 
+        detail: { networkEnabled: true, targetModelId: modelId, targetModelUrl: modelUrl, modelSize }
     }));
   };
+
+  // Listen for download start from ModelConsentModal
+  useEffect(() => {
+    const handleDownloadStart = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { modelId, modelUrl, onProgress, onComplete, onError } = customEvent.detail;
+
+      Logger.warn(`[AgentConfigTab] 📥 handleDownloadStart called — modelId: ${modelId}, timestamp: ${Date.now()}`);
+
+      lastDownloadAttemptRef.current = { modelId, modelUrl };
+
+      try {
+        await OPFSManager.hydrateModel(modelUrl, modelId, onProgress);
+        addNotification("Model cached successfully in OPFS. Sovereign Engine initializing...", 'success', 5000);
+
+        // Record consent for this model (Strike 4.8)
+        try {
+          const consentSetting = await db.app_settings.get('modelConsent');
+          const consents = consentSetting?.value || {};
+          consents[modelId] = { consentedAt: new Date().toISOString(), modelUrl };
+          await db.app_settings.put({ key: 'modelConsent', value: consents });
+        } catch {
+          // Non-fatal — download succeeded even if consent recording failed
+        }
+
+        // Boot the Sovereign Engine with the newly cached model
+        try {
+          await sovereignEngine.ensureInitialized(modelId);
+          addNotification("Sovereign Engine ready. Model loaded for offline inference.", 'success', 5000);
+        } catch {
+          addNotification("Model cached but engine init failed. Try refreshing the page.", 'error', 8000);
+        }
+
+        onComplete();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addNotification(`Download failed: ${message}`, 'error', 8000);
+        onError(message);
+      }
+    };
+
+    window.addEventListener('EA_MODEL_DOWNLOAD_START', handleDownloadStart);
+    return () => window.removeEventListener('EA_MODEL_DOWNLOAD_START', handleDownloadStart);
+}, [addNotification]);
+
+  useEffect(() => {
+    const handleRetry = (e: Event) => {
+      const { modelId } = (e as CustomEvent).detail;
+      const attempt = lastDownloadAttemptRef.current;
+
+      if (!attempt || attempt.modelId !== modelId) {
+        addNotification('Retry info outdated. Please dismiss and try downloading the current model again.', 'warning', 5000);
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('EA_MODEL_DOWNLOAD_START', {
+        detail: {
+          modelId: attempt.modelId,
+          modelUrl: attempt.modelUrl,
+          onProgress: (_bytesDownloaded: number, _totalBytes: number) => {},
+          onComplete: () => {},
+          onError: (_error: string) => {},
+        },
+      }));
+    };
+
+    window.addEventListener('EA_RETRY_DOWNLOAD', handleRetry);
+    return () => window.removeEventListener('EA_RETRY_DOWNLOAD', handleRetry);
+  }, [addNotification]);
 
   const validateAndSave = async (
     config: BaseConfig,
@@ -186,6 +332,7 @@ export default function AgentConfigTab() {
         // TASK 2: SOFT-FAIL CUSTOM VALIDATION
         // For custom URLs, attempt validation but never block the save on network failure
         try {
+          validateEndpointUrl(config.url);
           const probe = await fetch(config.url, {
             method: 'HEAD',
             signal: AbortSignal.timeout(8000)
@@ -205,6 +352,22 @@ export default function AgentConfigTab() {
       // SAVE ALWAYS SUCCEEDS (unless DB write fails)
       // Validation warnings are informational only and never block persistence
       const validated: BaseConfig = { ...config, isValidated: !validationWarning };
+
+      // Reset consent if modelId or URL changed (Strike 4.8)
+      const savedConfig = dbKey === 'core-primary' ? savedPrimary : savedTriage;
+      if (savedConfig && (savedConfig.id !== config.id || savedConfig.url !== config.url)) {
+        try {
+          const consentSetting = await db.app_settings.get('modelConsent');
+          const consents = consentSetting?.value || {};
+          if (savedConfig.id && consents[savedConfig.id]) {
+            delete consents[savedConfig.id];
+            await db.app_settings.put({ key: 'modelConsent', value: consents });
+          }
+        } catch {
+          // Non-fatal — save succeeded even if consent reset failed
+        }
+      }
+
       await db.app_settings.put({ key: dbKey, value: validated });
 
       // Audit trail
@@ -258,6 +421,7 @@ export default function AgentConfigTab() {
       modelSourceMode: 'Remote URL',
       baseApiEndpoint: getDynamicEndpoint()
     });
+    setModalPersonaInstruction('');
     setIsModalOpen(true);
   };
 
@@ -275,6 +439,7 @@ export default function AgentConfigTab() {
       modelSourceMode: agent.modelSourceMode,
       baseApiEndpoint: agent.baseApiEndpoint
     });
+    setModalPersonaInstruction(agent.personaInstruction || '');
     setIsModalOpen(true);
   };
 
@@ -284,7 +449,7 @@ export default function AgentConfigTab() {
       isActive: modalConfig.isActive,
       agentCategory: modalConfig.agentCategory,
       engineType: modalConfig.engineType,
-      personaInstruction: modalConfig.personaInstruction,
+      personaInstruction: modalPersonaInstruction,
       modelSourceMode: modalConfig.modelSourceMode,
       modelId: modalConfig.id,
       modelUrl: modalConfig.url,
@@ -303,15 +468,110 @@ export default function AgentConfigTab() {
     setIsModalOpen(false);
   };
 
+  const handleSaveBackgroundDistillation = async (mode: 'off' | 'auto' | 'wasm' | 'daemon') => {
+    setBackgroundDistillation(mode);
+    await db.app_settings.put({ key: 'backgroundDistillation', value: mode });
+    addNotification(`Background distillation set to "${mode}"`, 'success', 2000);
+  };
+
+  // Phase 1.10: MITRA Persona Profile handlers
+  const openAddMitraModal = () => {
+    setEditingMitraId(null);
+    setMitraForm({ name: '', domain: 'EA', systemPrompt: '', ragTags: [] });
+    setCustomTag('');
+    setIsMitraModalOpen(true);
+  };
+
+  const openEditMitraModal = (profile: MitraProfile) => {
+    setEditingMitraId(profile.id!);
+    setMitraForm({
+      name: profile.name,
+      domain: profile.domain,
+      systemPrompt: profile.systemPrompt,
+      ragTags: profile.ragTags || [],
+    });
+    setCustomTag('');
+    setIsMitraModalOpen(true);
+  };
+
+  const saveMitraProfile = async () => {
+    if (!mitraForm.name.trim()) return;
+    const payload = {
+      name: mitraForm.name,
+      domain: mitraForm.domain,
+      systemPrompt: mitraForm.systemPrompt,
+      ragTags: mitraForm.ragTags,
+      updatedAt: new Date(),
+    };
+    if (editingMitraId) {
+      await db.mitra_profiles.update(editingMitraId, payload);
+    } else {
+      await db.mitra_profiles.add({ ...payload, isActive: false, createdAt: new Date() } as MitraProfile);
+    }
+    setIsMitraModalOpen(false);
+    addNotification('MITRA profile saved', 'success', 2000);
+  };
+
+  const deleteMitraProfile = async (id: number, name: string) => {
+    const wasActive = mitraProfiles.find(p => p.id === id)?.isActive;
+    await db.mitra_profiles.delete(id);
+
+    // If the deleted profile was active, fall back to the default persona
+    if (wasActive) {
+      window.dispatchEvent(new CustomEvent('EA_MITRA_CHANGED', { detail: null }));
+      addNotification(`Deleted "${name}". Reverted to default EA-NITI persona.`, 'info', 3000);
+    } else {
+      addNotification(`Deleted "${name}"`, 'success', 2000);
+    }
+  };
+
+  const activateMitraProfile = async (profile: MitraProfile) => {
+    const allProfiles = await db.mitra_profiles.toArray();
+    for (const p of allProfiles) {
+      if (p.isActive && p.id !== profile.id) {
+        await db.mitra_profiles.update(p.id!, { isActive: false, updatedAt: new Date() });
+      }
+    }
+    await db.mitra_profiles.update(profile.id!, { isActive: true, updatedAt: new Date() });
+    window.dispatchEvent(new CustomEvent('EA_MITRA_CHANGED', {
+      detail: {
+        profileId: profile.id,
+        name: profile.name,
+        ragTags: profile.ragTags,
+        systemPrompt: profile.systemPrompt,
+      }
+    }));
+    addNotification(`Active persona: ${profile.name}`, 'success', 2000);
+  };
+
+  const toggleMitraTag = (tag: string) => {
+    setMitraForm(prev => ({
+      ...prev,
+      ragTags: prev.ragTags.includes(tag)
+        ? prev.ragTags.filter(t => t !== tag)
+        : [...prev.ragTags, tag],
+    }));
+  };
+
+  const addCustomTag = () => {
+    if (customTag.trim() && !mitraForm.ragTags.includes(customTag.trim())) {
+      setMitraForm(prev => ({ ...prev, ragTags: [...prev.ragTags, customTag.trim()] }));
+      setCustomTag('');
+    }
+  };
+
   const renderConfigForm = (
-    config: BaseConfig, 
+    config: BaseConfig,
     setConfig: React.Dispatch<React.SetStateAction<BaseConfig>>,
+    testIdPrefix: string,
     isDirty: boolean,
     onSave: () => void,
     saveLabel: string,
     cardSaving: boolean,
     cardError: string | null,
-    clearError: () => void
+    clearError: () => void,
+    personaInstructionValue: string,
+    setPersonaInstructionValue: (v: string) => void
   ) => (
     <div className="space-y-4">
       <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -349,10 +609,16 @@ export default function AgentConfigTab() {
       </div>
 
       <div>
-         <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Persona Instruction</label>
-         <textarea 
-            value={config.personaInstruction} 
-            onChange={e => setConfig({...config, personaInstruction: e.target.value})} 
+         <div className="flex justify-between items-center mb-1">
+           <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Persona Instruction</label>
+           <AIRewriteButton
+             currentText={personaInstructionValue}
+             onUpdate={setPersonaInstructionValue}
+           />
+         </div>
+         <textarea
+            value={personaInstructionValue}
+            onChange={e => setPersonaInstructionValue(e.target.value)}
             className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[80px]"
             aria-label="Persona Instruction"
             title="Persona Instruction"
@@ -360,16 +626,16 @@ export default function AgentConfigTab() {
          />
       </div>
 
-      {config.engineType === 'WebLLM (Browser Cache)' && (
+      {config.engineType === 'Sovereign Engine (OPFS)' && (
          <>
              <div className="flex gap-4 mb-2">
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                   <input type="radio" checked={config.modelSourceMode === 'Remote URL'} onChange={() => setConfig({...config, modelSourceMode: 'Remote URL'})} />
+                   <input data-testid={`${testIdPrefix}-model-source-remote`} type="radio" checked={config.modelSourceMode === 'Remote URL'} onChange={() => setConfig({...config, modelSourceMode: 'Remote URL'})} />
                    Remote URL
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                   <input type="radio" checked={config.modelSourceMode === 'Offline Sideloaded'} onChange={() => setConfig({...config, modelSourceMode: 'Offline Sideloaded'})} />
-                   Offline Sideloaded
+                    <input data-testid={`${testIdPrefix}-model-source-local`} type="radio" checked={config.modelSourceMode === 'Offline Sideloaded'} onChange={() => setConfig({...config, modelSourceMode: 'Offline Sideloaded'})} />
+                    Local Upload
                 </label>
              </div>
              {config.modelSourceMode === 'Remote URL' ? (
@@ -425,9 +691,12 @@ export default function AgentConfigTab() {
                       </div>
                     )}
                     
-                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Model URL</label>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                      Model Download URL
+                      <span className="ml-1 text-gray-400 font-normal cursor-help" title="URL to the model weights repository — HuggingFace, Ollama, or any model repo. The Sovereign Engine downloads and stores weights in OPFS for offline use.">ⓘ</span>
+                    </label>
                     <div className="flex gap-2">
-                      <input type="text" value={config.url} onChange={(e) => setConfig({...config, url: e.target.value})} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm" aria-label="Model URL" title="Model URL" placeholder="Enter model URL" />
+                       <input type="text" value={config.url} onChange={(e) => setConfig({...config, url: e.target.value})} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm" aria-label="Model Download URL" title="Enter the model download URL (HuggingFace, Ollama, or any model repo)" placeholder="https://huggingface.co/... or https://ollama.com/..." />
                       <CacheButton 
                         modelId={config.id}
                         modelUrl={config.url}
@@ -438,7 +707,7 @@ export default function AgentConfigTab() {
 
                     <div className="mt-3">
                       <div className="flex justify-between mb-1">
-                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">WASM Library URL (model_lib_url)</label>
+                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">WASM Library URL (Sovereign Engine — OPFS managed)</label>
                         <span className="text-[10px] text-gray-400 uppercase tracking-wider flex items-center gap-1">
                            <Zap size={10} className="text-amber-500" />
                            {(() => {
@@ -456,7 +725,7 @@ export default function AgentConfigTab() {
                             <>
                               <input
                                 type="text"
-                                value="Auto-managed by WebLLM version match"
+                                  value="Sovereign Engine — OPFS"
                                 disabled={true}
                                 readOnly={true}
                                 className="w-full bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-500 text-sm opacity-50 cursor-not-allowed"
@@ -464,7 +733,7 @@ export default function AgentConfigTab() {
                                 title="WASM auto-managed for predefined registry models"
                               />
                               <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5 flex items-center gap-1.5">
-                                <CheckCircle2 size={12} /> Registry model WASM managed by @mlc-ai/web-llm native matcherNo manual entry needed.
+                                  <CheckCircle2 size={12} /> Sovereign Engine manages models via OPFS. No manual entry needed.
                               </p>
                             </>
                           );
@@ -495,17 +764,33 @@ export default function AgentConfigTab() {
              ) : (
                 <div>
                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Select Sideloaded Model</label>
-                   <select 
-                      value={config.id} 
-                      onChange={e => setConfig({...config, id: e.target.value, url: offlineModels.find(m => m.name === e.target.value)?.modelUrl || ''})} 
-                      className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
-                      aria-label="Select Sideloaded Model"
-                      title="Select Sideloaded Model"
-                   >
-                     {offlineModels.length === 0 ? <option value="">No sideloaded models found...</option> : offlineModels.map(m => (
-                        <option key={m.id} value={m.name}>{m.name}</option>
-                     ))}
-                   </select>
+                   {offlineModels.length === 0 ? (
+                     <div className="mt-2 text-sm text-gray-400">
+                       No sideloaded models found.
+                       <button
+                         type="button"
+                         onClick={() => window.dispatchEvent(new CustomEvent('EA_NAVIGATE', {
+                           detail: { view: 'agent-config', subView: 'models' }
+                         }))}
+                         className="ml-2 text-blue-500 hover:underline cursor-pointer"
+                       >
+                         Learn how to sideload a model &rarr;
+                       </button>
+                     </div>
+                   ) : (
+                     <select
+                       value={config.id}
+                       onChange={e => setConfig({...config, id: e.target.value, url: offlineModels.find(m => m.name === e.target.value)?.modelUrl || ''})}
+                       data-testid={`${testIdPrefix}-sideload-select`}
+                       className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
+                       aria-label="Select Sideloaded Model"
+                       title="Select Sideloaded Model"
+                     >
+                       {offlineModels.map(m => (
+                         <option key={m.id} value={m.name}>{m.name}</option>
+                       ))}
+                     </select>
+                   )}
                 </div>
              )}
          </>
@@ -535,6 +820,7 @@ export default function AgentConfigTab() {
 
       <button 
         onClick={onSave}
+        data-testid={`${testIdPrefix}-config-save`}
         disabled={!isDirty || cardSaving}
         className={`w-full px-4 py-2 mt-2 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
           cardSaving ? 'bg-blue-500 cursor-wait' :
@@ -548,7 +834,7 @@ export default function AgentConfigTab() {
   );
 
   return (
-    <div className="flex flex-col h-full space-y-6 overflow-y-auto">
+    <div data-testid="agent-config-tab" className="flex flex-col h-full space-y-6 overflow-y-auto">
       <PageHeader 
         icon={<Bot className="text-blue-500" />}
         title="Agent Configurations & Personas"
@@ -573,14 +859,17 @@ export default function AgentConfigTab() {
             </h3>
           </div>
           {renderConfigForm(
-            primaryConfig, 
-            setPrimaryConfig, 
-            isPrimaryDirty, 
-            handleSavePrimary, 
+            primaryConfig,
+            setPrimaryConfig,
+            'primary',
+            isPrimaryDirty,
+            handleSavePrimary,
             'Save Primary Configuration',
             isSavingPrimary,
             primarySaveError,
-            () => setPrimarySaveError(null)
+            () => setPrimarySaveError(null),
+            primaryPersonaInstruction,
+            setPrimaryPersonaInstruction
           )}
         </div>
 
@@ -592,14 +881,117 @@ export default function AgentConfigTab() {
             </h3>
           </div>
           {renderConfigForm(
-            triageConfig, 
-            setTriageConfig, 
-            isTriageDirty, 
-            handleSaveTriage, 
+            triageConfig,
+            setTriageConfig,
+            'triage',
+            isTriageDirty,
+            handleSaveTriage,
             'Save Triage Configuration',
             isSavingTriage,
             triageSaveError,
-            () => setTriageSaveError(null)
+            () => setTriageSaveError(null),
+            triagePersonaInstruction,
+            setTriagePersonaInstruction
+          )}
+        </div>
+      </div>
+
+      {/* Background distillation settings */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm shrink-0">
+        <div className="flex items-center gap-3 mb-4">
+          <Brain className="text-purple-500" size={20} />
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Autonomic Features</h3>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Background distillation continuously learns from chat conversations, extracting new facts and storing them as unverified beliefs.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {(['off', 'auto', 'wasm', 'daemon'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => handleSaveBackgroundDistillation(mode)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                backgroundDistillation === mode
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
+          <strong>Auto:</strong> Uses Daemon if connected, falls back to Wasm. <strong>Wasm:</strong> Sovereign Engine only. <strong>Daemon:</strong> Local Daemon only. <strong>Off:</strong> No background learning.
+        </p>
+      </div>
+
+      {/* MITRA persona profiles — user-configurable sub-agents */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm shrink-0">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-3">
+            <Users className="text-indigo-500" size={20} />
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">MITRA Persona Profiles</h3>
+          </div>
+          <button
+            onClick={openAddMitraModal}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            <Plus size={16} /> Add Persona
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Dynamically configurable personas running on a single local model. Each persona has its own system prompt and RAG tag boundary.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {mitraProfiles.map((profile) => (
+            <div
+              key={profile.id}
+              className={`relative rounded-lg border p-4 transition-all cursor-pointer ${
+                profile.isActive
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 ring-2 ring-indigo-500/30'
+                  : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600'
+              }`}
+              onClick={() => !profile.isActive && activateMitraProfile(profile)}
+            >
+              {profile.isActive && (
+                <div className="absolute top-2 right-2">
+                  <CheckCircle2 size={16} className="text-indigo-500" />
+                </div>
+              )}
+              <h4 className="font-semibold text-gray-900 dark:text-white text-sm">{profile.name}</h4>
+              <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                {profile.domain}
+              </span>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {(profile.ragTags || []).slice(0, 3).map(tag => (
+                  <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+                    {tag}
+                  </span>
+                ))}
+                {(profile.ragTags || []).length > 3 && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] text-gray-500">+{profile.ragTags.length - 3}</span>
+                )}
+              </div>
+              <div className="flex gap-2 mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={(e) => { e.stopPropagation(); openEditMitraModal(profile); }}
+                  className="text-xs text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
+                >
+                  <Edit size={14} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (profile.id) deleteMitraProfile(profile.id, profile.name); }}
+                  className="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {mitraProfiles.length === 0 && (
+            <div className="col-span-full text-center py-8 text-gray-500 dark:text-gray-400">
+              No persona profiles yet. Click "Add Persona" to create one.
+            </div>
           )}
         </div>
       </div>
@@ -793,12 +1185,15 @@ export default function AgentConfigTab() {
                 {renderConfigForm(
                   modalConfig as BaseConfig,
                   setModalConfig as any,
+                  'modal',
                   true,
                   () => {}, // Empty, handle save below in modal buttons
                   "",
                   false,
                   null,
-                  () => {}
+                  () => {},
+                  modalPersonaInstruction,
+                  setModalPersonaInstruction
                 )}
              </div>
 
@@ -816,7 +1211,122 @@ export default function AgentConfigTab() {
                >
                  Save Mitra
                </button>
-             </div>
+              </div>
+           </div>
+         </div>
+       )}
+
+      {/* Persona edit modal */}
+      {isMitraModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-gray-800">
+            <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-800">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                {editingMitraId ? 'Edit Persona Profile' : 'Add Persona Profile'}
+              </h3>
+              <button onClick={() => setIsMitraModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Persona Name</label>
+                <input
+                  type="text"
+                  value={mitraForm.name}
+                  onChange={e => setMitraForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Enterprise Architect"
+                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Domain</label>
+                <select
+                  value={mitraForm.domain}
+                  onChange={e => setMitraForm(prev => ({ ...prev, domain: e.target.value }))}
+                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
+                >
+                  {DOMAIN_OPTIONS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">System Prompt</label>
+                <textarea
+                  value={mitraForm.systemPrompt}
+                  onChange={e => setMitraForm(prev => ({ ...prev, systemPrompt: e.target.value }))}
+                  placeholder="Enter persona instructions..."
+                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm min-h-[120px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">RAG Tags (Context Boundary)</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {COMMON_TAGS.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleMitraTag(tag)}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        mitraForm.ragTags.includes(tag)
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customTag}
+                    onChange={e => setCustomTag(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag(); } }}
+                    placeholder="Add custom tag..."
+                    className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
+                  />
+                  <button
+                    onClick={addCustomTag}
+                    className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {mitraForm.ragTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {mitraForm.ragTags.map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+                        {tag}
+                        <button onClick={() => toggleMitraTag(tag)} className="hover:text-indigo-900 dark:hover:text-indigo-200">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50">
+              <button
+                onClick={() => setIsMitraModalOpen(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg font-semibold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveMitraProfile}
+                disabled={!mitraForm.name.trim()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-sm transition-colors shadow-sm disabled:opacity-50"
+              >
+                {editingMitraId ? 'Update Persona' : 'Create Persona'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -299,7 +299,7 @@ export default function ServiceDomainsTab() {
               <div>
                 <div className="flex justify-between items-end mb-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
-                  <AIRewriteButton context={formState.description || ''} onResult={(text) => setFormState(prev => ({ ...prev, description: text }))} />
+                  <AIRewriteButton currentText={formState.description || ''} onUpdate={(text) => setFormState(prev => ({ ...prev, description: text }))} />
                 </div>
                 <textarea name="description" value={formState.description || ''} onChange={handleFormChange} required className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none h-24 resize-none transition-all" placeholder="Atomic capability description..." />
               </div>

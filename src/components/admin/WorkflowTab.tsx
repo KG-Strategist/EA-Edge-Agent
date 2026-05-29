@@ -1,27 +1,34 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, ReviewWorkflow } from '../../lib/db';
-import { Plus, Edit2, Trash2, X, GitMerge, Save, PlayCircle, Settings2 } from 'lucide-react';
+import { db, ReviewWorkflow, MitraProfile } from '../../lib/db';
+import { Plus, Edit2, Trash2, X, GitMerge, Save, PlayCircle, Settings2, Users, Tag } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
+import { useNotification } from '../../context/NotificationContext';
 import { useMasterData } from '../../hooks/useMasterData';
 import StatusToggle from '../ui/StatusToggle';
 import PageHeader from '../ui/PageHeader';
+import AIRewriteButton from '../ui/AIRewriteButton';
 
 export default function WorkflowTab() {
+  const { addNotification } = useNotification();
   const workflows = useLiveQuery(() => db.review_workflows.toArray()) || [];
   const promptTemplates = useLiveQuery(() => db.prompt_templates.where('status').equals('Active').toArray()) || [];
   const reportTemplates = useLiveQuery(() => db.report_templates.where('status').equals('Active').toArray()) || [];
   const reviewTypes = useMasterData('Review Type');
-  
+  const mitraDomains = useLiveQuery(() => db.master_categories.where('type').equals('mitra_domain').filter(c => c.status === 'Active').toArray()) || [];
+  const mitraProfiles = useLiveQuery(() => db.mitra_profiles.toArray()) || [];
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<ReviewWorkflow>>({
     name: '',
     description: '',
     triggerReviewType: 'New System Implementation',
+    domainTags: [],
+    defaultMitraProfileId: null,
     stages: [],
     status: 'Active'
   });
-  
+
   const handleAddNew = () => {
     setEditingId(-1);
     setFormData({
@@ -29,11 +36,14 @@ export default function WorkflowTab() {
       description: 'Default Two-Stage NSI Process (ABR -> AIA)',
       version: '1.0.0',
       triggerReviewType: 'New System Implementation',
+      domainTags: [],
+      defaultMitraProfileId: null,
       stages: [
          {
             id: crypto.randomUUID(),
             name: 'Architecture Board Review (ABR)',
             type: 'AI_EVALUATION',
+            mitraProfileId: null,
             orderIndex: 0,
             requiresManualSignoff: true
          },
@@ -41,6 +51,7 @@ export default function WorkflowTab() {
             id: crypto.randomUUID(),
             name: 'Architecture Impact Assessment',
             type: 'AI_EVALUATION',
+            mitraProfileId: null,
             orderIndex: 1,
             requiresManualSignoff: true
          }
@@ -62,7 +73,7 @@ export default function WorkflowTab() {
 
   const handleSave = async () => {
     if (!formData.name || formData.stages?.length === 0) {
-       alert("Name and at least one stage are required.");
+       addNotification("Name and at least one stage are required.", 'warning', 3000);
        return;
     }
 
@@ -90,6 +101,7 @@ export default function WorkflowTab() {
               id: crypto.randomUUID(),
               name: 'New Stage',
               type: 'AI_EVALUATION',
+              mitraProfileId: null,
               orderIndex: prev.stages?.length || 0,
               requiresManualSignoff: false
           }]
@@ -220,27 +232,81 @@ export default function WorkflowTab() {
                       />
                    </div>
                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Internal Description</label>
-                      <textarea
-                        className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
-                        value={formData.description || ''}
-                        onChange={e => setFormData({...formData, description: e.target.value})}
-                        placeholder="Internal Description"
-                        title="Internal Description"
-                        aria-label="Internal Description"
-                      />
+<div className="flex justify-between items-center mb-2">
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Internal Description</label>
+                       <AIRewriteButton currentText={formData.description || ''} onUpdate={(text) => setFormData({...formData, description: text})} />
+                     </div>
+                     <textarea
+                       className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                       value={formData.description || ''}
+                       onChange={e => setFormData({...formData, description: e.target.value})}
+                       placeholder="Internal Description"
+                       title="Internal Description"
+                       aria-label="Internal Description"
+                     />
                    </div>
-                   <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Bind to Review Intake Type</label>
-                      <CreatableDropdown
-                         value={formData.triggerReviewType || null}
-                         onChange={val => setFormData({ ...formData, triggerReviewType: val })}
-                         options={reviewTypes.map(rt => ({ label: rt.name, value: rt.name }))}
-                         categoryType="Review Type"
-                         placeholder="Select target review type..."
-                      />
-                      <p className="text-xs text-gray-500 mt-2">When a user submits this review type, this exact state machine will govern their execution session.</p>
-                   </div>
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Bind to Review Intake Type</label>
+                       <CreatableDropdown
+                          value={formData.triggerReviewType || null}
+                          onChange={val => setFormData({ ...formData, triggerReviewType: val })}
+                          options={reviewTypes.map(rt => ({ label: rt.name, value: rt.name }))}
+                          categoryType="Review Type"
+                          placeholder="Select target review type..."
+                       />
+                       <p className="text-xs text-gray-500 mt-2">When a user submits this review type, this exact state machine will govern their execution session.</p>
+                    </div>
+
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+                          <Tag size={14} className="text-purple-500" /> Domain Tags
+                       </label>
+                       <div className="flex flex-wrap gap-2">
+                          {(mitraDomains as any[]).map(domain => {
+                            const isSelected = (formData.domainTags || []).includes(domain.name);
+                            return (
+                              <button
+                                key={domain.id}
+                                type="button"
+                                onClick={() => {
+                                  const current = formData.domainTags || [];
+                                  const updated = isSelected
+                                    ? current.filter(t => t !== domain.name)
+                                    : [...current, domain.name];
+                                  setFormData({ ...formData, domainTags: updated });
+                                }}
+                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                  isSelected
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                }`}
+                              >
+                                {domain.name}
+                              </button>
+                            );
+                          })}
+                       </div>
+                       <p className="text-xs text-gray-500 mt-1.5">Tags define the domain context for this workflow's AI responses.</p>
+                    </div>
+
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+                          <Users size={14} className="text-indigo-500" /> Default MITRA Persona
+                       </label>
+                       <select
+                         value={formData.defaultMitraProfileId || ''}
+                         onChange={e => setFormData({ ...formData, defaultMitraProfileId: e.target.value ? parseInt(e.target.value) : null })}
+                         className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                         title="Default MITRA Persona for this workflow"
+                         aria-label="Default MITRA Persona"
+                       >
+                         <option value="">-- None (use global active) --</option>
+                         {(mitraProfiles as MitraProfile[]).map(mp => (
+                           <option key={mp.id} value={mp.id}>{mp.name} ({mp.domain})</option>
+                         ))}
+                       </select>
+                       <p className="text-xs text-gray-500 mt-1.5">Persona used when stages don't have a specific override.</p>
+                    </div>
                    
                    <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Version String</label>
@@ -298,38 +364,55 @@ export default function WorkflowTab() {
                                        </button>
                                    </div>
                                    
-                                   <div className="grid grid-cols-2 gap-4">
-                                       <div>
-                                           <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">AI Prompt Instruction (Optional)</label>
-                                           <select 
-                                               value={stage.linkedPromptTemplateId || ''}
-                                               onChange={e => updateStage(idx, { linkedPromptTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
-                                               className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
-                                               title="AI Prompt Instruction"
-                                               aria-label="AI Prompt Instruction"
-                                           >
-                                               <option value="">-- No specific prompt --</option>
-                                               {promptTemplates.map(pt => (
-                                                   <option key={pt.id} value={pt.id}>{pt.name}</option>
-                                               ))}
-                                           </select>
-                                       </div>
-                                       <div>
-                                           <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Output Templating (Optional)</label>
-                                           <select 
-                                               value={stage.linkedReportTemplateId || ''}
-                                               onChange={e => updateStage(idx, { linkedReportTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
-                                               className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
-                                               title="Output Templating"
-                                               aria-label="Output Templating"
-                                           >
-                                               <option value="">-- Render natural Output --</option>
-                                               {reportTemplates.map(rt => (
-                                                   <option key={rt.id} value={rt.id}>{rt.name}</option>
-                                               ))}
-                                           </select>
-                                       </div>
-                                   </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">AI Prompt Instruction (Optional)</label>
+                                            <select 
+                                                value={stage.linkedPromptTemplateId || ''}
+                                                onChange={e => updateStage(idx, { linkedPromptTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                                className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                                                title="AI Prompt Instruction"
+                                                aria-label="AI Prompt Instruction"
+                                            >
+                                                <option value="">-- No specific prompt --</option>
+                                                {promptTemplates.map(pt => (
+                                                    <option key={pt.id} value={pt.id}>{pt.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">Output Templating (Optional)</label>
+                                            <select 
+                                                value={stage.linkedReportTemplateId || ''}
+                                                onChange={e => updateStage(idx, { linkedReportTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                                className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                                                title="Output Templating"
+                                                aria-label="Output Templating"
+                                            >
+                                                <option value="">-- Render natural Output --</option>
+                                                {reportTemplates.map(rt => (
+                                                    <option key={rt.id} value={rt.id}>{rt.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1 flex items-center gap-1">
+                                                <Users size={10} /> MITRA Persona Override
+                                            </label>
+                                            <select 
+                                                value={stage.mitraProfileId || ''}
+                                                onChange={e => updateStage(idx, { mitraProfileId: e.target.value ? parseInt(e.target.value) : null })}
+                                                className="w-full text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-200"
+                                                title="MITRA Persona Override for this stage"
+                                                aria-label="MITRA Persona Override"
+                                            >
+                                                <option value="">-- Use Workflow Default --</option>
+                                                {(mitraProfiles as MitraProfile[]).map(mp => (
+                                                    <option key={mp.id} value={mp.id}>{mp.name} ({mp.domain})</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
                                    
                                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between">
                                       <label className="flex items-center gap-2 cursor-pointer">

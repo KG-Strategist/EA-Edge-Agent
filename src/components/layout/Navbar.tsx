@@ -87,7 +87,7 @@ export default function Navbar({ currentView, setCurrentView, adminSubView, setA
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'reviews', label: 'Architecture Reviews', icon: FileText },
+    { id: 'reviews', label: 'SAMIKSHA', icon: FileText },
     { id: 'threat', label: 'Threat Modeling', icon: Shield },
     ...((identity?.role === 'Lead EA' || identity?.role === 'System Admin') ? [
       { id: 'expert-config', label: 'Expert Setup', icon: Layers, hasSubmenu: true },

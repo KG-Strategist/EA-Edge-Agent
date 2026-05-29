@@ -1,5 +1,14 @@
 import { db } from './db';
-import { initializeVault, clearVault } from './cryptoVault';
+import {
+  initializeVault,
+  initializeHmacKey,
+  signHMAC,
+  verifyHMAC,
+  createSealedVaultSession,
+  restoreVaultKey,
+  clearVaultAndSession,
+} from './cryptoVault';
+import { Logger } from './logger';
 import {
   buildAuthorizationUrl,
   hasOAuthCallbackParams,
@@ -14,16 +23,171 @@ import {
 } from './oauthConfig';
 
 // Simple in-memory session (or sessionStorage)
-let currentSessionPseudokey: string | null = sessionStorage.getItem('ea_niti_session');
+let currentSessionPseudokey: string | null = null;
+const PIN_UNLOCK_REQUIRED_KEY = 'ea_niti_pin_unlock_required';
+
+// ── HMAC-Signed Session Storage ──────────────────────────────────────────────
+
+interface HmacSession {
+  payload: string;  // base64-encoded pseudokey
+  hmac: string;     // HMAC-SHA256 signature
+}
+
+function readSessionPseudokey(raw: string): string {
+  try {
+    const parsed: HmacSession = JSON.parse(raw);
+    if (parsed.payload) {
+      return atob(parsed.payload);
+    }
+  } catch {
+    // Legacy plain pseudokey format.
+  }
+
+  return raw;
+}
+
+function parseSession(): string | null {
+  const raw = sessionStorage.getItem('ea_niti_session');
+  if (!raw) return null;
+  return readSessionPseudokey(raw);
+}
+
+// Initialize from sessionStorage on module load
+currentSessionPseudokey = parseSession();
 
 export function getCurrentUser() {
   return currentSessionPseudokey;
 }
 
-export function logoutUser() {
+export async function saveSession(pseudokey: string): Promise<void> {
+  const payload = btoa(pseudokey);
+  let hmac: string;
+  try {
+    hmac = await signHMAC(payload);
+  } catch {
+    // HMAC key not available — store plain (vault not initialized)
+    sessionStorage.setItem('ea_niti_session', pseudokey);
+    currentSessionPseudokey = pseudokey;
+    return;
+  }
+  const session: HmacSession = { payload, hmac };
+  sessionStorage.setItem('ea_niti_session', JSON.stringify(session));
+  currentSessionPseudokey = pseudokey;
+}
+
+export async function restoreSession(): Promise<boolean> {
+  const raw = sessionStorage.getItem('ea_niti_session');
+  if (!raw) return false;
+
+  // Legacy plain format — accept but don't verify
+  try {
+    const parsed: HmacSession = JSON.parse(raw);
+    if (parsed.payload && parsed.hmac) {
+      const valid = await verifyHMAC(parsed.payload, parsed.hmac);
+      if (!valid) {
+        Logger.warn('[authEngine] HMAC session verification failed — purging session');
+        sessionStorage.removeItem('ea_niti_session');
+        currentSessionPseudokey = null;
+        return false;
+      }
+      currentSessionPseudokey = atob(parsed.payload);
+      return true;
+    }
+  } catch {
+    // Legacy format — accept as-is
+  }
+
+  currentSessionPseudokey = raw;
+  return true;
+}
+
+export async function logoutUser(): Promise<void> {
+  const pseudokey = getCurrentUser();
   sessionStorage.removeItem('ea_niti_session');
+  sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
   currentSessionPseudokey = null;
-  clearVault();
+  await clearVaultAndSession();
+  if (pseudokey) {
+    await db.vault_sessions.where('pseudokey').equals(pseudokey).delete();
+  }
+}
+
+async function replaceSealedVaultSession(pseudokey: string, pin: string, salt: string): Promise<void> {
+  await db.vault_sessions.where('pseudokey').equals(pseudokey).delete();
+  const sealed = await createSealedVaultSession(pin, salt);
+  await db.vault_sessions.add({ pseudokey, ...sealed, createdAt: new Date() });
+}
+
+export type RestoredAuthSession = {
+  status: 'anonymous' | 'locked' | 'unlocked';
+  pseudokey: string | null;
+};
+
+export async function restoreAuthenticatedSession(): Promise<RestoredAuthSession> {
+  const raw = sessionStorage.getItem('ea_niti_session');
+  if (!raw) {
+    currentSessionPseudokey = null;
+    await clearVaultAndSession();
+    sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
+    return { status: 'anonymous', pseudokey: null };
+  }
+
+  const pseudokey = readSessionPseudokey(raw);
+  currentSessionPseudokey = pseudokey;
+
+  if (sessionStorage.getItem(PIN_UNLOCK_REQUIRED_KEY) === 'true') {
+    await clearVaultAndSession();
+    return { status: 'locked', pseudokey };
+  }
+
+  const sealedSession = await db.vault_sessions
+    .where('pseudokey')
+    .equals(pseudokey)
+    .first();
+
+  if (!sealedSession) {
+    return { status: 'locked', pseudokey };
+  }
+
+  try {
+    await restoreVaultKey(sealedSession);
+    await initializeHmacKey();
+    const verified = await restoreSession();
+    if (!verified || !currentSessionPseudokey) {
+      await clearVaultAndSession();
+      sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
+      return { status: 'anonymous', pseudokey: null };
+    }
+    return { status: 'unlocked', pseudokey: currentSessionPseudokey };
+  } catch {
+    await clearVaultAndSession();
+    currentSessionPseudokey = pseudokey;
+    return { status: 'locked', pseudokey };
+  }
+}
+
+export async function unlockVaultWithPin(pseudokey: string, pin: string): Promise<boolean> {
+  const user = await db.users.where('pseudokey').equals(pseudokey).first();
+  if (!user) return false;
+
+  const pinHashAttempt = await hashSecret(pin, user.salt);
+  if (pinHashAttempt !== user.pinHash) return false;
+
+  await initializeVault(pin, user.salt);
+  await initializeHmacKey();
+  await replaceSealedVaultSession(pseudokey, pin, user.salt);
+  await saveSession(pseudokey);
+  sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
+
+  await db.audit_logs.add({
+    timestamp: new Date(),
+    pseudokey,
+    action: 'LOGIN',
+    tableName: 'users',
+    details: 'Vault PIN unlock'
+  });
+
+  return true;
 }
 
 // Generates a random salt
@@ -55,7 +219,7 @@ export async function hashSecret(secret: string, salt: string): Promise<string> 
     {
       name: "PBKDF2",
       salt: saltBuffer,
-      iterations: 100000,
+      iterations: 600000,
       hash: "SHA-256"
     },
     keyMaterial,
@@ -81,7 +245,7 @@ export async function encryptWithPin(text: string, pin: string, salt: string): P
     {
       name: "PBKDF2",
       salt: saltBuffer,
-      iterations: 100000,
+      iterations: 600000,
       hash: "SHA-256"
     },
     keyMaterial,
@@ -123,7 +287,7 @@ export async function decryptWithPin(encryptedData: string, pin: string, salt: s
       {
         name: "PBKDF2",
         salt: saltBuffer,
-        iterations: 100000,
+        iterations: 600000,
         hash: "SHA-256"
       },
       keyMaterial,
@@ -269,8 +433,10 @@ export async function registerHybridUser(
 
   // HYBRID: User authenticated via external OAuth, network is already trusted
   await db.app_settings.put({ key: 'enableNetworkIntegrations', value: true });
-  
+
   await initializeVault(pin, salt);
+  await initializeHmacKey();
+  await replaceSealedVaultSession(pseudokey, pin, salt);
 }
 
 export async function loginWithPassword(): Promise<boolean> {
@@ -312,32 +478,39 @@ export async function setupPermanentCredentials(pseudokey: string, newPassword: 
     ]
   });
   
+  // Reinitialize vault and HMAC key with new credentials
+  await initializeVault(newPin, user.salt);
+  await initializeHmacKey();
+  await replaceSealedVaultSession(pseudokey, newPin, user.salt);
+
   return true;
 }
 
 export async function loginWith2FA(pseudokey: string, password: string, pin: string): Promise<boolean> {
   const user = await db.users.where('pseudokey').equals(pseudokey).first();
   if (!user) return false;
-  
+
   const pinHashAttempt = await hashSecret(pin, user.salt);
   if (pinHashAttempt !== user.pinHash) return false;
-  
+
   const decryptedPassword = await decryptWithPin(user.passwordHash, pin, user.salt);
   if (decryptedPassword !== password) return false;
-  
-  sessionStorage.setItem('ea_niti_session', pseudokey);
-  currentSessionPseudokey = pseudokey;
-  
+
   await initializeVault(pin, user.salt);
-  
-  // Log audit
+  await initializeHmacKey();
+
+  await replaceSealedVaultSession(pseudokey, pin, user.salt);
+
+  await saveSession(pseudokey);
+  sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
+
   await db.audit_logs.add({
      timestamp: new Date(),
      pseudokey,
      action: 'LOGIN',
      tableName: 'users'
   });
-  
+
   return true;
 }
 
@@ -378,7 +551,8 @@ export async function loginWithSSO(providerId: string): Promise<string | null> {
   const user = await db.users.where('providerId').equals(providerId).first();
   if (!user) return null; // SSO identity not found locally
   
-  sessionStorage.setItem('ea_niti_session', user.pseudokey);
+  await saveSession(user.pseudokey);
+  sessionStorage.setItem(PIN_UNLOCK_REQUIRED_KEY, 'true');
   
   await db.audit_logs.add({
       timestamp: new Date(),
@@ -478,7 +652,7 @@ export async function handleOAuthCallback(): Promise<OAuthResult> {
     try {
       identity = extractIdentityFromIdToken(tokenResponse.id_token, flowState.provider);
     } catch (err) {
-      console.warn('[OAuth] Failed to extract identity from id_token:', err);
+      Logger.warn('[OAuth] Failed to extract identity from id_token:', err);
     }
   }
 
@@ -497,22 +671,5 @@ export async function handleOAuthCallback(): Promise<OAuthResult> {
     providerId: identity.providerId,
     provider: identity.provider,
   };
-}
-
-/**
- * Demo/Mock OAuth login for development and prototyping.
- * Simulates the OAuth flow without any network calls.
- */
-export function triggerDemoLogin(provider: string): Promise<OAuthResult> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const mockId = `${provider}-demo|${Date.now()}`;
-      resolve({
-        success: true,
-        providerId: mockId,
-        provider,
-      });
-    }, 1200);
-  });
 }
 

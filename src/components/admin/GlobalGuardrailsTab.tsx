@@ -2,10 +2,11 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Trash2, Plus, ToggleLeft, ToggleRight, Shield, X, Archive, Lock, Edit2, Check } from 'lucide-react';
 import { db, PrivacyGuardrail, logForensicAudit } from '../../lib/db';
 import { useArchive } from '../../hooks/useArchive';
-import { generateReview, isModelCached, getActiveModelId } from '../../lib/aiEngine';
+import { generateReview } from '../../lib/aiEngine';
 import PageHeader from '../ui/PageHeader';
 import { Logger } from '../../lib/logger';
 import DataTable, { DataTableColumn, DataTableAction } from '../ui/DataTable';
+import AIRewriteButton from '../ui/AIRewriteButton';
 import { useNotification } from '../../context/NotificationContext';
 
 export default function GlobalGuardrailsTab() {
@@ -210,21 +211,14 @@ export default function GlobalGuardrailsTab() {
       let aiFailed = false;
 
       try {
-        const tinyModelId = await getActiveModelId('Tiny');
-        const isCached = await isModelCached(tinyModelId);
-        if (!isCached || !navigator.onLine) {
-          Logger.info('AI Model not cached or offline. Bypassing AI auto-tagging.');
-          aiFailed = true;
-        } else {
-          const promptTemplate = await db.prompt_templates.where('name').equals('System Auto-Tagging Classifier').first();
-          if (promptTemplate) {
+        const promptTemplate = await db.prompt_templates.where('name').equals('System Auto-Tagging Classifier').first();
+        if (promptTemplate) {
             const prompt = promptTemplate.promptText.replace('{{ruleText}}', trimRule);
             const response = await generateReview(prompt, () => {}, 'Tiny Triage Agent');
             if (response) {
               generatedTags = response.split(',').map(t => t.trim()).filter(t => t);
             }
           }
-        }
       } catch (e) {
         Logger.info('Auto-tagging failed, falling back to heuristic:', e);
         aiFailed = true;
@@ -415,7 +409,10 @@ export default function GlobalGuardrailsTab() {
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-4"
             />
 
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Rule Text</label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rule Text</label>
+              <AIRewriteButton currentText={newRuleText} onUpdate={setNewRuleText} />
+            </div>
             <textarea
               value={newRuleText}
               onChange={e => setNewRuleText(e.target.value)}

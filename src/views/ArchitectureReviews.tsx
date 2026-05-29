@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
-import { PlusCircle, Search, Trash2, FileText, Download, ClipboardCheck } from 'lucide-react';
+import { PlusCircle, Search, Trash2, FileText, Download, ClipboardCheck, Play } from 'lucide-react';
 import IntakeWizard from './IntakeWizard';
+import { useNotification } from '../context/NotificationContext';
+import ReviewExecution from './ReviewExecution';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import { downloadAsMarkdown } from '../lib/exportEngine';
 import PageHeader from '../components/ui/PageHeader';
 
 export default function ArchitectureReviews() {
+  const { addNotification } = useNotification();
   const [showWizard, setShowWizard] = useState(false);
+  const [executingSessionId, setExecutingSessionId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const sessions = useLiveQuery(() => db.review_sessions.reverse().toArray());
@@ -24,7 +28,7 @@ export default function ArchitectureReviews() {
     if (session.reportMarkdown) {
       downloadAsMarkdown(session.reportMarkdown, `${session.projectName || 'Review'}_Report.md`);
     } else {
-      alert("No report generated for this session yet.");
+      addNotification("No report generated for this session yet.", 'warning', 3000);
     }
   };
 
@@ -42,12 +46,16 @@ export default function ArchitectureReviews() {
     );
   }
 
+  if (executingSessionId) {
+    return <ReviewExecution sessionId={executingSessionId} onClose={() => setExecutingSessionId(null)} />;
+  }
+
   return (
     <div className="w-full flex-1 flex flex-col min-h-0">
       <PageHeader 
         icon={<ClipboardCheck className="text-blue-500" />}
-        title="Architecture Reviews"
-        description="Manage and track local architecture assessment scopes."
+        title="SAMIKSHA"
+        description="Secure Automated Multi-agent Intelligence for Knowledge Synthesis & Heuristic Analysis to Manage and track enterprise workflow assessment scopes."
         action={
           <button 
             onClick={() => setShowWizard(true)}
@@ -108,6 +116,12 @@ export default function ArchitectureReviews() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                       {s.status === 'Draft' && (
+                         <button onClick={() => setExecutingSessionId(s.id!)} className="p-2 text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-500/10 rounded-lg transition-colors flex items-center gap-1" title="Run AI Analysis">
+                           <Play size={18} />
+                           <span className="text-xs font-semibold uppercase">Run</span>
+                         </button>
+                       )}
                        <button onClick={() => handleExport(s)} className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors" title="Export Markdown">
                          <Download size={18} />
                        </button>
@@ -121,7 +135,7 @@ export default function ArchitectureReviews() {
               {sessions?.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-gray-500">
-                    No architecture reviews found. Start a new intake process.
+                    No assessment workflows found. Start a new intake process.
                   </td>
                 </tr>
               )}

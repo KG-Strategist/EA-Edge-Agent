@@ -13,7 +13,7 @@ interface HeaderProps {
 
 const viewLabels: Record<string, string> = {
   'dashboard': 'Dashboard',
-  'reviews': 'Architecture Reviews',
+  'reviews': 'SAMIKSHA',
   'threat': 'Threat Modeling',
   'expert-config': 'Expert Setup',
   'agent-config': 'Agent Center',
@@ -80,11 +80,13 @@ export default function Header({ currentView, setCurrentView, adminSubView }: He
   }, []);
 
   const handleRetry = () => {
-    window.dispatchEvent(new CustomEvent('EA_NAVIGATE', { 
-      detail: { view: 'agent-config', subView: 'configs' } 
+    // Keep widget active, reset visually to initiating
+    setDownloadState(prev => ({ ...prev, status: 'Downloading', progressPercentage: 0, progressText: 'Re-initiating connection...' }));
+    
+    // Dispatch event to restart the engine pipeline
+    window.dispatchEvent(new CustomEvent('EA_RETRY_DOWNLOAD', {
+        detail: { executionTarget: (downloadState as any).executionTarget || 'Primary EA Agent', modelId: downloadState.modelId }
     }));
-    setDownloadState(prev => ({ ...prev, isActive: false }));
-    setIsDropdownOpen(false);
   };
 
   const handleLogout = () => {
@@ -147,12 +149,19 @@ export default function Header({ currentView, setCurrentView, adminSubView }: He
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className={`p-2 rounded-full transition-colors relative ${isDropdownOpen ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400'}`}
+              className={`p-2 rounded-full transition-colors relative ${isDropdownOpen ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : downloadState.status === 'Error' ? 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400'}`}
               aria-label="Download Status"
             >
-              <CloudDownload size={20} className={downloadState.status === 'Downloading' ? 'animate-pulse text-blue-600 dark:text-blue-400' : ''} />
+              {downloadState.status === 'Error' ? (
+                <AlertCircle size={20} className="text-red-600 dark:text-red-400" />
+              ) : (
+                <CloudDownload size={20} className={downloadState.status === 'Downloading' ? 'animate-pulse text-blue-600 dark:text-blue-400' : ''} />
+              )}
               {downloadState.status === 'Downloading' && (
                 <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-gray-900"></span>
+              )}
+              {downloadState.status === 'Error' && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-900"></span>
               )}
             </button>
 

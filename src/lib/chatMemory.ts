@@ -1,4 +1,5 @@
 import { db, ChatThread, ChatMessage, DistillationTask } from './db';
+import { secureAddChatMessage, secureGetChatMessages } from './secureDb';
 
 export async function createThread(title?: string): Promise<number> {
   const newThread: ChatThread = {
@@ -16,22 +17,14 @@ export async function addMessage(
   threadId: number, 
   role: 'user'|'assistant'|'system', 
   content: string, 
-  engine?: 'webllm'|'neuro-symbolic'|'pending'
+  engine?: 'sovereign'|'neuro-symbolic'|'pending'
 ): Promise<number> {
-  const newMessage: ChatMessage = {
-    threadId,
-    role,
-    content,
-    inferenceEngine: engine || 'pending',
-    timestamp: Date.now()
-  };
-  
   await db.chat_threads.update(threadId, { updatedAt: Date.now() });
-  return (await db.chat_messages.add(newMessage)) as number;
+  return await secureAddChatMessage(threadId, role, content, engine);
 }
 
 export async function getMessages(threadId: number): Promise<ChatMessage[]> {
-  return await db.chat_messages.where('threadId').equals(threadId).sortBy('timestamp');
+  return await secureGetChatMessages(threadId);
 }
 
 export async function queueForDistillation(query: string, context?: string): Promise<number> {
