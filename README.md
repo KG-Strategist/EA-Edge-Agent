@@ -229,31 +229,3 @@ This project is licensed under the MIT License.
 <p align="center">
   <strong>EA-NITI: Sovereign Edge-AI OS — Intelligence at the edge, zero cloud dependency.</strong>
 </p>
-
-
-## Current Code Alignment - 2026-05-25
-
-- Validation snapshot: `npm run verify:corpus` passes for corpus `1.1.3-moat-2026-05-25` with `844854` records.
-- TypeScript snapshot: `npx tsc --noEmit` passes.
-- Lint snapshot: `npm run lint` passes.
-- Test snapshot: `npm run test` passes with `175` tests across `16` files.
-- Dexie schema in `src/lib/db.ts` currently reaches `version(39)`; older references to v35, v36, or v38 are historical unless a section explicitly says otherwise.
-- Raw generated corpus files are intentionally ignored from Git: `public/baseline_meta.json`, `public/lexicon.json`, and `public/lexicon_roles.json`.
-- Compressed runtime corpus files are tracked through Git LFS: `public/baseline_meta.json.gz`, `public/baseline_corpus.bin.gz`, `public/lexicon.json.gz`, and `public/lexicon_roles.json.gz`.
-- `public/corpus.lock.json` is the tracked integrity manifest; `npm run verify:corpus` confirms LFS-pulled assets before dev/build.
-- `public/dataAssets/` is the ignored private source lane for miner inputs and dictionary/persona/brain source material.
-- `src-rust/` is treated as a separate engine repository; this app repo should retain only the compiled public runtime under `src/lib/wasm/pkg/`.
-- Public setup path: `git lfs install`, `git clone`, `git lfs pull`, `npm install`, `npm run verify:corpus`, then `npm run dev`.
-- Rebuilding corpus remains a private/local workflow via `npm run build:corpus` after placing sources under ignored `public/dataAssets/`.
-- Public validation must not require compiling Rust; Rust/WASM engine source is maintained separately and copied back as compiled package output.
-- Version alignment note: package metadata currently uses React 18, Vite 5, and TypeScript 5.6 even where older prose/badges mention React 19, Vite 6, or TypeScript 5.8. Treat package files as the source of truth until the public copy is revised in-place.
-- Corpus bundle sizing note: the current required corpus asset set is about 530.7 MiB uncompressed, but compressed runtime assets are Git LFS tracked at roughly 70 MiB total for clone-and-run setup.
-- Documentation hygiene note: this file is one of the explicitly tracked Markdown files; ignored internal Markdown remains useful for local engineering but should not be assumed public-release current without the alignment notes added on 2026-05-25.
-
-
-<!-- RC-DOC-ALIGNMENT-2026-05-27 -->
-## RC Documentation Alignment - 2026-05-27
-
-- EA-NITI/EANITI canonical expansion: Enterprise Agentic Network Isolated Triage & Inference.
-- v1.1.3 RC lock: Strike 4.2 VRAM handoff is stable; WebGPU Bind Groups and Command Encoders are deferred to v1.2.0; v1.1.3 inference relies on the optimized Wasm SIMD CPU lane with WebGPU adapter and VRAM sharding scaffold only.
-- Runtime dependency alignment: @xenova/transformers and @mlc-ai/web-llm are removed from the app runtime; tesseract.js CDN usage is removed/localized through /assets/ocr/ assets while the local package remains for OCR worker integration.
