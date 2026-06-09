@@ -32,7 +32,7 @@ already real. See the **🛰️ One-Command Local Setup** section in
 
 ## Prerequisites
 
-- **Node.js 18+** — Runtime for Vite dev server and build tooling
+- **Node.js 20+ (below 23)** — Runtime for Vite dev server and build tooling
 - **Git LFS 3.x+** — Required before clone/pull so compressed corpus assets are real files rather than LFS pointer text.
 - **Modern browser with WebGPU** — Chrome 113+, Edge 113+
 - **Corpus artifacts** — Required compressed runtime files are verified by `npm run verify:corpus`. Clone with Git LFS and run `git lfs pull`; release/offline bundles remain a fallback for non-Git users.
@@ -221,7 +221,7 @@ the Admin panel shows live hydration status.
 - TypeScript snapshot: `npx tsc --noEmit` passes.
 - Lint snapshot: `npm run lint` passes.
 - Accessibility snapshot: `npm run test:a11y` passes across 58 TSX files.
-- Test snapshot: `npm run test` passes with `182` tests across `18` files.
+- Test snapshot: `npm run test` passes with `220` tests across `23` files.
 - Build snapshot: `npm run build` passes; Vite emits existing chunk-size/dynamic-import warnings.
 - E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
 - CI expectation remains lint, a11y audit, corpus verification, TypeScript, tests, build, and Sovereign smoke E2E; local checks run in this pass are green.
@@ -238,7 +238,7 @@ the Admin panel shows live hydration status.
 - Lint snapshot: `npm run lint` passes with `--max-warnings 0`.
 - Accessibility snapshot: `npm run test:a11y` passes.
 - Test snapshot: `npm run test` passes with `219` tests across `23` files (+3 from Strike 4.0: 1 hydration-gate invariant, 2 dynamic-DB-migration invariants).
-- Build snapshot: `npm run build` passes; the PWA precaches 13,529 KiB / 135 entries including `public/ocr/ocr.lock.json`, `public/ocr/ocr_manifest.json`, and the bespoke LLM provenance files.
+- Build snapshot: `npm run build` passes; the PWA precaches the OCR lockfile, corpus lockfile, and bespoke LLM provenance files.
 - E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
 - One-command bootstrap: `node scripts/setupLocal.mjs` is idempotent — it skips `npm ci` when `node_modules/` is present, skips the bespoke-LLM forge when the GGUF is on disk, and exits with a clear "Besoke asset already forged" message on re-run.
 - Dexie schema in `src/lib/db.ts` now reaches `version(40)` with a dynamic `version(this.nextVersionAfter(40))` block that adds the `page_visual_metadata` table for VLM/OCR output persistence.

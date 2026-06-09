@@ -42,7 +42,7 @@ jobs:
         run: git lfs install --local
 
       - name: Git LFS pull (corpus + OCR + models)
-        run: git lfs pull --include=public/ocr,public/models,public/manifests
+        run: git lfs pull --include=public/ocr,public/models,public/*.gz,public/*.bin.gz
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -97,7 +97,7 @@ jobs:
       - name: Git LFS install
         run: git lfs install --local
       - name: Git LFS pull
-        run: git lfs pull --include=public/ocr,public/models,public/manifests
+        run: git lfs pull --include=public/ocr,public/models,public/*.gz,public/*.bin.gz
       - name: Install
         run: npm ci --no-audit --no-fund
       # Sanity check: the script must be present and `--help`able
@@ -109,7 +109,6 @@ jobs:
           node -e "require('fs').accessSync('scripts/forge_bespoke_model.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('scripts/ocrArtifacts.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('public/ocr/ocr.lock.json', require('fs').constants.R_OK)"
-          node -e "require('fs').accessSync('public/ocr/ocr_manifest.json', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('public/models/NOTICE.txt', require('fs').constants.R_OK)"
           echo "All one-command bootstrap files are present."
         shell: bash

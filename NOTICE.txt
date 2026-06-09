@@ -43,8 +43,8 @@ model. The base model is downloaded and renamed by
 retains all rights to its weights and licence.
 
   Bespoke name:   ea-niti-core-1.1b-q4
-  Base model:     repro/repro-mini-1.1b (Q4_0 GGUF quantization)
-  Base URL:       https://huggingface.co/repro/repro-mini-1.1b-gguf
+  Base model:     TinyLlama-1.1B-Chat-v1.0 (Q4_0 GGUF quantization)
+  Base URL:       https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
   Base licence:   Apache License 2.0
   Mods:           Renamed; metadata stamped with EA-NITI provenance.
                   No fine-tuning, no weight edits, no distillation.

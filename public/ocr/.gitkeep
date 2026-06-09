@@ -1,3 +1,0 @@
-Placeholder so the directory tracks under Git until real OCR
-neural-weight assets are published via Git LFS. See `NOTICE.txt` for
-provenance and `scripts/ocrArtifacts.mjs` for the verification flow.

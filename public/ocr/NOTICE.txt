@@ -10,6 +10,9 @@ are tracked via Git LFS (see `../../.gitattributes`).
   ocr_vocab.json.gz         — EA-NITI generated (MIT)
   ocr_grammar.json.gz       — EA-NITI generated (MIT)
 
-The Rust/WASM runtime that consumes these files (`ocr_engine_bg.wasm`
-and `ocr_engine.js`) is part of the EA-NITI Edge Agent and released
-under MIT. See `../../NOTICE.txt` for the full repository attribution.
+The Rust/WASM runtime that consumes these files lives at
+`src/lib/wasm/ocr/pkg/` (ocr_engine_bg.wasm + ocr_engine.js) and is
+part of the EA-NITI Edge Agent, released under MIT. The bespoke LLM
+(`ea-niti-core-1.1b-q4.gguf`) lives at `../models/` and is covered
+by the root NOTICE.txt. See `../../NOTICE.txt` for the full repository
+attribution.

@@ -71,7 +71,6 @@ public/*.bin
 public/ocr/*.bin.gz
 public/ocr/*.json.gz
 !public/ocr/ocr.lock.json
-!public/ocr/ocr_manifest.json
 
 # --- [4] Database, Cache & Traces ---
 .cache/

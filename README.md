@@ -163,7 +163,7 @@ See [TESTING_GUIDE.md](TESTING_GUIDE.md) for the complete testing protocol inclu
 ## 🚀 Developer Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+ (below 23)
 - Git LFS 3.x+ installed before cloning. The repository stores compressed runtime brain assets with Git LFS; without it, Git will check out tiny pointer files instead of the required corpus payloads.
 - Modern browser with WebGPU support enabled (Chrome 113+, Edge 113+)
 - The compiled WASM runtime is included in `src/lib/wasm/pkg/`. Rust source lives in a separate private engine repository and is not required for normal app setup.
@@ -178,7 +178,7 @@ cd ea-niti-edge-agent
 git lfs pull
 
 # Install dependencies
-npm install
+npm ci
 
 # Verify compressed corpus artifacts pulled by Git LFS
 npm run verify:corpus
@@ -206,11 +206,12 @@ npm run dev             # air-gapped local mode is now online
 
 | Step | Script | Purpose |
 |------|--------|---------|
-| 1 | `git lfs install && git lfs pull --include=public/ocr,public/models,public/manifests` | Hydrate OCR + LLM + corpus LFS pointers |
+| 1 | `git lfs install && git lfs pull --include=public/ocr,public/models,public/*.gz,public/*.bin.gz` | Hydrate OCR + LLM + corpus LFS pointers |
 | 2 | `npm ci` | Install JS dependencies |
 | 3 | `node scripts/forge_bespoke_model.mjs` | Download `TinyLlama-1.1B-Chat-v1.0-GGUF` (Apache 2.0) from HF, validate the `GGUF` magic, rename to `public/models/ea-niti-core-1.1b-q4.gguf`, and write a provenance meta blob. The download is the only network call. |
-| 4 | `node scripts/ocrArtifacts.mjs unlock` | Autofill the real `byteLength` + `sha256` for every entry in `public/ocr/ocr.lock.json` |
-| 5 | `npm run verify:corpus && npm run verify:ocr` | Assert LFS integrity, reject placeholders in strict mode |
+| 4 | `node scripts/forge_ocr_weights.mjs` | Forge detector + recognizer int8 weights, vocab, and grammar profiles. Idempotent: skips when assets exist. |
+| 5 | `node scripts/ocrArtifacts.mjs unlock` | Autofill the real `byteLength` + `sha256` for every entry in `public/ocr/ocr.lock.json` |
+| 6 | `npm run verify:corpus && npm run verify:ocr` | Assert LFS integrity, reject placeholders in strict mode |
 
 The default `sovereignModelUrl` shipped in `seedData.ts` is now
 `/models/ea-niti-core-1.1b-q4.gguf`, so the first time a user opens the

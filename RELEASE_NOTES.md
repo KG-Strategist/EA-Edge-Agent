@@ -27,8 +27,7 @@ at runtime.
 - **`public/ocr/ocr.lock.json`** now declares the full asset table
   (detector, recognizer, vocab, grammar, runtime, bespoke LLM) with
   `path / role / required / byteLength / sha256 / license / source /
-  format`. **`public/ocr/ocr_manifest.json`** carries per-tensor shape,
-  scale, zero_point, and runtime metadata.
+  format`.
 - **`EA_NITI_OCR_STRICT=1`** turns the verifier into a release-grade
   gate: any `REPLACE_WITH_REAL_SHA256_*` placeholder fails the build.
   CI sets the env var unconditionally; the dev mode stays lenient so
@@ -185,7 +184,7 @@ at runtime.
 - TypeScript snapshot: `npx tsc --noEmit` passes.
 - Lint snapshot: `npm run lint` passes.
 - Accessibility snapshot: `npm run test:a11y` passes across 58 TSX files.
-- Test snapshot: `npm run test` passes with `182` tests across `18` files.
+- Test snapshot: `npm run test` passes with `220` tests across `23` files.
 - Build snapshot: `npm run build` passes; Vite emits existing chunk-size/dynamic-import warnings.
 - E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
 - Dexie schema in `src/lib/db.ts` currently reaches `version(40)`; older references to v35, v36, v38, or v39 are historical unless a section explicitly says otherwise.

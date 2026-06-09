@@ -123,7 +123,7 @@ run('git', ['lfs', 'install', '--local']);
 // We pull only the public asset trees so we don't pay for the full corpus
 // if the user is only running the OCR + LLM pipeline, but we must include
 // corpus binary files since they are validated by verify:corpus
-run('git', ['lfs', 'pull', '--include=public/ocr,public/models,public/manifests,public/*.gz,public/*.bin.gz']);
+run('git', ['lfs', 'pull', '--include=public/ocr,public/models,public/*.gz,public/*.bin.gz']);
 
 // ── Step 2: npm install ────────────────────────────────────────────
 header('📚', 'Step 2 / 6 — npm install');
