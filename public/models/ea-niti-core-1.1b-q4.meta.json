@@ -1,0 +1,17 @@
+{
+  "name": "ea-niti-core-1.1b-q4",
+  "path": "public/models/ea-niti-core-1.1b-q4.gguf",
+  "byteLength": 637699456,
+  "sha256": "da3087fb14aede55fde6eb81a0e55e886810e43509ec82ecdc7aa5d62a03b556",
+  "baseModelUrl": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf",
+  "baseModelName": "TinyLlama-1.1B-Chat-v1.0 (Apache 2.0)",
+  "bespokeRevision": "1.1.4-beta",
+  "forgedAt": "2026-06-05T18:14:15.007Z",
+  "ggufMagic": [
+    71,
+    71,
+    85,
+    70
+  ],
+  "note": "Bespoke derivative work: renamed, metadata-tagged, and tracked via Git LFS. See NOTICE.txt."
+}

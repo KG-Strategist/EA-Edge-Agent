@@ -1,0 +1,15 @@
+OCR Assets — Local Provenance
+=============================
+
+The int8 neural weights and JSON-LFS grammars inside this directory
+are released under the Apache License 2.0 and MIT, respectively. They
+are tracked via Git LFS (see `../../.gitattributes`).
+
+  ocr_detector_int8.bin.gz  — DBNet-Lite-Thin (Apache 2.0)
+  ocr_recognizer_int8.bin.gz — ViT-Lite-128 (MIT)
+  ocr_vocab.json.gz         — EA-NITI generated (MIT)
+  ocr_grammar.json.gz       — EA-NITI generated (MIT)
+
+The Rust/WASM runtime that consumes these files (`ocr_engine_bg.wasm`
+and `ocr_engine.js`) is part of the EA-NITI Edge Agent and released
+under MIT. See `../../NOTICE.txt` for the full repository attribution.

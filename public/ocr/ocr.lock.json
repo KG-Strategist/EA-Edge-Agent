@@ -1,0 +1,95 @@
+{
+  "ocrVersion": "1.1.4-beta",
+  "model": "dbnet-vit-lite-permissive",
+  "description": "DBNet-Lite-Thin detector + ViT-Lite-128 recognizer, both permissive prototypes published under Apache 2.0 / MIT. Tracked via Git LFS. The 'sha256' values are SHA-256 fingerprints of the published assets; verify:ocr will fail if the on-disk bytes do not match.",
+  "schemaVersion": "1.0.0",
+  "supportedGrammars": [
+    "default",
+    "ea",
+    "legal",
+    "secops",
+    "hr",
+    "procurement"
+  ],
+  "supportedBackends": [
+    "cpu-wasm-simd",
+    "webgpu-hybrid-experimental"
+  ],
+  "release": {
+    "baseUrl": "",
+    "tag": "v1.1.4-beta-ocr-assets"
+  },
+  "assets": [
+    {
+      "path": "public/ocr/ocr_detector_int8.bin.gz",
+      "fileName": "ocr_detector_int8.bin.gz",
+      "role": "detector",
+      "required": true,
+      "byteLength": 4905848,
+      "sha256": "89aafd2588e3ccfde89fd36bc2a1a0ae4d1899750b28d8f7f86b161d03123e23",
+      "license": "Apache-2.0",
+      "source": "https://github.com/xiaoyu252/Text-Recognition-DBNet",
+      "format": "Stored-gzip TENSOR v2 int8 DBNet-Lite detector"
+    },
+    {
+      "path": "public/ocr/ocr_recognizer_int8.bin.gz",
+      "fileName": "ocr_recognizer_int8.bin.gz",
+      "role": "recognizer",
+      "required": true,
+      "byteLength": 663384,
+      "sha256": "00b5ab9e0bc41398771f29b1a52d8117f05449dfd1e32a65f0aa814870f54542",
+      "license": "MIT",
+      "source": "bespoke Phase 14c/14f MLX training on internal synthetic EA corpus",
+      "format": "Stored-gzip TENSOR v2 int8 ViT-Lite-128 recognizer (BPE-512 CTC, 256 patches)"
+    },
+    {
+      "path": "public/ocr/ocr_vocab.json.gz",
+      "fileName": "ocr_vocab.json.gz",
+      "role": "vocab",
+      "required": false,
+      "byteLength": 38399,
+      "sha256": "16fe98ba44973394a8f5bf57a93e73d29a7bea3ea2a3f7d64e842e3d925c7121",
+      "license": "MIT",
+      "format": "Stored-gzip JSON BPE-512 tokenizer metadata for CTC decode"
+    },
+    {
+      "path": "public/ocr/ocr_grammar.json.gz",
+      "fileName": "ocr_grammar.json.gz",
+      "role": "grammar",
+      "required": false,
+      "byteLength": 539,
+      "sha256": "4195003f9ddb5c087984f9e4c9be70ae63ea0e9ba5dec1317f846a5019788651",
+      "license": "MIT",
+      "format": "Gzipped JSON grammar profile (FSA, domain tokens)",
+      "supportedGrammars": [
+        "default",
+        "ea",
+        "legal",
+        "secops",
+        "hr",
+        "procurement"
+      ]
+    },
+    {
+      "path": "src/lib/wasm/ocr/pkg/ocr_engine_bg.wasm",
+      "fileName": "ocr_engine_bg.wasm",
+      "role": "runtime",
+      "required": true,
+      "byteLength": 152327,
+      "sha256": "8a2e727571b532ae2d093cb7aa731e787e88691b1767e0210a62f0ee083db06d",
+      "license": "MIT",
+      "format": "Rust/WASM compiled OCR runtime"
+    },
+    {
+      "path": "public/models/ea-niti-core-1.1b-q4.gguf",
+      "fileName": "ea-niti-core-1.1b-q4.gguf",
+      "role": "llm",
+      "required": false,
+      "byteLength": 637699456,
+      "sha256": "da3087fb14aede55fde6eb81a0e55e886810e43509ec82ecdc7aa5d62a03b556",
+      "license": "Apache-2.0",
+      "format": "GGUF Q4_0 LLM starter, bespoke derivative of TinyLlama-1.1B-Chat-v1.0 (Apache 2.0)",
+      "forgeScript": "scripts/forge_bespoke_model.mjs"
+    }
+  ]
+}

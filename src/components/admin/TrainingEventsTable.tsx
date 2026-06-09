@@ -398,14 +398,14 @@ export default function TrainingEventsTable() {
             <div className="p-5 flex-1 overflow-y-auto">
               <div className="mb-4">
                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Snippet Name</label>
-                 <input type="text" placeholder="e.g. Q3 Architecture Memo" value={freeTextName} onChange={e => setFreeTextName(e.target.value)} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm" />
+                 <input type="text" placeholder="e.g. Q3 Architecture Memo" value={freeTextName} onChange={e => setFreeTextName(e.target.value)} aria-label="Snippet Name" className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm" />
               </div>
               <div>
                  <div className="flex justify-between items-center mb-1">
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Raw Content</label>
                   <AIRewriteButton currentText={freeTextContent} onUpdate={setFreeTextContent} />
                 </div>
-                <textarea rows={10} placeholder="Paste raw unstructured text here... It will automatically be chunked and vectorized." value={freeTextContent} onChange={e => setFreeTextContent(e.target.value)} className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm custom-scrollbar" />
+                <textarea rows={10} placeholder="Paste raw unstructured text here... It will automatically be chunked and vectorized." value={freeTextContent} onChange={e => setFreeTextContent(e.target.value)} aria-label="Raw Content" className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 focus:outline-none focus:border-indigo-500 dark:text-white text-sm custom-scrollbar" />
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 flex justify-end gap-3">

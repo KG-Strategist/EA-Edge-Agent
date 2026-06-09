@@ -76,6 +76,7 @@ export default function ModelConsentModal() {
             type="checkbox"
             checked={consentChecked}
             onChange={(e) => setConsentChecked(e.target.checked)}
+            aria-label="Consent to download model weights"
             className="mt-1 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
           />
           <span className="text-xs text-gray-600 dark:text-gray-400">

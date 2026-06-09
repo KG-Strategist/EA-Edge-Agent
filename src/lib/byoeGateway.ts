@@ -10,7 +10,7 @@
  */
 
 import { db } from './db';
-import { validateEndpointUrl } from './networkGuard';
+import { validateEndpointUrl, checkNetworkConsent } from './networkGuard';
 
 export type ProviderType = 'WebSearchAPI' | 'CloudLLMAPI' | 'CustomEnterprise';
 
@@ -51,7 +51,11 @@ export function formatSearchResults(results: SearchResult[]): string {
 }
 
 async function fetchWebSearchAPI(endpointUrl: string, apiKey: string, query: string): Promise<string> {
-  validateEndpointUrl(endpointUrl);
+  const consent = await checkNetworkConsent();
+  if (!consent) {
+    throw new Error('Network access disabled. Enable the network feature to call external web search APIs.');
+  }
+  await validateEndpointUrl(endpointUrl);
   const payload = {
     api_key: apiKey,
     query,
@@ -100,7 +104,7 @@ async function fetchWebSearchAPI(endpointUrl: string, apiKey: string, query: str
 }
 
 async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: string, modelName?: string): Promise<string> {
-  validateEndpointUrl(endpointUrl);
+  await validateEndpointUrl(endpointUrl);
   // Verify Master Network Toggle is enabled
   const settings = await db.app_settings.where('key').equals('enableNetworkIntegrations').first();
   if (!settings || settings.value !== true) {
@@ -142,7 +146,11 @@ async function fetchCloudLLMAPI(endpointUrl: string, apiKey: string, query: stri
 }
 
 async function fetchCustomEnterprise(endpointUrl: string, apiKey: string, query: string): Promise<string> {
-  validateEndpointUrl(endpointUrl);
+  const consent = await checkNetworkConsent();
+  if (!consent) {
+    throw new Error('Network access disabled. Enable the network feature to call custom enterprise endpoints.');
+  }
+  await validateEndpointUrl(endpointUrl);
   const payload = { api_key: apiKey, query };
   const response = await fetch(endpointUrl, {
     method: 'POST',

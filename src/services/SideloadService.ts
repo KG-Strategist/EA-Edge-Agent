@@ -132,6 +132,7 @@ export class SideloadService {
     const modelName = options?.name || 'Sideloaded GGUF Model';
     const modelId = options?.modelId || modelName;
     const contextWindow = options?.contextWindow || 4096;
+    const modelUrl = `opfs://${this.getModelFilename(modelId)}`;
 
     try {
       const existing = await db.model_registry
@@ -142,15 +143,20 @@ export class SideloadService {
       if (existing) {
         await db.model_registry.update(existing.id!, {
           name: modelName,
+          type: existing.type || 'PRIMARY',
+          modelUrl,
+          isLocalhost: true,
           contextWindow,
           isActive: true,
+          engineType: 'Air-Gapped Sideload',
+          allowDistillation: false,
         });
         Logger.info(`[Sideload Registry] Updated existing entry: ${modelName}`);
       } else {
         await db.model_registry.add({
           name: modelName,
           type: 'PRIMARY',
-          modelUrl: `opfs://${this.getModelFilename(modelId)}`,
+          modelUrl,
           isLocalhost: true,
           isActive: true,
           engineType: 'Air-Gapped Sideload',

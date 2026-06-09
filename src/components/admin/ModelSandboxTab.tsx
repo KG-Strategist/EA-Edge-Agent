@@ -217,7 +217,7 @@ export default function ModelSandboxTab() {
 
   const performSideload = async (ggufFile: File, modelId: string) => {
     setIsSideloading(true);
-    setSideloadProgress({ text: 'Reading files...', percent: 0 });
+    setSideloadProgress({ text: 'Reading GGUF file...', percent: 0 });
 
     try {
       await SideloadService.processModelSideload(ggufFile, modelId, (bytesWritten, totalBytes) => {
@@ -271,19 +271,19 @@ export default function ModelSandboxTab() {
              <div className="grid grid-cols-2 gap-4">
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Name / Alias</label>
-                 <input type="text" required value={newModel.name} onChange={e => setNewModel({...newModel, name: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-BYOM" />
+                 <input type="text" required value={newModel.name} onChange={e => setNewModel({...newModel, name: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-BYOM" aria-label="Model Name or Alias" />
                </div>
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Endpoint URL</label>
-                 <input type="url" required value={newModel.modelUrl} onChange={e => setNewModel({...newModel, modelUrl: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="https://huggingface.co/..." />
+                 <input type="url" required value={newModel.modelUrl} onChange={e => setNewModel({...newModel, modelUrl: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="https://huggingface.co/..." aria-label="Endpoint URL" />
                </div>
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">API Key (Optional)</label>
-                 <input type="password" value={newModel.apiKey} onChange={e => setNewModel({...newModel, apiKey: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="sk-..." />
+                 <input type="password" value={newModel.apiKey} onChange={e => setNewModel({...newModel, apiKey: e.target.value})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="sk-..." aria-label="API Key" />
                </div>
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Context Window</label>
-                 <input type="number" required value={newModel.contextWindow} onChange={e => setNewModel({...newModel, contextWindow: parseInt(e.target.value) || 4096})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="4096" />
+                 <input type="number" required value={newModel.contextWindow} onChange={e => setNewModel({...newModel, contextWindow: parseInt(e.target.value) || 4096})} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm p-2 outline-none focus:border-blue-500" placeholder="4096" aria-label="Context Window" />
                </div>
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Engine Type</label>
@@ -484,24 +484,25 @@ containerClassName="flex flex-col"
         <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
             <FolderUp className="text-blue-500" size={18} />
-            Offline Sideload Library (Browser Cache)
+            OPFS Model Library
           </h3>
         </div>
         <div className="p-5 grid gap-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Securely load GGUF model weights directly from a local folder (e.g., USB drive). This bypasses all network requests and writes directly to OPFS for zero-copy Sovereign Engine access, ensuring 100% air-gapped compliance. You can upload multiple models sequentially.
+            Securely load one local GGUF model file at a time from your workstation or removable media. This bypasses all network requests and writes directly to OPFS for zero-copy Sovereign Engine access.
           </p>
           
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Name / Alias</label>
-            <input data-testid="sideload-model-name" type="text" value={sideloadModelName} onChange={e => setSideloadModelName(e.target.value)} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-Sideloaded" disabled={isSideloading} />
+            <label htmlFor="sideload-model-name" className="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Model Name / Alias</label>
+            <input id="sideload-model-name" name="sideloadModelName" data-testid="sideload-model-name" type="text" value={sideloadModelName} onChange={e => setSideloadModelName(e.target.value)} className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2 outline-none focus:border-blue-500" placeholder="e.g. Llama-3-Sideloaded" disabled={isSideloading} />
           </div>
 
           <details className="mb-4 p-4 bg-[var(--color-surface-hover)] border border-[var(--color-border)] rounded-lg text-sm text-gray-300">
-            <summary className="font-medium text-gray-200 cursor-pointer select-none">What file do I need to upload?</summary>
+            <summary className="font-medium text-gray-200 cursor-pointer select-none">Single GGUF file requirements</summary>
             <ul className="mt-2 list-disc list-inside pl-4 space-y-1 text-xs text-gray-400">
               <li>You only need <strong>one file</strong>: a quantized model weights file ending in <code className="text-blue-400 bg-slate-950 px-1 rounded">.gguf</code>.</li>
               <li>You do NOT need to download an entire HuggingFace repository clone.</li>
+              <li>The selected file is copied into the browser OPFS Model Library for offline inference.</li>
               <li>Example model filename: <code>tinyllama-1.1b-chat-v1.0.Q4_0.gguf</code></li>
             </ul>
           </details>

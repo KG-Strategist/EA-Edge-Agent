@@ -499,10 +499,11 @@ export default function UserAccessTab() {
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Temporary Password</label>
                 <input
                   type="password"
-                  value={formPassword}
-                  onChange={e => setFormPassword(e.target.value)}
-                  placeholder="Temporary password"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none mb-3"
+                      value={formPassword}
+                      onChange={e => setFormPassword(e.target.value)}
+                      placeholder="Temporary password"
+                      aria-label="Temporary Password"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none mb-3"
                 />
               </>
             ) : (
@@ -523,6 +524,7 @@ export default function UserAccessTab() {
                       value={formPassword}
                       onChange={e => setFormPassword(e.target.value)}
                       placeholder="Enter new temporary password"
+                      aria-label="New Temporary Password"
                       className="w-full px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none mb-2"
                     />
                     <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-tight">
@@ -604,6 +606,7 @@ export default function UserAccessTab() {
                 value={deleteValidation}
                 onChange={e => setDeleteValidation(e.target.value)}
                 placeholder={`DELETE-${userToDelete.pseudokey}`}
+                aria-label="Hard delete confirmation"
                 className="w-full px-3 py-2 rounded border border-red-300 dark:border-red-800 bg-white dark:bg-black/30 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 outline-none mb-3 font-mono"
               />
               <button

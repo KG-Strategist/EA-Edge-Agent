@@ -1,5 +1,90 @@
 # EA-NITI Release Notes
 
+## v1.1.4-beta — Strike 4.0 (Air-Gap Locked)
+*June 2026*
+
+The Day-Zero Air-Gap Release: a fresh clone is now air-gapped after a single
+command. The bespoke OCR runtime + a permissive-license EA-NITI-Core LLM
+are forged and validated in one shot. No HuggingFace download is required
+at runtime.
+
+### 🛰️ One-Command Bootstrap
+- **`npm run setup:local`** — single command that performs `git lfs install`
+  + `git lfs pull` (corpus + OCR + LLM) → `npm ci` →
+  `scripts/forge_bespoke_model.mjs` → `scripts/ocrArtifacts.mjs unlock` →
+  `verify:corpus` → `verify:ocr`. The script is idempotent and re-runnable.
+- **Bespoke LLM Forge** — `scripts/forge_bespoke_model.mjs` downloads the
+  permissive `TinyLlama-1.1B-Chat-v1.0-GGUF` (Apache 2.0), validates the
+  `GGUF` magic, and renames it to
+  `public/models/ea-niti-core-1.1b-q4.gguf` with a sidecar
+  `ea-niti-core-1.1b-q4.meta.json` provenance file. Override the base
+  model with `EA_NITI_BASE_MODEL_URL=…`.
+- **Lockfile Unlock** — `node scripts/ocrArtifacts.mjs unlock` autofills
+  the real `byteLength` + `sha256` for every entry in
+  `public/ocr/ocr.lock.json` once the LFS pointers are hydrated.
+
+### 🔒 Strict OCR Lockfile
+- **`public/ocr/ocr.lock.json`** now declares the full asset table
+  (detector, recognizer, vocab, grammar, runtime, bespoke LLM) with
+  `path / role / required / byteLength / sha256 / license / source /
+  format`. **`public/ocr/ocr_manifest.json`** carries per-tensor shape,
+  scale, zero_point, and runtime metadata.
+- **`EA_NITI_OCR_STRICT=1`** turns the verifier into a release-grade
+  gate: any `REPLACE_WITH_REAL_SHA256_*` placeholder fails the build.
+  CI sets the env var unconditionally; the dev mode stays lenient so
+  contributors can iterate against pointer files.
+
+### 🧬 OCR Hydration ABI
+- **`OcrEngine.loadModelBundle(role, bytes)`** — new WASM export that
+  zero-copy blits the detector/recognizer bytes into the Rust linear
+  memory and tags them by role. The TypeScript runtime fetches the
+  LFS-managed bundles from `/ocr/...` and `/models/...` and calls
+  this ABI on engine init.
+- **`OcrWasmRuntime.isLoaded()`** now requires
+  `engine.isLoaded() && hydratedAssets.size >= 2` — a real engine
+  without its model bundles is no longer "ready".
+
+### 🗄️ Dynamic DB Migration
+- **`EADatabase.nextVersionAfter(MAX)`** — a private helper that
+  introspects the schema source for the highest declared
+  `this.version(N)` literal and returns `N+1`. The
+  `page_visual_metadata` table (VLM/OCR output persistence) is added
+  via `this.version(this.nextVersionAfter(40))` so future strikes
+  cannot drift the version literal.
+
+### 🤖 Default Local LLM
+- **`seedData.ts`** now seeds `sovereignModelUrl` to
+  `/models/ea-niti-core-1.1b-q4.gguf` for fresh installs. Existing
+  users keep their custom configuration.
+- **`db.ts` v22 `model_registry` PRIMARY** entry now points to
+  the same local path and is flagged `isLocalhost: true,
+  engineType: 'Bespoke Forge — Air-Gapped Local'`.
+
+### 📜 Compliance Provenance
+- **`NOTICE.txt`** (root), **`public/ocr/NOTICE.txt`**, and
+  **`public/models/NOTICE.txt`** record Apache 2.0 / MIT lineage for
+  every bundled artefact plus the **ECCN 5D992.c** open-source
+  export-control exemption.
+
+### 🛠️ Tooling & CI
+- **`.github/workflows/ci.yml`** rewritten to run the full v1.1.4-beta
+  pipeline: `lfs install` + `lfs pull` → lint → a11y → verify:corpus →
+  verify:ocr (strict) → typecheck → unit tests → build → sovereign
+  smoke. A second `strict` job sanity-checks the `setup:local` file
+  set.
+- **`package.json`** version bumped to `1.1.4-beta`.
+- **`index.html`** `<title>` and `<meta description>` updated to
+  advertise the Strike 4.0 air-gap story.
+
+### ✅ Quality Gates
+- `219` unit tests across `23` files pass (+3 from this strike: 1
+  hydration-gate invariant, 2 dynamic-DB-migration invariants).
+- ESLint passes with `--max-warnings 0`.
+- TypeScript passes with `tsc --noEmit`.
+- Vite PWA precache 13,529 KiB / 135 entries.
+
+---
+
 ## v1.1.3 Hardening (Performance Audit & Security Hardening)
 *May 2026*
 
@@ -52,6 +137,7 @@
 ### 🌐 Universal Edge-AI OS
 - **Universal Persona Pivot:** Dynamic domain agent configuration for any enterprise workflow — not limited to architecture reviews.
 - **Autonomous Semantic Router:** Telemetry-based routing between WebGPU and external model providers for optimal inference path selection.
+- **Durable Local Telemetry:** Routing, metric, and trace telemetry is persisted to `local_telemetry_vault` with prompt, content, vector, and PII fields stripped.
 - **Agent Socket Protocol:** High-performance WebSocket communication between browser agent and native OS daemon — sub-millisecond token streaming with abort signals.
 - **Message Array Engine:** All inference engines now accept standard `[{role, content}]` message arrays for tokenizer safety and chat template compatibility.
 
@@ -59,7 +145,13 @@
 - AES-256-GCM encryption for all vendor blobs and DDQ files at rest.
 - DOMPurify sanitization on all markdown and diagram render paths.
 - Pre-compiled binary corpus: 90% boot time reduction via direct binary blitting.
-- Dexie v36 schema migration with legacy data compatibility.
+- Dexie v40 schema migration with legacy data compatibility and bounded encrypted chat-message pagination.
+
+### Strike 1 RC Closure
+- **Sovereign E2E split:** `test:e2e:sovereign-smoke` always validates mock GGUF OPFS sideloading; `test:e2e:sovereign-gguf` is the env-gated real-model release-signoff path.
+- **OPFS Model Library UX:** Sideloading now describes a single local `.gguf` file copied into OPFS, with stale folder/cache wording removed from the primary flow.
+- **Chat memory pagination:** Encrypted chat retrieval now uses Dexie v40 compound indexes and bounded 80-message windows, with system prompts loaded separately for inference context.
+- **Accessibility audit:** `npm run test:a11y` enforces programmatic labels for visible form controls across TSX files.
 
 ---
 
@@ -86,14 +178,17 @@
 - **Compiler Reliability:** Fixed stack-overflow issues in the Node.js compiler using buffered concatenation.
 
 
-## Current Code Alignment - 2026-05-25
+## Current Code Alignment - 2026-05-29
 
-- Release-readiness correction: the current worktree is not fully green. `verify:corpus` passes, but TypeScript, lint, and four CryptoVault tests fail as documented below.
+- Release-readiness correction: Strike 1 local code health is green for lint, accessibility audit, TypeScript, Vitest, and corpus verification.
 - Validation snapshot: `npm run verify:corpus` passes for corpus `1.1.3-moat-2026-05-25` with `844854` records.
-- TypeScript snapshot: `npx tsc --noEmit` currently fails in `src/lib/cryptoVault.ts` at the WebCrypto `unwrapKey` call because the wrapped key is typed as `Uint8Array<ArrayBufferLike>`, not a strict `BufferSource`.
-- Lint snapshot: `npm run lint` currently fails in `scripts/corpusBuildUtils.ts` on `no-control-regex` for the null-character sanitizer expression.
-- Test snapshot: `npm run test` currently runs `175` tests; `171` pass and `4` fail in `src/__tests__/cryptoVault.test.ts` because assertions expect text matching `/VaultLockedError/` while the thrown message is `Vault is locked. DEK not available.`.
-- Dexie schema in `src/lib/db.ts` currently reaches `version(39)`; older references to v35, v36, or v38 are historical unless a section explicitly says otherwise.
+- TypeScript snapshot: `npx tsc --noEmit` passes.
+- Lint snapshot: `npm run lint` passes.
+- Accessibility snapshot: `npm run test:a11y` passes across 58 TSX files.
+- Test snapshot: `npm run test` passes with `182` tests across `18` files.
+- Build snapshot: `npm run build` passes; Vite emits existing chunk-size/dynamic-import warnings.
+- E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
+- Dexie schema in `src/lib/db.ts` currently reaches `version(40)`; older references to v35, v36, v38, or v39 are historical unless a section explicitly says otherwise.
 - Generated corpus runtime files are intentionally ignored from Git: `public/baseline_meta.json`, `public/baseline_corpus.bin.gz`, `public/baseline_corpus_manifest.json`, `public/lexicon.json`, and `public/lexicon_roles.json`.
 - `public/corpus.lock.json` is the tracked integrity manifest; release or offline bundle distribution should restore the ignored corpus files before dev/build.
 - `public/dataAssets/` is the ignored private source lane for miner inputs and dictionary/persona/brain source material.
@@ -107,4 +202,37 @@
 
 - EA-NITI/EANITI canonical expansion: Enterprise Agentic Network Isolated Triage & Inference.
 - v1.1.3 RC lock: Strike 4.2 VRAM handoff is stable; WebGPU Bind Groups and Command Encoders are deferred to v1.2.0; v1.1.3 inference relies on the optimized Wasm SIMD CPU lane with WebGPU adapter and VRAM sharding scaffold only.
-- Runtime dependency alignment: @xenova/transformers and @mlc-ai/web-llm are removed from the app runtime; tesseract.js CDN usage is removed/localized through /assets/ocr/ assets while the local package remains for OCR worker integration.
+- Runtime dependency alignment: @xenova/transformers, @mlc-ai/web-llm, and `tesseract.js` are removed from the app runtime. The bespoke OCR engine runs in `src/lib/wasm/ocr/pkg/`; no Tesseract traineddata, `/assets/ocr/lang-data` assets, or manual OCR downloads are part of any release.
+
+
+<!-- STRIKE-4.0-ALIGNMENT-2026-06-04 -->
+## Strike 4.0 Documentation Alignment - 2026-06-04
+
+- **Version anchor:** `package.json` is at `1.1.4-beta`. Older literals
+  (`1.1.3`) appear only in the version-history section of this file or
+  in `DEBT-…` TODO comments and are not authoritative.
+- **OCR lockfile is the source of truth:** `public/ocr/ocr.lock.json`
+  is the only file an LFS-based dev needs to validate. The lockfile
+  `verify:ocr` step is run automatically by `predev`, `prebuild`, and
+  the CI pipeline; strict mode (`EA_NITI_OCR_STRICT=1`) is the
+  release-grade gate.
+- **Bespoke LLM default:** fresh installs see
+  `sovereignModelUrl = /models/ea-niti-core-1.1b-q4.gguf`. The original
+  `TinyLlama-1.1B-Chat-v1.0-GGUF` is the source of bytes; the file
+  is renamed + tagged under EA-NITI provenance.
+- **Dynamic DB migration:** the `page_visual_metadata` table is
+  declared at `this.version(this.nextVersionAfter(40))`. Adding a new
+  `this.version(N)` literal above the dynamic block auto-bumps the
+  next version; no hardcoded drift is possible.
+- **One-command bootstrap:** `npm run setup:local` is the canonical
+  path. It performs LFS pull, npm ci, forge, lockfile unlock, and
+  integrity verify in a single command and is idempotent.
+- **Hydration ABI:** `OcrWasmRuntime.isLoaded()` now requires
+  `engine.isLoaded() && hydratedAssets.size >= 2`. UI call sites that
+  read `isLoaded()` for a "real engine" guarantee will see the
+  regression in dev when the LFS assets are not yet published — this
+  is intentional.
+- **OCR pipeline:** bespoke Rust/WASM runtime in
+  `src/lib/wasm/ocr/pkg/`. Geometric fallback + Agent Socket reranker.
+  No Tesseract, no `tesseract.js`, no traineddata, no `/assets/ocr/`
+  payload.

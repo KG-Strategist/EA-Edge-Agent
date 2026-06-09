@@ -309,6 +309,7 @@ export default function NetworkIntegrationTab() {
                 value={googleClientId}
                 onChange={e => setGoogleClientId(e.target.value)}
                 placeholder={OAUTH_PROVIDERS.google.defaultClientId}
+                aria-label="Google Client ID"
                 className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 font-mono text-xs"
               />
             </div>
@@ -335,6 +336,7 @@ export default function NetworkIntegrationTab() {
                 value={microsoftClientId}
                 onChange={e => setMicrosoftClientId(e.target.value)}
                 placeholder={OAUTH_PROVIDERS.microsoft.defaultClientId}
+                aria-label="Microsoft Client ID"
                 className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 font-mono text-xs"
               />
             </div>
@@ -387,15 +389,15 @@ export default function NetworkIntegrationTab() {
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider Name</label>
-              <input type="text" value={entProviderName} onChange={e => setEntProviderName(e.target.value)} placeholder="Corporate Keycloak" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 text-xs" />
+              <input type="text" value={entProviderName} onChange={e => setEntProviderName(e.target.value)} placeholder="Corporate Keycloak" aria-label="Enterprise SSO Provider Name" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 text-xs" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Auth URL (Intranet)</label>
-              <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} placeholder="https://sso.corp.local/auth" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
+              <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} placeholder="https://sso.corp.local/auth" aria-label="Enterprise SSO Auth URL" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Client ID</label>
-              <input type="text" value={entClientId} onChange={e => setEntClientId(e.target.value)} placeholder="ea-edge-agent" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
+              <input type="text" value={entClientId} onChange={e => setEntClientId(e.target.value)} placeholder="ea-edge-agent" aria-label="Enterprise SSO Client ID" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-xs" />
             </div>
             <button onClick={handleSaveEnterpriseSso} disabled={!entProviderName.trim() || !entAuthUrl.trim()} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Save size={14} /> Save Enterprise SSO
@@ -418,11 +420,11 @@ export default function NetworkIntegrationTab() {
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">LDAP URL</label>
-              <input type="text" value={ldapUrl} onChange={e => setLdapUrl(e.target.value)} placeholder="ldap://dc.corp.local:389" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
+              <input type="text" value={ldapUrl} onChange={e => setLdapUrl(e.target.value)} placeholder="ldap://dc.corp.local:389" aria-label="LDAP URL" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Base DN</label>
-              <input type="text" value={ldapBaseDn} onChange={e => setLdapBaseDn(e.target.value)} placeholder="dc=corp,dc=local" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
+              <input type="text" value={ldapBaseDn} onChange={e => setLdapBaseDn(e.target.value)} placeholder="dc=corp,dc=local" aria-label="LDAP Base DN" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500 font-mono text-xs" />
             </div>
             <button onClick={handleSaveLdapConfig} disabled={!ldapUrl.trim() || !ldapBaseDn.trim()} className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Save size={14} /> Save LDAP Configuration

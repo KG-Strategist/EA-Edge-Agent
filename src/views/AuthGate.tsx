@@ -1127,15 +1127,15 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <div className="space-y-3">
                    <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 dark:text-purple-200/80 mb-1">Auth URL (Intranet)</label>
-                      <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="https://sso.internal.corp" />
+                      <input type="text" value={entAuthUrl} onChange={e => setEntAuthUrl(e.target.value)} required aria-label="Enterprise Auth URL" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="https://sso.internal.corp" />
                    </div>
                    <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 dark:text-purple-200/80 mb-1">Provider Name</label>
-                      <input type="text" value={entProviderName} onChange={e => setEntProviderName(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Corporate Keycloak" />
+                      <input type="text" value={entProviderName} onChange={e => setEntProviderName(e.target.value)} required aria-label="Enterprise Provider Name" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Corporate Keycloak" />
                    </div>
                    <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 dark:text-purple-200/80 mb-1">Client ID</label>
-                      <input type="text" value={entClientId} onChange={e => setEntClientId(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="ea-edge-agent" />
+                      <input type="text" value={entClientId} onChange={e => setEntClientId(e.target.value)} required aria-label="Enterprise Client ID" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-purple-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="ea-edge-agent" />
                    </div>
                  </div>
 
@@ -1157,11 +1157,11 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                  <div className="space-y-3">
                    <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 dark:text-amber-200/80 mb-1">LDAP URL</label>
-                      <input type="text" value={entLdapUrl} onChange={e => setEntLdapUrl(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-amber-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="ldap://dc.corp.local:389" />
+                      <input type="text" value={entLdapUrl} onChange={e => setEntLdapUrl(e.target.value)} required aria-label="LDAP URL" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-amber-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="ldap://dc.corp.local:389" />
                    </div>
                    <div>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 dark:text-amber-200/80 mb-1">Base DN</label>
-                      <input type="text" value={entLdapBaseDn} onChange={e => setEntLdapBaseDn(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-amber-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="dc=corp,dc=local" />
+                      <input type="text" value={entLdapBaseDn} onChange={e => setEntLdapBaseDn(e.target.value)} required aria-label="LDAP Base DN" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-amber-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="dc=corp,dc=local" />
                    </div>
                  </div>
 
@@ -1399,7 +1399,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">2FA PIN</label>
                         <div className="relative">
-                          <input data-testid="auth-pin" type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
+                          <input data-testid="auth-pin" type={showPin ? "text" : "password"} value={pin} maxLength={6} onChange={e => setPin(e.target.value)} required aria-label="2FA PIN" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
                           <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -1408,7 +1408,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-blue-100/90 mb-1">Confirm PIN</label>
                         <div className="relative">
-                          <input data-testid="auth-confirm-pin" type={showPin ? "text" : "password"} value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
+                          <input data-testid="auth-confirm-pin" type={showPin ? "text" : "password"} value={confirmPin} maxLength={6} onChange={e => setConfirmPin(e.target.value)} required aria-label="Confirm 2FA PIN" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 pl-3 pr-10 outline-none focus:border-blue-500/50 tracking-widest text-center shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="4-6" />
                           <button type="button" onClick={() => setShowPin(!showPin)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
@@ -1423,13 +1423,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                           <select value={q1Id} onChange={e => setQ1Id(e.target.value)} aria-label="Security Question 1" title="Security Question 1" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
-                          <input data-testid="auth-security-answer-1" type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 1" />
+                          <input data-testid="auth-security-answer-1" type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required aria-label="Security Answer 1" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 1" />
                         </div>
                         <div>
                           <select value={q2Id} onChange={e => setQ2Id(e.target.value)} aria-label="Security Question 2" title="Security Question 2" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner text-xs mb-1">
                             {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                           </select>
-                          <input data-testid="auth-security-answer-2" type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 2" />
+                          <input data-testid="auth-security-answer-2" type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required aria-label="Security Answer 2" className="w-full rounded-xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 shadow-inner placeholder-gray-400 dark:placeholder-white/20 text-xs" placeholder="Answer 2" />
                         </div>
                       </div>
                     </div>
@@ -1493,13 +1493,13 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                         <select value={q1Id} onChange={e => setQ1Id(e.target.value)} aria-label="Recovery Security Question 1" title="Recovery Security Question 1" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
                           {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                         </select>
-                        <input type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 1" />
+                        <input type="text" value={q1Answer} onChange={e => setQ1Answer(e.target.value)} required aria-label="Recovery Security Answer 1" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 1" />
                       </div>
                       <div>
                         <select value={q2Id} onChange={e => setQ2Id(e.target.value)} aria-label="Recovery Security Question 2" title="Recovery Security Question 2" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs mb-1">
                           {securityQuestionOptions.map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
                         </select>
-                        <input type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 2" />
+                        <input type="text" value={q2Answer} onChange={e => setQ2Answer(e.target.value)} required aria-label="Recovery Security Answer 2" className="w-full rounded-lg border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 text-gray-900 dark:text-white py-2 px-3 outline-none focus:border-blue-500/50 text-xs" placeholder="Answer 2" />
                       </div>
                     </div>
                   </div>

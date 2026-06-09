@@ -7,7 +7,7 @@ import { db, NSIWorkflowState, ReviewSession, ReportTemplate } from '../lib/db';
 import { decryptBlob } from '../lib/cryptoVault';
 import { parseDDQResponse, generateDDQ } from '../lib/ddqEngine';
 import { computeWeightedScorecard, getDefaultWeightsForReviewType, WeightedVendorResult } from '../lib/scorecardEngine';
-import { runOCR } from '../lib/ocrEngine';
+import { runOcrDetailed } from '../lib/ocrEngine';
 import { buildPrompt, PromptContext } from '../lib/promptBuilder';
 import { generateReview } from '../lib/aiEngine';
 import { vectoriser } from '../lib/SemanticArena';
@@ -185,16 +185,26 @@ export default function ReviewExecution({ sessionId, onClose }: { sessionId: num
       addLog('Extracting architecture diagram text (OCR)...');
       let diagramsText = '';
       if (session.architectureBlobs && session.architectureBlobs.length > 0) {
-        for (const encrypted of session.architectureBlobs) {
-          if (encrypted.type.includes('image')) {
-            try {
-              const blob = await decryptBlob(encrypted.blob);
-              const text = await runOCR(blob);
-              diagramsText += `\n--- [${encrypted.name}] ---\n${text}\n`;
-              addLog(`OCR: ${text.length} chars from ${encrypted.name}`);
-            } catch {
-              addLog(`OCR skipped for: ${encrypted.name}`);
+        for (let i = 0; i < session.architectureBlobs.length; i++) {
+          const encrypted = session.architectureBlobs[i];
+          const isImage = encrypted.type.includes('image');
+          const isPdf = encrypted.type.includes('pdf') || encrypted.type === 'application/pdf';
+          const isSvg = encrypted.type.includes('svg') || encrypted.type === 'image/svg+xml';
+          if (!isImage && !isPdf && !isSvg) continue;
+          addLog(`OCR: processing attachment ${i + 1} of ${session.architectureBlobs.length} (${encrypted.name})…`);
+          try {
+            const blob = await decryptBlob(encrypted.blob);
+            const detailed = await runOcrDetailed(blob, { enableReranker: false });
+            diagramsText += `\n--- [${encrypted.name}] ---\n${detailed.text}\n`;
+            addLog(
+              `OCR: ${detailed.text.length} chars, mode=${detailed.mode}, pages=${detailed.pagesProcessed}/${detailed.pagesTotal ?? detailed.pagesProcessed}, confidence=${detailed.confidence.toFixed(2)} from ${encrypted.name}`,
+            );
+            if (detailed.internalFlags.length > 0) {
+              addLog(`OCR flags for ${encrypted.name}: ${detailed.internalFlags.join(', ')}`);
             }
+          } catch (error) {
+            Logger.warn('[ReviewExecution] OCR failed for attachment', encrypted.name, error);
+            addLog(`OCR skipped for: ${encrypted.name}`);
           }
         }
       }
@@ -536,6 +546,7 @@ addLog('Fetching architecture principles and BIAN domain context...');
         <textarea
           value={editedReport}
           onChange={(e) => setEditedReport(e.target.value)}
+          aria-label="Edited Report Markdown"
           className="w-full h-96 p-4 text-sm font-mono bg-slate-900 text-green-400 rounded-xl border border-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
         spellCheck={false}
       />

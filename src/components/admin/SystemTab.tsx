@@ -11,6 +11,7 @@ import { useLocalBackupState } from '../../hooks/useLocalBackupState';
 import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 import { recoverEncryptedMessages, VaultRecoveryResult } from '../../lib/secureDb';
+import OcrHealthWidget from './OcrHealthWidget';
 
 export default function SystemTab() {
   const { identity, setIdentity } = useStateContext();
@@ -723,6 +724,9 @@ try {
         )}
       </div>
 
+      {/* ── Bespoke OCR Health ──────────────────────────────────────── */}
+      <OcrHealthWidget />
+
       {/* ── Vault Recovery ──────────────────────────────────────────── */}
       <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
         <div className="flex items-start gap-3">
@@ -769,6 +773,7 @@ try {
               value={recoveryPin}
               onChange={e => setRecoveryPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="Enter your old PIN"
+              aria-label="Old PIN"
               autoFocus
               autoComplete="off"
               maxLength={6}

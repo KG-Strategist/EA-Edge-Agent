@@ -74,6 +74,7 @@ export default function ArchitectureReviews() {
             <input 
               type="text" 
               placeholder="Search reviews..." 
+              aria-label="Search reviews"
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-shadow text-sm text-gray-900 dark:text-white"
             />
           </div>

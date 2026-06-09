@@ -1,4 +1,5 @@
 import { Logger } from '../logger';
+import { validateEndpointUrl, checkNetworkConsent } from '../networkGuard';
 
 export type DownloadStatus = 'idle' | 'downloading' | 'paused' | 'complete' | 'error';
 
@@ -40,6 +41,16 @@ export class OPFSManager {
     modelId: string,
     onProgress?: (bytesDownloaded: number, totalBytes: number) => void
   ): Promise<void> {
+    // Check network consent and validate endpoint for external URLs
+    const isAbsolute = /^https?:\/\//i.test(modelUrl);
+    if (isAbsolute) {
+      const consent = await checkNetworkConsent();
+      if (!consent) {
+        throw new Error('Network access disabled. Enable the network feature to download external models.');
+      }
+      await validateEndpointUrl(modelUrl);
+    }
+
     let lastError: Error | null = null;
     const root = await navigator.storage.getDirectory();
 

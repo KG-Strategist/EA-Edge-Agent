@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import DOMPurify from 'dompurify';
 import { getFilteredQuestions, DDQMetadata, DDQQuestion, DDQScorecard, DDQScoreEntry, DDQ_QUESTION_BANK } from './ddqRules';
 
 // Pre-built question ID → definition lookup — avoids rebuilding Map on every parseDDQResponse call
@@ -157,10 +158,10 @@ export function parseDDQResponse(workbook: XLSX.WorkBook): DDQScorecard {
     const row = data[i];
     if (!row || row.length < 4) continue;
 
-    const questionId = String(row[0] || '').trim();
-    const principle = String(row[1] || '').trim();
-    const question = String(row[2] || '').trim();
-    const selectedOption = String(row[3] || '').trim();
+    const questionId = DOMPurify.sanitize(String(row[0] || '').trim());
+    const principle = DOMPurify.sanitize(String(row[1] || '').trim());
+    const question = DOMPurify.sanitize(String(row[2] || '').trim());
+    const selectedOption = DOMPurify.sanitize(String(row[3] || '').trim());
     const maxScore = 5;
 
     // Look up the score based on the selected option text

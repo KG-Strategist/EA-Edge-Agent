@@ -1,7 +1,7 @@
 import { Logger } from './logger';
 import { db } from './db';
 import { decryptString } from './cryptoVault';
-import { validateEndpointUrl } from './networkGuard';
+import { validateEndpointUrl, checkNetworkConsent } from './networkGuard';
 import { globalArena, vectoriser, parser, globalSynthesizer } from './SemanticArena';
 import { sovereignEngine } from './wasm/SovereignEngine';
 import { OPFSManager } from './storage/opfsManager';
@@ -23,6 +23,36 @@ let activeMitraProfile: ActiveMitraProfile | null = null;
 
 // Foolproof KV Cache Isolation — tracks the last persona that held the engine context
 let lastActivePersonaId: number | null = null;
+
+/**
+ * Dead Man's Switch watchdog — wraps a generation promise with a
+ * 120-second timeout. If the underlying WASM worker hangs (OOM,
+ * infinite loop, KV-cache exhaustion), the watchdog fires and
+ * surfaces a recoverable error to the UI instead of blocking
+ * the chat forever.
+ *
+ * The chosen budget (120s) is intentionally generous: a 1.1B
+ * Q4_0 model on the Wasm SIMD CPU lane can take 60-90s for a
+ * 1k-token completion. Anything longer than 2 minutes is almost
+ * always a worker hang and should be surfaced to the user.
+ */
+const GENERATION_WATCHDOG_MS = 120_000;
+
+async function withGenerationWatchdog<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(
+        `GENERATION_WATCHDOG_TIMEOUT: ${label} did not complete within ${GENERATION_WATCHDOG_MS / 1000}s. The WASM worker is hung; please retry with a shorter prompt.`,
+      ));
+    }, GENERATION_WATCHDOG_MS);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
 
 // On module load (including HMR reloads), read the active persona from DB
 if (typeof window !== 'undefined') {
@@ -505,7 +535,12 @@ export async function chatWithAgentDetailed(
 
   if (targetModel && targetModel.type === 'BYOM_NETWORK') {
     Logger.info(`[BYOM Router] Routing to Custom Enterprise Endpoint: ${targetModel.name}...`);
-    try { validateEndpointUrl(targetModel.modelUrl); } catch (e) {
+    const consent = await checkNetworkConsent();
+    if (!consent) {
+      onUpdate('\n\n[Security Block] Network access disabled. Enable the network feature to use BYOM endpoints.');
+      throw new Error('Network access disabled.');
+    }
+    try { await validateEndpointUrl(targetModel.modelUrl); } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       onUpdate(`\n\n[Security Block] Endpoint validation failed: ${msg}`);
       throw new Error(`Endpoint blocked: ${msg}`);
@@ -525,20 +560,23 @@ export async function chatWithAgentDetailed(
       : [{ role: 'system' as const, content: systemContent }, ...messages];
 
     try {
-      const response = await fetch(targetModel.modelUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(bearerToken ? { 'Authorization': `Bearer ${bearerToken}` } : {})
-        },
-        body: JSON.stringify({
-          model: targetModel.name,
-          messages: routedMessages,
-          temperature: 0.3,
-          stream: false
+      const response = await withGenerationWatchdog(
+        fetch(targetModel.modelUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(bearerToken ? { 'Authorization': `Bearer ${bearerToken}` } : {})
+          },
+          body: JSON.stringify({
+            model: targetModel.name,
+            messages: routedMessages,
+            temperature: 0.3,
+            stream: false
+          }),
+          redirect: 'error',
         }),
-        redirect: 'error',
-      });
+        `byom:${targetModel.name}`,
+      );
 
       if (!response.ok) throw new Error(`Endpoint returned ${response.status}: ${response.statusText}`);
       const data = await response.json();
@@ -594,7 +632,10 @@ export async function chatWithAgentDetailed(
   let response: string;
   if (isDaemonActive) {
     Logger.info('[Router] Local Daemon active. Offloading to native OS.');
-    response = await localDaemon.generateText(engineMessages, (token) => { if (onUpdate) onUpdate(token); });
+    response = await withGenerationWatchdog(
+      localDaemon.generateText(engineMessages, (token) => { if (onUpdate) onUpdate(token); }),
+      'local-daemon',
+    );
   } else {
     Logger.info('[Router] Daemon offline. Using Sovereign Wasm Engine.');
     const modelId = await resolveModelId(_executionTarget);
@@ -694,14 +735,20 @@ Zero-trust architecture eliminates implicit network trust`;
 
   let reply: string;
   if (isDaemonActive) {
-    reply = await localDaemon.generateText(messages, (token) => { if (onUpdate) onUpdate(token); });
+    reply = await withGenerationWatchdog(
+      localDaemon.generateText(messages, (token) => { if (onUpdate) onUpdate(token); }),
+      'local-daemon',
+    );
   } else {
     const modelId = await resolveModelId('Primary EA Agent');
     if (!modelId) {
       throw new Error('NO_MODEL_CONFIGURED: No model is configured. Please configure a model in Agent Settings.');
     }
     await ensureModelCached(modelId);
-    reply = await sovereignEngine.generateText(messages, (token) => { if (onUpdate) onUpdate(token); }, resolveBrowserGenerationBudget(modelId, 64));
+    reply = await withGenerationWatchdog(
+      sovereignEngine.generateText(messages, (token) => { if (onUpdate) onUpdate(token); }, resolveBrowserGenerationBudget(modelId, 64)),
+      `sovereign:${modelId}`,
+    );
   }
 
   // Non-blocking distillation: continuous learning in background

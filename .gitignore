@@ -10,12 +10,25 @@ dist-ssr/
 coverage/
 test-results/
 playwright-report/
+src/__tests__/e2e/screenshots/
 *.local
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.tmp
+*.pid
+
+# Training IP — private scripts, not needed by platform
+scripts/training/
+scripts/training/models/__pycache__/
+scripts/training/__pycache__/
+scripts/tiny-model-builder/
+
+# Empty placeholder dirs
+.agents/
+.claude/
+.cache/
 
 # --- [2] Public Markdown Policy ---
 *.md
@@ -26,13 +39,39 @@ yarn-error.log*
 # --- [3] Corpus Sources & Generated Runtime Brain ---
 /public/dataAssets/
 /public/baseline_meta.json
+/public/baseline_corpus.bin.gz
 /public/lexicon.json
 /public/lexicon_roles.json
 corpus-artifacts/
 
+# Phase 14b-h OCR training runtime (Python + MLX)
+.venv/
+data/synthetic/images/
+data/synthetic/images_short/
+data/synthetic/ea_text_lines.jsonl
+data/synthetic/ea_text_lines_short.jsonl
+data/synthetic/gt.jsonl
+data/synthetic/gt_short.jsonl
+data/public/coco_text/images/
+data/final/
+data/vocab/
+artifacts/checkpoints/
+artifacts/tensor/
+artifacts/mapping/
+artifacts/logs/
+scripts/training/__pycache__/
+scripts/training/models/__pycache__/
+**/__pycache__/
+
 # Large local models and generated binaries
 *.onnx
 public/*.bin
+
+# OCR assets are LFS-managed (.bin.gz / .json.gz); lock manifest is tracked
+public/ocr/*.bin.gz
+public/ocr/*.json.gz
+!public/ocr/ocr.lock.json
+!public/ocr/ocr_manifest.json
 
 # --- [4] Database, Cache & Traces ---
 .cache/
@@ -77,3 +116,10 @@ ts_errors.txt
 !src/lib/wasm/pkg/eaniti_engine.d.ts
 !src/lib/wasm/pkg/eaniti_engine_bg.wasm.d.ts
 !src/lib/wasm/pkg/package.json
+!src/lib/wasm/ocr/
+!src/lib/wasm/ocr/pkg/
+!src/lib/wasm/ocr/pkg/ocr_engine.js
+!src/lib/wasm/ocr/pkg/ocr_engine_bg.wasm
+!src/lib/wasm/ocr/pkg/ocr_engine.d.ts
+!src/lib/wasm/ocr/pkg/ocr_engine_bg.wasm.d.ts
+!src/lib/wasm/ocr/pkg/package.json

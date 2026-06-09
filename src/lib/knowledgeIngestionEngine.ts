@@ -1,9 +1,24 @@
-import * as pdfjs from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 import { db } from './db';
 import { vectoriser } from './SemanticArena';
 import { Logger } from './logger';
+
+// Lazy-load pdfjs to avoid circular dependency at module load time.
+let pdfjs: any = null;
+let pdfjsInitialized = false;
+
+async function initPdfJs() {
+  if (pdfjsInitialized) return;
+  try {
+    const pdfModule = await import('pdfjs-dist');
+    const workerModule = await import('pdfjs-dist/build/pdf.worker.mjs?url');
+    pdfjs = pdfModule;
+    pdfjs.GlobalWorkerOptions.workerSrc = workerModule.default;
+    pdfjsInitialized = true;
+  } catch (error) {
+    Logger.warn('[KnowledgeIngestion] pdfjs initialization failed', error);
+    pdfjsInitialized = true;
+  }
+}
 
 export interface IngestionProgress {
   filename: string;
@@ -19,6 +34,7 @@ async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase();
 
   if (ext === 'pdf') {
+    await initPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdfDocument = await pdfjs.getDocument({ data: arrayBuffer }).promise;
     let fullText = '';

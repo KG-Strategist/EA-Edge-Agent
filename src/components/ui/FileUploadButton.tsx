@@ -14,7 +14,7 @@ interface FileUploadButtonProps {
 export default function FileUploadButton({
   onFileSelect,
   isLoading = false,
-  label = 'Select GGUF File & Sideload',
+  label = 'Sideload GGUF',
   id = 'file-upload-input',
   className = '',
   disabled = false,
@@ -38,11 +38,13 @@ export default function FileUploadButton({
       <input
         type="file"
         id={id}
+        name={id}
         data-testid={id}
         onChange={handleChange}
         className="sr-only"
         accept=".gguf"
         disabled={disabled || isLoading}
+        aria-label="Select a single GGUF file for OPFS sideloading"
       />
       <label
         htmlFor={id}

@@ -25,6 +25,13 @@ export const MASTER_CATEGORY_TYPES = {
  * Enterprise Model Registry.
  * GGUF models for Sovereign Engine (OPFS) pipeline.
  * All URLs verified against bartowski mirrors (TheBloke gated as of May 2026).
+ *
+ * Strike 4.0 (v1.1.4-beta): the default `sovereignModelUrl` shipped by
+ * `seedData.ts` is now the bespoke local asset
+ *   `/models/ea-niti-core-1.1b-q4.gguf`
+ * (Apache 2.0 base, MIT-forked under EA-NITI-Core revision). The entries
+ * below remain available in the dropdown for fallback or evaluation
+ * against upstream bartowski mirrors.
  */
 export const SUPPORTED_MLC_MODELS = [
   {

@@ -51,24 +51,13 @@ export class LexicalStateMachine {
     return this.v1[aLen];
   }
 
-  public async loadLexicon(isNodeEnv = false, basePath = '') {
+  public async loadLexicon(data?: Record<string, string>) {
     try {
-      let data: Record<string, string> = {};
-      if (isNodeEnv) {
-        if (typeof window === 'undefined') {
-          const fs = await import('fs');
-          const path = await import('path');
-          const filePath = path.join(basePath, 'public', 'lexicon.json');
-          if (fs.existsSync(filePath)) {
-            data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          }
-        }
-      } else {
-        if (typeof window !== 'undefined') {
-          data = await fetchJsonAsset<Record<string, string>>('/lexicon.json.gz', '/lexicon.json');
-        }
+      let resolvedData: Record<string, string> = data || {};
+      if (!data && typeof window !== 'undefined') {
+        resolvedData = await fetchJsonAsset<Record<string, string>>('/lexicon.json.gz', '/lexicon.json');
       }
-      this.lexicon = new Map(Object.entries(data));
+      this.lexicon = new Map(Object.entries(resolvedData));
     } catch (e) {
       Logger.warn('Failed to load lexicon', e);
     }

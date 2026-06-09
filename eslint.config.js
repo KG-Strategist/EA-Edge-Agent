@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/lib/wasm/pkg', 'src-rust/pkg'] },
+  { ignores: ['dist', 'src/lib/wasm/pkg', 'src/lib/wasm/ocr/pkg', 'src-rust/pkg'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
@@ -25,7 +25,14 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_+', varsIgnorePattern: '^_+' }],
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/static-components': 'off',
-      'prefer-const': 'off'
+      'prefer-const': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='URL'] > TemplateLiteral:first-child[expressions.length>0]",
+          message: 'Dynamic new URL() with template literal and import.meta.url causes Vite to scan the entire repo root. Use fetch() with absolute paths instead.'
+        }
+      ]
     },
   }
 );

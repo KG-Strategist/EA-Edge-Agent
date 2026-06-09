@@ -1,5 +1,12 @@
 import { db, ChatThread, ChatMessage, DistillationTask } from './db';
-import { secureAddChatMessage, secureGetChatMessages } from './secureDb';
+import {
+  ChatMessageWindow,
+  secureAddChatMessage,
+  secureGetChatMessages,
+  secureGetOlderChatMessages,
+  secureGetRecentChatMessages,
+  secureGetSystemChatMessages,
+} from './secureDb';
 
 export async function createThread(title?: string): Promise<number> {
   const newThread: ChatThread = {
@@ -25,6 +32,22 @@ export async function addMessage(
 
 export async function getMessages(threadId: number): Promise<ChatMessage[]> {
   return await secureGetChatMessages(threadId);
+}
+
+export async function getRecentMessages(threadId: number, limit = 80): Promise<ChatMessageWindow> {
+  return await secureGetRecentChatMessages(threadId, limit);
+}
+
+export async function getOlderMessages(
+  threadId: number,
+  beforeTimestamp: number,
+  limit = 80
+): Promise<ChatMessageWindow> {
+  return await secureGetOlderChatMessages(threadId, beforeTimestamp, limit);
+}
+
+export async function getSystemMessages(threadId: number): Promise<ChatMessage[]> {
+  return await secureGetSystemChatMessages(threadId);
 }
 
 export async function queueForDistillation(query: string, context?: string): Promise<number> {

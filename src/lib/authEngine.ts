@@ -55,6 +55,20 @@ function parseSession(): string | null {
 // Initialize from sessionStorage on module load
 currentSessionPseudokey = parseSession();
 
+// Rotate HMAC key every 30 minutes to limit session hijacking window
+setInterval(rotateHMACKey, 30 * 60 * 1000);
+
+export async function rotateHMACKey(): Promise<void> {
+  if (!currentSessionPseudokey) return;
+  try {
+    await initializeHmacKey();
+    await saveSession(currentSessionPseudokey);
+    Logger.info('[authEngine] HMAC session key rotated successfully.');
+  } catch (error) {
+    Logger.warn('[authEngine] HMAC session key rotation failed.', error);
+  }
+}
+
 export function getCurrentUser() {
   return currentSessionPseudokey;
 }

@@ -1,0 +1,20 @@
+{
+  "name": "ea-niti-ocr-engine",
+  "type": "module",
+  "collaborators": [
+    "EA NITI"
+  ],
+  "description": "Bespoke Rust/WASM OCR runtime for the EA-NITI Edge Agent (private crate).",
+  "version": "1.1.4",
+  "license": "MIT OR Apache-2.0",
+  "files": [
+    "ea_niti_ocr_engine_bg.wasm",
+    "ea_niti_ocr_engine.js",
+    "ea_niti_ocr_engine.d.ts"
+  ],
+  "main": "ea_niti_ocr_engine.js",
+  "types": "ea_niti_ocr_engine.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

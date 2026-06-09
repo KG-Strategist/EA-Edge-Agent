@@ -174,6 +174,7 @@ export default function TemplatesTab() {
                       value={formData.version || ''}
                       onChange={e => setFormData({...formData, version: e.target.value})}
                       placeholder="1.0.0"
+                      aria-label="Version String"
                     />
                  </div>
                  
@@ -206,6 +207,7 @@ export default function TemplatesTab() {
                    value={formData.markdownStructure || ''}
                    onChange={e => setFormData({...formData, markdownStructure: e.target.value})}
                    placeholder="# Architecture Decision Record\n\n## Overview..."
+                   aria-label="Markdown Structure Framework"
                  />
               </div>
             </div>

@@ -5,12 +5,12 @@
   <p><em>A sovereign Edge-AI Operating System that distributes free, private AI compute at the edge — utilizing latent device capacity for every enterprise, institution, and organization.</em></p>
 
   ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-  ![React](https://img.shields.io/badge/React-19-blue.svg)
+  ![React](https://img.shields.io/badge/React-18-blue.svg)
   ![WebGPU](https://img.shields.io/badge/WebGPU-Enabled-green.svg)
   ![Local AI](https://img.shields.io/badge/AI-Sovereign_Engine-orange.svg)
   ![Zero-Backend](https://img.shields.io/badge/Architecture-Zero_Backend-purple.svg)
   ![MITRA Swarm](https://img.shields.io/badge/Persona-MITRA_Swarm-cyan.svg)
-  ![Release Status](https://img.shields.io/badge/v1.1.3-RC_Locked-green.svg)
+  ![Release Status](https://img.shields.io/badge/v1.1.4--beta-Air--Gap_Locked-green.svg)
 </div>
 
 ---
@@ -65,7 +65,7 @@ Build-time compiler (`compileCorpus.ts`) pre-calculates semantic vectors for 600
 Weighted vendor comparison across Business/Data/Application/Technology axes with configurable weights. Generates ranked vendor tables with pass/fail indicators from DDQ (Due Diligence Questionnaire) responses. Fully client-side via SheetJS parsing.
 
 ### SideloadService (OPFS GGUF Ingestion)
-Offline model weight ingestion via folder upload directly into browser CacheStorage. Enables "sneakernet" model distribution for air-gapped environments — no network required for model deployment.
+Offline model weight ingestion via a single local `.gguf` file copied directly into the browser OPFS Model Library. Enables "sneakernet" model distribution for air-gapped environments — no network required for model deployment.
 
 ### 3-Tier Subagent Architecture
 Compiler → Evaluator → Fixer persona pipeline for policy/code review workflows. Each tier operates as an independent logical agent with its own prompt template and output validation, orchestrated through the MITRA Swarm framework.
@@ -75,7 +75,7 @@ EA-NITI rejects external policy binaries like OPA/Rego. Compliance logic and off
 
 ---
 
-## 🛡️ v1.1.3 Hardening Highlights
+## 🛡️ v1.1.4-beta Hardening Highlights
 
 ### Performance (10 Fixes)
 - **Precomputed RoPE:** 786K+ trig calls eliminated per forward pass
@@ -99,9 +99,17 @@ EA-NITI rejects external policy binaries like OPA/Rego. Compliance logic and off
 - **Bitfield Projection SDK:** `bitfieldSDK.ts` exposes ZOH operations
 - **Streaming Token API:** `prefill_prompt()` + `generate_next_token()` + `decode_single_token()`
 
+### Strike 4.0 — Air-Gap & Bespoke Runtime
+- **One-Command Bootstrap:** `npm run setup:local` performs LFS pull + npm ci + bespoke LLM forge + lockfile unlock + integrity verify in a single shot.
+- **Bespoke LLM Forge:** `scripts/forge_bespoke_model.mjs` downloads the permissive `TinyLlama-1.1B-Chat-v1.0-GGUF` base (Apache 2.0), validates the `GGUF` magic, and renames it to `public/models/ea-niti-core-1.1b-q4.gguf` under EA-NITI provenance. Default `sovereignModelUrl` is now this local asset — no HF dependency at runtime.
+- **Lockfile-Backed OCR Runtime:** `public/ocr/ocr.lock.json` declares detector, recognizer, vocab, grammar, runtime + GGUF assets with `path/role/required/byteLength/sha256/license/source/format`. `verify:ocr` rejects any placeholder SHA in strict mode (`EA_NITI_OCR_STRICT=1`).
+- **Dynamic DB Migration:** `EADatabase.nextVersionAfter(MAX)` introspects the schema file and emits `MAX+1` for the new `page_visual_metadata` table, eliminating hardcoded version drift.
+- **Hydration ABI:** `OcrEngine.loadModelBundle(role, bytes)` zero-copy blits the LFS asset into the WASM linear memory and flips the runtime into a fully-loaded state; `isLoaded()` requires both detector and recognizer bundles.
+- **Compliance Provenance:** Root + `public/ocr/NOTICE.txt` + `public/models/NOTICE.txt` document Apache 2.0 / MIT lineage and the ECCN 5D992.c export-control exemption.
+
 ---
 
-## ✨ Current Active Capabilities (v1.1.3)
+## ✨ Current Active Capabilities (v1.1.4-beta)
 
 | Feature | Description |
 |---------|-------------|
@@ -122,7 +130,7 @@ EA-NITI rejects external policy binaries like OPA/Rego. Compliance logic and off
 | **Pre-flight Guardrail Interceptor** | Policy enforcement in <1ms using bitwise Tanimoto intersections on contiguous memory. |
 | **Sovereign Compiler** | Build-time compilation of 600k+ records into optimized binary reflexes (`.bin.gz`). |
 | **Zero-PII Authentication** | PBKDF2-hashed local authentication with AES-256-GCM credential vaulting. |
-| **USB Sideloading (Sneakernet)** | Offline model weight ingestion via folder upload into browser CacheStorage. |
+| **USB Sideloading (Sneakernet)** | Offline single-file GGUF ingestion into the OPFS Model Library. |
 | **STRIDE Threat Modeling** | Interactive DFD builder with Mermaid generation and AI-enriched mitigation planning. |
 | **Governance Workflows** | Configurable multi-stage review pipelines and admin-managed approval flows. |
 | **Immutable Audit Logging** | Every mutation logged with search, filtering, and air-gapped CSV export. |
@@ -143,10 +151,10 @@ See [TESTING_GUIDE.md](TESTING_GUIDE.md) for the complete testing protocol inclu
 
 ## 🛠️ Tech Stack
 
-* **Frontend:** React 19, Tailwind CSS v4, IBM Plex (Sans/Mono), Lucide React
+* **Frontend:** React 18, Tailwind CSS v4, IBM Plex (Sans/Mono), Lucide React
 * **AI & Machine Learning:** SovereignEngine (Wasm SIMD GGUF with WebGPU adapter and VRAM handoff scaffold), LocalDaemonProvider (WebSocket Agent Socket), EpistemicShadow (background distillation), StructuralVectoriser (1024-bit ZOH POPCNT math), StructuralVectoriser local embeddings/vector pipeline
-* **Storage:** Dexie.js (IndexedDB v36, 30 tables), OPFS, CacheStorage, WASM PostgreSQL (`pglite`)
-* **Build:** Vite 6.x, TypeScript 5.8, custom corpus compiler (`compileCorpus.ts`)
+* **Storage:** Dexie.js (IndexedDB v40+ — dynamic v(N+1) extension), OPFS, CacheStorage, WASM PostgreSQL (`pglite`)
+* **Build:** Vite 5.x, TypeScript 5.6, custom corpus compiler (`compileCorpus.ts`)
 * **Security:** `crypto.subtle` (AES-256-GCM, PBKDF2), DOMPurify, NetworkGuard (SSRF protection)
 * **Data Formats:** SheetJS (DDQ parsing), Mermaid (DFD generation), remark-gfm (markdown tables)
 
@@ -178,6 +186,57 @@ npm run verify:corpus
 # Run development server
 npm run dev
 ```
+
+### 🛰️ One-Command Local Setup (v1.1.4-beta — Strike 4.0 Air-Gap Release)
+
+EA-NITI ships with a single bootstrap that pulls the bespoke OCR runtime,
+the EA-NITI-Core forge (Apache 2.0 base, MIT-forked), and the corpus
+lockfile in one step. After this runs, the app boots fully offline.
+
+```bash
+# 1) Clone, then run the one-command bootstrap
+git lfs install
+git clone <repo-url>
+cd ea-niti-edge-agent
+npm run setup:local     # ← does LFS pull + npm ci + forge + verify
+npm run dev             # air-gapped local mode is now online
+```
+
+`npm run setup:local` performs:
+
+| Step | Script | Purpose |
+|------|--------|---------|
+| 1 | `git lfs install && git lfs pull --include=public/ocr,public/models,public/manifests` | Hydrate OCR + LLM + corpus LFS pointers |
+| 2 | `npm ci` | Install JS dependencies |
+| 3 | `node scripts/forge_bespoke_model.mjs` | Download `TinyLlama-1.1B-Chat-v1.0-GGUF` (Apache 2.0) from HF, validate the `GGUF` magic, rename to `public/models/ea-niti-core-1.1b-q4.gguf`, and write a provenance meta blob. The download is the only network call. |
+| 4 | `node scripts/ocrArtifacts.mjs unlock` | Autofill the real `byteLength` + `sha256` for every entry in `public/ocr/ocr.lock.json` |
+| 5 | `npm run verify:corpus && npm run verify:ocr` | Assert LFS integrity, reject placeholders in strict mode |
+
+The default `sovereignModelUrl` shipped in `seedData.ts` is now
+`/models/ea-niti-core-1.1b-q4.gguf`, so the first time a user opens the
+app it will read the bespoke LLM straight from the local model library
+with no external calls.
+
+#### Strict release mode
+```bash
+EA_NITI_OCR_STRICT=1 npm run setup:local
+```
+Strict mode fails the moment any OCR lockfile entry has a
+`REPLACE_WITH_REAL_SHA256_*` placeholder, so a release pipeline can
+gate on a single env var without rewriting the verifier.
+
+#### Custom base model
+```bash
+EA_NITI_BASE_MODEL_URL=https://my-mirror/your-permissive-Q4_0.gguf \
+  npm run setup:local
+```
+Any `*.gguf` (Apache 2.0 / MIT) works as long as it starts with the
+`GGUF` magic bytes — the forge script enforces this before commit.
+
+#### Idempotency
+The script is safe to re-run. It skips `npm ci` when `node_modules/` is
+present, skips the forge step when the bespoke GGUF already exists, and
+treats the lockfile unlock as a no-op when the SHAs are already real.
 
 ### Compile a Custom Structural Corpus
 Raw corpus sources are intentionally excluded from the public repository. The app consumes release-published corpus artifacts:

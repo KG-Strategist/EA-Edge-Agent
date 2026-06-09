@@ -824,7 +824,7 @@ const sovereignModelUrlSetting = await db.app_settings.get('sovereignModelUrl');
 if (!sovereignModelUrlSetting) {
   await db.app_settings.put({
     key: 'sovereignModelUrl',
-    value: 'https://huggingface.co/bartowski/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-Q4_0.gguf'
+    value: '/models/ea-niti-core-1.1b-q4.gguf'
   });
 }
 

@@ -156,12 +156,19 @@ function isPrivateIPv6(hostname: string): boolean {
   }
 
   // fc00::/7 (Unique Local Addresses): fc00:: to fdff:ffff:...
-  // First two bits of first hextet must be 11 (0xfc = 11111100)
-  if (addr.startsWith('fc') || addr.startsWith('fd')) return true;
+  // First 7 bits must be 1111110 (0xFC00).
+  const hextets = addr.split(':');
+  if (hextets.length > 0 && hextets[0]) {
+    const firstHextet = parseInt(hextets[0], 16);
+    if ((firstHextet & 0xfe00) === 0xfc00) return true;
+  }
 
   // fe80::/10 (Link-Local Unicast): fe80:: to febf:ffff:...
-  // First 10 bits: 1111111010 (0xfe8 = 111111101000)
-  if (addr.startsWith('fe8') || addr.startsWith('fe9') || addr.startsWith('fea') || addr.startsWith('feb')) return true;
+  // First 10 bits must be 1111111010 (0xFE80).
+  if (hextets.length > 0 && hextets[0]) {
+    const firstHextet = parseInt(hextets[0], 16);
+    if ((firstHextet & 0xffc0) === 0xfe80) return true;
+  }
 
   // ff00::/8 (Multicast) — also block as it's not a routable unicast address
   if (addr.startsWith('ff')) return true;

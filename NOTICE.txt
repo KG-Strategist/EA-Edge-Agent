@@ -1,0 +1,76 @@
+EA-NITI Edge Agent — NOTICE
+============================
+
+This repository is released under the MIT License. The binary artefacts
+shipped via Git LFS in `public/ocr/` and `public/models/` are
+derivative works of permissively-licensed open-source projects. Their
+provenance is recorded below for transparency.
+
+
+────────────────────────────────────────────────────────────────────
+1. OCR Neural Weights (public/ocr/*.bin.gz, public/ocr/*.json.gz)
+────────────────────────────────────────────────────────────────────
+
+These int8 weights are the inference brain of the EA-NITI bespoke OCR
+engine. They are shipped under their original permissive licences via
+Git LFS. The Rust/WASM runtime that consumes them is part of the
+EA-NITI codebase and released under MIT.
+
+  Detector
+    Name:    DBNet-Lite-Thin (int8)
+    Source:  https://github.com/xiaoyu252/Text-Recognition-DBNet
+    Licence: Apache License 2.0
+    Mods:    int8 quantization, layout re-serialized for zero-copy blit.
+
+  Recognizer
+    Name:    ViT-Lite-128 (int8)
+    Source:  scene-text-vit community port
+    Licence: MIT
+    Mods:    int8 quantization, single-batch head.
+
+  Vocab / Grammar
+    Name:    EA-NITI generated
+    Source:  EA-NITI repo (this codebase)
+    Licence: MIT
+
+────────────────────────────────────────────────────────────────────
+2. LLM Starter Model (public/models/ea-niti-core-1.1b-q4.gguf)
+────────────────────────────────────────────────────────────────────
+
+The bundled starter LLM is a derivative work of a permissive base
+model. The base model is downloaded and renamed by
+`scripts/forge_bespoke_model.mjs`. The original upstream project
+retains all rights to its weights and licence.
+
+  Bespoke name:   ea-niti-core-1.1b-q4
+  Base model:     repro/repro-mini-1.1b (Q4_0 GGUF quantization)
+  Base URL:       https://huggingface.co/repro/repro-mini-1.1b-gguf
+  Base licence:   Apache License 2.0
+  Mods:           Renamed; metadata stamped with EA-NITI provenance.
+                  No fine-tuning, no weight edits, no distillation.
+  Source of
+  truth:          public/models/ea-niti-core-1.1b-q4.meta.json
+
+  The bespoke file is tracked via Git LFS (see `.gitattributes`).
+  To re-forge from a different permissive base, set
+  `EA_NITI_BASE_MODEL_URL` before running
+  `node scripts/forge_bespoke_model.mjs`.
+
+
+────────────────────────────────────────────────────────────────────
+3. Trademarks & Endorsement
+────────────────────────────────────────────────────────────────────
+
+EA-NITI is an independent project. The Apache 2.0 / MIT projects
+listed above are not affiliated with, endorsed by, or sponsored by
+EA-NITI. All trademarks remain the property of their respective
+owners.
+
+────────────────────────────────────────────────────────────────────
+4. Export Control
+────────────────────────────────────────────────────────────────────
+
+This release is open-source mathematical code and permissively
+licensed model weights. It is exempt from US export controls under
+ECCN 5D992.c (open-source publicly available). No additional
+export-control filings are required for distribution.

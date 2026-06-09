@@ -271,6 +271,7 @@ export default function ComplianceGuardrailsTab() {
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               placeholder="e.g., No External Vendor Naming"
+              aria-label="Policy Title"
               autoFocus
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-4"
             />
@@ -283,6 +284,7 @@ export default function ComplianceGuardrailsTab() {
               value={newRuleText}
               onChange={e => setNewRuleText(e.target.value)}
               placeholder="The constraint that will be injected into the AI system prompt…"
+              aria-label="Rule Text"
               rows={3}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-4 resize-none"
             />

@@ -1,6 +1,4 @@
-// Custom OTEL collector simulation (Rust compiled to Wasm equivalent)
-// Tracks local telemetry with 0 egress.
-import { Logger } from './logger';
+// Custom OTEL collector simulation. Tracks local telemetry with 0 egress.
 
 let telemetryBuffer: any[] = [];
 const FLUSH_INTERVAL = 5000;
@@ -30,11 +28,20 @@ self.onmessage = async (e: MessageEvent) => {
   }
 };
 
-// Periodic flush to local IndexedDB (0 egress)
+// Periodic flush to the main thread for IndexedDB persistence (0 egress).
 setInterval(() => {
   if (telemetryBuffer.length > 0) {
-    // In a full implementation, this would write to Dexie or PGLite
-    Logger.log('[MELT Telemetry Worker] Flushed to local storage:', telemetryBuffer.length, 'events');
+    const batch = telemetryBuffer.map((event) => ({
+      kind: event.type,
+      metricName: event.type === 'metric' ? event.name || 'worker.metric' : undefined,
+      traceName: event.type === 'trace' ? event.name || 'worker.trace' : undefined,
+      value: event.type === 'metric' ? Number(event.value ?? 0) : undefined,
+      durationMs: event.type === 'trace' ? Number(event.durationMs ?? event.duration ?? 0) : undefined,
+      status: event.status || 'ok',
+      engineUsed: event.engineUsed,
+      attributes: event.attributes,
+    }));
+    self.postMessage({ type: 'TELEMETRY_FLUSH', status: 'success', payload: batch });
     telemetryBuffer = [];
   }
 }, FLUSH_INTERVAL);

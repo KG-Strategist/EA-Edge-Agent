@@ -331,21 +331,26 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
       } else if (config.modelSourceMode === 'Remote URL' && config.url) {
         // TASK 2: SOFT-FAIL CUSTOM VALIDATION
         // For custom URLs, attempt validation but never block the save on network failure
-        try {
-          validateEndpointUrl(config.url);
-          const probe = await fetch(config.url, {
-            method: 'HEAD',
-            signal: AbortSignal.timeout(8000)
-          });
+        const networkAllowed = await checkNetworkConsent();
+        if (!networkAllowed) {
+          validationWarning = 'Network access disabled. Configuration saved; URL will not be probed until network is enabled.';
+        } else {
+          try {
+            await validateEndpointUrl(config.url);
+            const probe = await fetch(config.url, {
+              method: 'HEAD',
+              signal: AbortSignal.timeout(8000)
+            });
 
-          // Check response validity (treating 405 as OK — some servers don't allow HEAD)
-          if (!probe.ok && probe.status !== 405) {
-            validationWarning = `Network validation returned HTTP ${probe.status}. Configuration saved anyway.`;
+            // Check response validity (treating 405 as OK — some servers don't allow HEAD)
+            if (!probe.ok && probe.status !== 405) {
+              validationWarning = `Network validation returned HTTP ${probe.status}. Configuration saved anyway.`;
+            }
+          } catch {
+            // CRUCIAL: Network/CORS failures are NOT fatal — user may be offline or CORS-blocked
+            // Log a soft warning but ALWAYS proceed with the save
+            validationWarning = 'Network validation failed or offline. Saving custom configuration anyway.';
           }
-        } catch {
-          // CRUCIAL: Network/CORS failures are NOT fatal — user may be offline or CORS-blocked
-          // Log a soft warning but ALWAYS proceed with the save
-          validationWarning = 'Network validation failed or offline. Saving custom configuration anyway.';
         }
       }
 
@@ -630,12 +635,12 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
          <>
              <div className="flex gap-4 mb-2">
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                   <input data-testid={`${testIdPrefix}-model-source-remote`} type="radio" checked={config.modelSourceMode === 'Remote URL'} onChange={() => setConfig({...config, modelSourceMode: 'Remote URL'})} />
+                   <input data-testid={`${testIdPrefix}-model-source-remote`} type="radio" checked={config.modelSourceMode === 'Remote URL'} onChange={() => setConfig({...config, modelSourceMode: 'Remote URL'})} aria-label="Use remote model URL" />
                    Remote URL
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <input data-testid={`${testIdPrefix}-model-source-local`} type="radio" checked={config.modelSourceMode === 'Offline Sideloaded'} onChange={() => setConfig({...config, modelSourceMode: 'Offline Sideloaded'})} />
-                    Local Upload
+                    <input data-testid={`${testIdPrefix}-model-source-local`} type="radio" checked={config.modelSourceMode === 'Offline Sideloaded'} onChange={() => setConfig({...config, modelSourceMode: 'Offline Sideloaded'})} aria-label="Use OPFS Model Library" />
+                    OPFS Model Library
                 </label>
              </div>
              {config.modelSourceMode === 'Remote URL' ? (
@@ -763,18 +768,18 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                 </>
              ) : (
                 <div>
-                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Select Sideloaded Model</label>
+                   <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Select OPFS Model</label>
                    {offlineModels.length === 0 ? (
                      <div className="mt-2 text-sm text-gray-400">
-                       No sideloaded models found.
+                       No local GGUF files are registered in the OPFS Model Library.
                        <button
                          type="button"
                          onClick={() => window.dispatchEvent(new CustomEvent('EA_NAVIGATE', {
-                           detail: { view: 'agent-config', subView: 'models' }
+                           detail: { view: 'system-pref', subView: 'models' }
                          }))}
                          className="ml-2 text-blue-500 hover:underline cursor-pointer"
                        >
-                         Learn how to sideload a model &rarr;
+                         Sideload GGUF &rarr;
                        </button>
                      </div>
                    ) : (
@@ -1179,6 +1184,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                      value={modalConfig.name} 
                      onChange={e => setModalConfig({ ...modalConfig, name: e.target.value })} 
                      placeholder="e.g. Code Reviewer"
+                     aria-label="Mitra Name"
                      className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm" 
                    />
                 </div>
@@ -1237,6 +1243,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                   value={mitraForm.name}
                   onChange={e => setMitraForm(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. Enterprise Architect"
+                  aria-label="Persona Name"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
                 />
               </div>
@@ -1246,6 +1253,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                 <select
                   value={mitraForm.domain}
                   onChange={e => setMitraForm(prev => ({ ...prev, domain: e.target.value }))}
+                  aria-label="Persona Domain"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
                 >
                   {DOMAIN_OPTIONS.map(d => (
@@ -1260,6 +1268,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                   value={mitraForm.systemPrompt}
                   onChange={e => setMitraForm(prev => ({ ...prev, systemPrompt: e.target.value }))}
                   placeholder="Enter persona instructions..."
+                  aria-label="Persona System Prompt"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm min-h-[120px]"
                 />
               </div>
@@ -1288,6 +1297,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                     onChange={e => setCustomTag(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag(); } }}
                     placeholder="Add custom tag..."
+                    aria-label="Add custom RAG tag"
                     className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
                   />
                   <button

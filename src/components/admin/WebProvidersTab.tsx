@@ -272,7 +272,7 @@ export default function WebProvidersTab() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Display Name</label>
-              <input type="text" value={formData.displayName} onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., Tavily API" />
+              <input type="text" value={formData.displayName} onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., Tavily API" aria-label="Provider Display Name" />
             </div>
 
             <div>
@@ -286,7 +286,7 @@ export default function WebProvidersTab() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
-              <input type="url" value={formData.endpointUrl} onChange={(e) => setFormData(prev => ({ ...prev, endpointUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="https://api.example.com/search" />
+              <input type="url" value={formData.endpointUrl} onChange={(e) => setFormData(prev => ({ ...prev, endpointUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="https://api.example.com/search" aria-label="Provider Endpoint URL" />
             </div>
 
             <div>
@@ -303,7 +303,7 @@ export default function WebProvidersTab() {
             {formData.providerType === 'CustomEnterprise' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Model Name</label>
-                <input type="text" value={formData.modelName} onChange={(e) => setFormData(prev => ({ ...prev, modelName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., llama3" />
+                <input type="text" value={formData.modelName} onChange={(e) => setFormData(prev => ({ ...prev, modelName: e.target.value }))} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white outline-none focus:border-blue-500" placeholder="e.g., llama3" aria-label="Provider Model Name" />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">The exact model name expected by the OpenAI-compatible endpoint.</p>
               </div>
             )}

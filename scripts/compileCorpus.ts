@@ -122,7 +122,12 @@ async function compile() {
   }
 
   const parser = new LexicalStateMachine();
-  await parser.loadLexicon(true, basePath);
+  const lexiconPath = path.join(basePath, 'public', 'lexicon.json');
+  let lexiconData = {};
+  if (fs.existsSync(lexiconPath)) {
+    lexiconData = JSON.parse(fs.readFileSync(lexiconPath, 'utf-8'));
+  }
+  await parser.loadLexicon(lexiconData);
   const vectoriser = new StructuralVectoriser();
 
   const maxRecords = 1000000;

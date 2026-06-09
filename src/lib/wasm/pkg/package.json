@@ -1,0 +1,15 @@
+{
+  "name": "eaniti-engine",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "eaniti_engine_bg.wasm",
+    "eaniti_engine.js",
+    "eaniti_engine.d.ts"
+  ],
+  "main": "eaniti_engine.js",
+  "types": "eaniti_engine.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

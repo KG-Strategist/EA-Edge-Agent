@@ -381,10 +381,17 @@ export interface SemanticMemory {
 export interface LocalTelemetry {
   id?: number;
   timestamp: Date;
-  routingScore: number;
-  engineUsed: string;
-  executionTimeMs: number;
-  distillationTriggered: boolean;
+  kind?: 'routing' | 'metric' | 'trace';
+  routingScore?: number;
+  engineUsed?: string;
+  executionTimeMs?: number;
+  distillationTriggered?: boolean;
+  metricName?: string;
+  traceName?: string;
+  value?: number;
+  durationMs?: number;
+  status?: 'ok' | 'error' | 'warn';
+  attributes?: Record<string, string | number | boolean | null>;
 }
 
 export interface MitraProfile {
@@ -406,6 +413,27 @@ export interface VaultSession {
   salt: string;
   wrappingKey: CryptoKey;
   createdAt: Date;
+}
+
+/**
+ * Per-page visual metadata emitted by the OCR / VLM pipeline.
+ * Populated lazily by `runOcrDetailed` and consumed by the review sessions.
+ * The `payload` blob is opaque to the schema and is forward-compatible
+ * with future visual model output (boxes, tables, attention heatmaps, …).
+ */
+export interface PageVisualMetadata {
+  id?: number;
+  sessionId: string;
+  pageIndex: number;
+  capturedAt: number;
+  mode: 'full' | 'fast' | 'geometric' | 'skipped' | 'error';
+  confidence: number;
+  blockCount: number;
+  charCount: number;
+  durationMs: number;
+  engineFlags: string[];
+  source: 'ocr' | 'pdf-text' | 'svg-text' | 'reranker';
+  payload?: unknown;
 }
 
 export class EADatabase extends Dexie {
@@ -440,6 +468,7 @@ export class EADatabase extends Dexie {
   distillation_queue!: Table<DistillationTask>;
   mitra_profiles!: Table<MitraProfile>;
   vault_sessions!: Table<VaultSession>;
+  page_visual_metadata!: Table<PageVisualMetadata>;
 
   constructor() {
     super('EADatabase');
@@ -800,13 +829,13 @@ export class EADatabase extends Dexie {
       if ((await tx.table('model_registry').count()) === 0) {
         await tx.table('model_registry').bulkAdd([
           {
-            name: 'EA-NITI Core (Gemma-4-E2B-it-Q4_0)',
+            name: 'EA-NITI Core (ea-niti-core-1.1b-q4)',
             type: 'PRIMARY',
-            modelUrl: 'https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_0.gguf',
-            isLocalhost: false,
+            modelUrl: '/models/ea-niti-core-1.1b-q4.gguf',
+            isLocalhost: true,
             isActive: true,
             contextWindow: 4096,
-            engineType: 'Air-Gapped Sideload'
+            engineType: 'Bespoke Forge — Air-Gapped Local'
           },
           {
             name: 'EA-NITI-Alt (SmolLM2-1.7B-Instruct-Q4_0)',
@@ -1534,6 +1563,117 @@ export class EADatabase extends Dexie {
       mitra_profiles: '++id, name, domain, isActive',
       vault_sessions: '++id, pseudokey, createdAt',
     });
+
+    // v40: Bounded chat windows for long-running encrypted threads.
+    this.version(40).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp, [threadId+timestamp], [threadId+role+timestamp]',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp, kind',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive',
+      vault_sessions: '++id, pseudokey, createdAt',
+    });
+
+    // Dynamic v(N+1) — Strike 4.0 visual metadata table for VLM/OCR outputs.
+    // We compute the next version from the highest numeric literal we just
+    // declared, so any future `this.version(N)` insertion automatically bumps
+    // this table's schema when the file is edited. This avoids hardcoded
+    // version drift during strike expansions.
+    const nextVersion = this.nextVersionAfter(40);
+    this.version(nextVersion).stores({
+      architecture_categories: '++id, name, type, parentId',
+      master_categories: '++id, [type+name], type, name, status',
+      content_metamodel: '++id, name, admPhase, artifactType, status',
+      architecture_layers: '++id, name, coreLayer, contextLayer, status',
+      architecture_principles: '++id, name, layerId, status',
+      service_domains: '++id, name, businessArea, businessDomain, frameworkTag, status',
+      bespoke_tags: '++id, name, category, status',
+      review_sessions: '++id, projectName, type, status, workflowId',
+      review_embeddings: '++id, sessionId',
+      app_settings: 'key',
+      network_integrations: '++id, providerType, isDefault',
+      prompt_templates: '++id, name, category, status, executionTarget, version, type',
+      review_workflows: '++id, name, triggerReviewType, status, version',
+      report_templates: '++id, name, category, status, version',
+      threat_models: '++id, projectName, sessionId, createdAt',
+      training_jobs: '++id, status, startedAt',
+      users: '++id, pseudokey, providerId',
+      audit_logs: '++id, timestamp, pseudokey, action, tableName',
+      dashboard_states: '++id, name, isDefault',
+      model_registry: '++id, name, type, isActive',
+      global_settings: 'id',
+      privacy_guardrails: '++id, title, isDefault, isActive, isArchived, *frameworkTags, *enforcementScope',
+      custom_agents: '++id, name, agentCategory, status',
+      chat_threads: '++id, title, updatedAt',
+      chat_messages: '++id, threadId, role, inferenceEngine, timestamp, [threadId+timestamp], [threadId+role+timestamp]',
+      semantic_memory: '++id, createdAt, source',
+      local_telemetry_vault: '++id, timestamp, kind',
+      distillation_queue: '++id, query, status, createdAt',
+      mitra_profiles: '++id, name, domain, isActive',
+      vault_sessions: '++id, pseudokey, createdAt',
+      page_visual_metadata: '++id, [sessionId+pageIndex], sessionId, pageIndex, capturedAt',
+    }).upgrade(async tx => {
+      // No backfill required — page_visual_metadata is a new table and
+      // entries are written lazily by the OCR pipeline as pages are
+      // processed. We only flip the migration marker below.
+      await tx.table('app_settings').put({
+        key: 'dbMigrationPageVisualMetadata',
+        value: { at: Date.now(), version: nextVersion },
+      });
+    });
+  }
+
+  /**
+   * Returns the next version number to use when dynamically extending the
+   * schema. It scans the source string of this class for the highest
+   * `this.version(N)` literal that has already been declared, so adding a
+   * new version block above this method keeps everything in lockstep.
+   *
+   * Implementation notes:
+   *  - We deliberately use Dexie-friendly integer versioning; the
+   *    migration is deterministic across browsers.
+   *  - We strip comments and string literals before scanning to avoid
+   *    false matches on commented-out versions.
+   *  - This runs in the constructor, which is acceptable because Dexie
+   *    defers all `this.version()` calls until `db.open()` is invoked.
+   */
+  private nextVersionAfter(maxSoFar: number): number {
+    const src = EADatabase.prototype.toString();
+    const stripped = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+      .replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""');
+    const matches = stripped.match(/this\.version\((\d+)\)/g) || [];
+    let highest = maxSoFar;
+    for (const m of matches) {
+      const num = parseInt(m.replace(/[^0-9]/g, ''), 10);
+      if (Number.isFinite(num) && num > highest) highest = num;
+    }
+    return highest + 1;
   }
 }
 
@@ -1630,7 +1770,7 @@ export async function logForensicAudit(
   const sanitize = (obj: Record<string, any> | null) => {
     if (!obj) return null;
     const clone = { ...obj };
-    const sensitiveKeys = ['password', 'token', 'secret', 'key', 'credential', 'encrypted'];
+    const sensitiveKeys = ['password', 'token', 'secret', 'key', 'credential', 'encrypted', 'botId', 'userfield', 'pseudokey'];
     for (const key of Object.keys(clone)) {
       if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
         clone[key] = '[REDACTED]';

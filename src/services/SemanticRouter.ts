@@ -1,6 +1,7 @@
 import { db } from '../lib/db';
 import { chatWithAgentDetailed } from '../lib/aiEngine';
 import { epistemicShadow } from '../lib/EpistemicShadow';
+import { TelemetryClient } from '../lib/telemetry';
 
 export class EdgeRouter {
   /**
@@ -101,13 +102,7 @@ export class EdgeRouter {
     executionTimeMs: number,
     distillationTriggered: boolean
   }) {
-    // Explicitly stripping prompt text, PII, and vector data by only saving the required schema
-    await db.local_telemetry_vault.add({
-      timestamp: new Date(),
-      routingScore: data.routingScore,
-      engineUsed: data.engineUsed,
-      executionTimeMs: data.executionTimeMs,
-      distillationTriggered: data.distillationTriggered
-    });
+    // Explicitly stripping prompt text, PII, and vector data by only saving the required schema.
+    await TelemetryClient.recordRouting(data);
   }
 }

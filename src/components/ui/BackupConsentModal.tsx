@@ -162,6 +162,7 @@ export default function BackupConsentModal() {
                   type="checkbox"
                   checked={hasAcknowledged}
                   onChange={(e) => setHasAcknowledged(e.target.checked)}
+                  aria-label="Acknowledge backup consent"
                   className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
                 <span className={`text-xs ${isDestructive

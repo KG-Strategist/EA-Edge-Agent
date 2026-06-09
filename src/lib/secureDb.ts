@@ -13,11 +13,20 @@ import { db, ChatMessage, ThreatModelRecord, NetworkIntegration, GlobalSetting }
 import { encryptString, decryptString, VaultLockedError } from './cryptoVault';
 import { hashSecret } from './authEngine';
 import { Logger } from './logger';
+import Dexie from 'dexie';
 
 function rethrowIfVaultLocked(error: unknown): void {
   if (error instanceof VaultLockedError || (error instanceof Error && error.name === 'VaultLockedError')) {
     throw error;
   }
+}
+
+const VISIBLE_CHAT_ROLES: Array<'user' | 'assistant'> = ['user', 'assistant'];
+
+export interface ChatMessageWindow {
+  messages: ChatMessage[];
+  hasMoreBefore: boolean;
+  oldestCursor: number | null;
 }
 
 // ── Chat Messages ─────────────────────────────────────────────────────────────
@@ -41,6 +50,10 @@ export async function secureAddChatMessage(
 
 export async function secureGetChatMessages(threadId: number): Promise<ChatMessage[]> {
   const rows = await db.chat_messages.where('threadId').equals(threadId).sortBy('timestamp');
+  return decryptChatRows(rows);
+}
+
+async function decryptChatRows(rows: ChatMessage[]): Promise<ChatMessage[]> {
   const decrypted: ChatMessage[] = [];
   for (const row of rows) {
     let content = row.content || '';
@@ -57,6 +70,65 @@ export async function secureGetChatMessages(threadId: number): Promise<ChatMessa
     decrypted.push({ ...row, content } as ChatMessage);
   }
   return decrypted;
+}
+
+async function getVisibleRowsBefore(
+  threadId: number,
+  beforeTimestamp: number | null,
+  limit: number
+): Promise<ChatMessageWindow> {
+  const boundedLimit = Math.max(1, Math.min(250, limit));
+  const upperTimestamp = beforeTimestamp ?? Dexie.maxKey;
+
+  const roleRows = await Promise.all(
+    VISIBLE_CHAT_ROLES.map(role =>
+      db.chat_messages
+        .where('[threadId+role+timestamp]')
+        .between([threadId, role, Dexie.minKey], [threadId, role, upperTimestamp], true, beforeTimestamp === null)
+        .reverse()
+        .limit(boundedLimit + 1)
+        .toArray()
+    )
+  );
+
+  const rowsDesc = roleRows
+    .flat()
+    .sort((a, b) => {
+      if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
+      return (b.id ?? 0) - (a.id ?? 0);
+    });
+
+  const pageRowsDesc = rowsDesc.slice(0, boundedLimit);
+  const messages = await decryptChatRows([...pageRowsDesc].reverse());
+
+  return {
+    messages,
+    hasMoreBefore: rowsDesc.length > boundedLimit,
+    oldestCursor: messages[0]?.timestamp ?? null,
+  };
+}
+
+export async function secureGetRecentChatMessages(
+  threadId: number,
+  limit = 80
+): Promise<ChatMessageWindow> {
+  return getVisibleRowsBefore(threadId, null, limit);
+}
+
+export async function secureGetOlderChatMessages(
+  threadId: number,
+  beforeTimestamp: number,
+  limit = 80
+): Promise<ChatMessageWindow> {
+  return getVisibleRowsBefore(threadId, beforeTimestamp, limit);
+}
+
+export async function secureGetSystemChatMessages(threadId: number): Promise<ChatMessage[]> {
+  const rows = await db.chat_messages
+    .where('[threadId+role+timestamp]')
+    .between([threadId, 'system', Dexie.minKey], [threadId, 'system', Dexie.maxKey], true, true)
+    .toArray();
+  return decryptChatRows(rows);
 }
 
 export async function secureGetChatMessage(id: number): Promise<ChatMessage | null> {

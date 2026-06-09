@@ -88,7 +88,7 @@ async function fetchCorpus() {
   if (!baseUrl) {
     console.error('No corpus release base URL configured.');
     console.error('Set EA_NITI_CORPUS_BASE_URL, for example:');
-    console.error('EA_NITI_CORPUS_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.1.3-corpus npm run fetch:corpus');
+    console.error('EA_NITI_CORPUS_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.1.4-corpus npm run fetch:corpus');
     process.exit(1);
   }
 

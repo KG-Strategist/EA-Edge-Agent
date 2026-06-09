@@ -226,6 +226,7 @@ export interface SealedVaultSession {
   iv: string;
   salt: string;
   wrappingKey: CryptoKey;
+  checksum?: string;
 }
 
 export async function createSealedVaultSession(_pin: string, salt: string): Promise<SealedVaultSession> {
@@ -248,15 +249,54 @@ export async function createSealedVaultSession(_pin: string, salt: string): Prom
     { name: "AES-GCM", iv }
   );
 
+  const wrappedDEKHex = bufToHex(new Uint8Array(wrappedDEK));
+
+  // Generate an HMAC checksum for the wrapped DEK to ensure integrity
+  const encoder = new TextEncoder();
+  const checksumKey = await window.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(salt + "checksum"),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const checksumSig = await window.crypto.subtle.sign(
+    "HMAC",
+    checksumKey,
+    encoder.encode(wrappedDEKHex)
+  );
+  const checksum = bufToHex(new Uint8Array(checksumSig));
+
   return {
-    wrappedDEK: bufToHex(new Uint8Array(wrappedDEK)),
+    wrappedDEK: wrappedDEKHex,
     iv: bufToHex(iv),
     salt,
     wrappingKey,
+    checksum,
   };
 }
 
 export async function restoreVaultKey(sealedSession: SealedVaultSession): Promise<void> {
+  if (sealedSession.checksum) {
+    const encoder = new TextEncoder();
+    const checksumKey = await window.crypto.subtle.importKey(
+      "raw",
+      encoder.encode(sealedSession.salt + "checksum"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    const isValid = await window.crypto.subtle.verify(
+      "HMAC",
+      checksumKey,
+      toArrayBuffer(hexToBuf(sealedSession.checksum)),
+      encoder.encode(sealedSession.wrappedDEK)
+    );
+    if (!isValid) {
+      throw new Error("Vault session integrity check failed. The stored DEK has been tampered with.");
+    }
+  }
+
   const wrappedDEKBytes = hexToBuf(sealedSession.wrappedDEK);
   const iv = hexToBuf(sealedSession.iv);
 

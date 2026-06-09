@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { MessageSquare, X, Send, Loader2, Sparkles, AlertTriangle, Paperclip, Minus, Zap, Brain, ChevronDown, CheckCircle2, Cpu } from 'lucide-react';
+import { MessageSquare, X, Send, Loader2, Sparkles, AlertTriangle, Paperclip, Minus, Zap, Brain, ChevronDown, CheckCircle2, Cpu, History } from 'lucide-react';
 import { setGlobalMoETarget } from '../../lib/aiEngine';
 import { localDaemon } from '../../lib/providers/LocalDaemonProvider';
 import { EdgeRouter } from '../../services/SemanticRouter';
 import { pruneOldChats, db } from '../../lib/db';
 import { Logger } from '../../lib/logger';
 import { runOCR } from '../../lib/ocrEngine';
-import { createThread, getThreads, addMessage, getMessages } from '../../lib/chatMemory';
+import { createThread, getThreads, addMessage, getOlderMessages, getRecentMessages, getSystemMessages } from '../../lib/chatMemory';
 import { ChatMessage } from '../../lib/db';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -47,6 +47,8 @@ function describeChatError(error: any): string {
   return '_An unexpected error occurred. Please check System Health for diagnostics._';
 }
 
+const CHAT_PAGE_SIZE = 80;
+
 export default function AgentChat() {
   const { addNotification } = useNotification();
   const { executionMode, setExecutionMode, activeWorkflowId, activeStageId, authStatus } = useStateContext();
@@ -54,6 +56,9 @@ export default function AgentChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [oldestCursor, setOldestCursor] = useState<number | null>(null);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
 
   const [input, setInput] = useState('');
@@ -85,6 +90,17 @@ export default function AgentChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bufferRef = useRef<string>('');
   const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const loadRecentWindow = useCallback(async (threadId: number) => {
+    const [window, system] = await Promise.all([
+      getRecentMessages(threadId, CHAT_PAGE_SIZE),
+      getSystemMessages(threadId),
+    ]);
+    setMessages(window.messages);
+    setHasMoreBefore(window.hasMoreBefore);
+    setOldestCursor(window.oldestCursor);
+    return { visibleMessages: window.messages, systemMessages: system };
+  }, []);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('EA_CHAT_STATE_CHANGED', {
@@ -133,6 +149,8 @@ export default function AgentChat() {
     if (authStatus !== 'unlocked') {
       setActiveThreadId(null);
       setMessages([]);
+      setHasMoreBefore(false);
+      setOldestCursor(null);
       return;
     }
 
@@ -190,15 +208,30 @@ export default function AgentChat() {
         }
 
         setActiveThreadId(currentThreadId);
-        const dbMessages = await getMessages(currentThreadId);
-        setMessages(dbMessages);
+        await loadRecentWindow(currentThreadId);
       } catch (err) {
         Logger.error('Failed to initialize chat memory', err);
         addNotification('Security vault is locked. Please re-authenticate before chatting.', 'error', 5000);
       }
     };
     initChat();
-  }, [activeWorkflowId, activeStageId, addNotification, authStatus]);
+  }, [activeWorkflowId, activeStageId, addNotification, authStatus, loadRecentWindow]);
+
+  const handleLoadEarlier = async () => {
+    if (!activeThreadId || !oldestCursor || isLoadingEarlier) return;
+    setIsLoadingEarlier(true);
+    try {
+      const older = await getOlderMessages(activeThreadId, oldestCursor, CHAT_PAGE_SIZE);
+      setMessages(prev => [...older.messages, ...prev]);
+      setHasMoreBefore(older.hasMoreBefore);
+      setOldestCursor(older.oldestCursor);
+    } catch (error) {
+      Logger.error('[AgentChat] Failed to load earlier messages:', error);
+      addNotification('Security vault is locked. Please re-authenticate before loading earlier messages.', 'error', 5000);
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  };
 
   const handleClose = () => {
     setIsOpen(false);
@@ -252,7 +285,8 @@ export default function AgentChat() {
     setIsUploading(true);
     try {
       const extractedText = await runOCR(file);
-      setInput((prev) => prev + `\n[Attached Diagram Data]:\n${extractedText}\n`);
+      const safeText = extractedText || '(no text could be extracted from this attachment)';
+      setInput((prev) => prev + `\n[Attached ${file.name || 'document'}]:\n${safeText}\n`);
     } catch {
       addNotification("Failed to parse image data.", 'error', 3000);
     } finally {
@@ -273,9 +307,12 @@ export default function AgentChat() {
     setInput('');
 
     let currentMessages: ChatMessage[];
+    let currentSystemMessages: ChatMessage[];
     try {
       await addMessage(activeThreadId, 'user', userMsg, 'pending');
-      currentMessages = await getMessages(activeThreadId);
+      const refreshed = await loadRecentWindow(activeThreadId);
+      currentMessages = refreshed.visibleMessages;
+      currentSystemMessages = refreshed.systemMessages;
     } catch (error: any) {
       Logger.error('[AgentChat] Failed to persist user message:', error);
       setInput(userMsg);
@@ -283,8 +320,6 @@ export default function AgentChat() {
       return;
     }
 
-    setMessages(currentMessages);
-    
     setIsTyping(true);
     setIsGenerating(true);
     setIsCoTExpanded(true); // Auto-expand CoT on new request
@@ -321,9 +356,13 @@ export default function AgentChat() {
       };
 
       // Truncate message history for context
+      const inferenceMessages = [
+        ...currentSystemMessages.map(m => ({ role: m.role, content: m.content || '' })),
+        ...currentMessages.map(m => ({ role: m.role, content: m.content || '' })),
+      ];
       const truncatedMessages = [
-        ...currentMessages.filter(m => m.role === 'system').map(m => ({role: m.role, content: m.content || ''})),
-        ...currentMessages.filter(m => m.role !== 'system').slice(-6).map(m => ({role: m.role, content: m.content || ''}))
+        ...inferenceMessages.filter(m => m.role === 'system'),
+        ...inferenceMessages.filter(m => m.role !== 'system').slice(-6),
       ];
 
       let responseText = '';
@@ -348,9 +387,8 @@ export default function AgentChat() {
       const finalContent = responseText || bufferRef.current;
       await addMessage(activeThreadId, 'assistant', finalContent, engineUsed);
       
-      // Refresh strictly from DB
-      const finalMessages = await getMessages(activeThreadId);
-      setMessages(finalMessages);
+      // Refresh the bounded chat window strictly from DB.
+      await loadRecentWindow(activeThreadId);
       
     } catch (error: any) {
       Logger.error('[AgentChat] chatWithAgent error:', error);
@@ -358,8 +396,7 @@ export default function AgentChat() {
       
       try {
         await addMessage(activeThreadId, 'assistant', errorDisplay, 'neuro-symbolic');
-        const finalMessages = await getMessages(activeThreadId);
-        setMessages(finalMessages);
+        await loadRecentWindow(activeThreadId);
       } catch (persistError) {
         Logger.error('[AgentChat] Failed to persist assistant error:', persistError);
         setMessages(prev => prev.filter(m => m.id !== -1));
@@ -434,6 +471,21 @@ export default function AgentChat() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {hasMoreBefore && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={handleLoadEarlier}
+                disabled={isLoadingEarlier || authStatus !== 'unlocked'}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                aria-label="Load earlier chat messages"
+                title="Load earlier chat messages"
+              >
+                {isLoadingEarlier ? <Loader2 size={13} className="animate-spin" /> : <History size={13} />}
+                Load Earlier
+              </button>
+            </div>
+          )}
           {messages.filter(m => m.role !== 'system').map((msg, i, filtered) => {
             const isNeuroSymbolic = msg.inferenceEngine === 'neuro-symbolic';
             return (
@@ -534,13 +586,13 @@ export default function AgentChat() {
                 type="file"
                 id="agentchat-file-upload"
                 name="fileUpload"
-                accept="image/*"
-               className="hidden" 
+                accept="image/*,application/pdf,image/svg+xml,.pdf,.svg"
+               className="hidden"
                ref={fileInputRef}
                onChange={handleFileUpload}
                aria-label="Upload File"
                title="Upload File"
-            />
+             />
             <button
                type="button"
                onClick={() => fileInputRef.current?.click()}

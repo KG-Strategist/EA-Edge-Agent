@@ -316,6 +316,7 @@ export default function WorkflowTab() {
                         value={formData.version || ''}
                         onChange={e => setFormData({...formData, version: e.target.value})}
                         placeholder="1.0.0"
+                        aria-label="Version String"
                       />
                    </div>
                    
@@ -358,6 +359,7 @@ export default function WorkflowTab() {
                                            onChange={e => updateStage(idx, { name: e.target.value })}
                                            className="font-semibold text-gray-900 dark:text-white bg-transparent outline-none border-b border-transparent focus:border-blue-500 w-full"
                                            placeholder="Stage Name (e.g., ABR)"
+                                           aria-label={`Stage ${idx + 1} Name`}
                                        />
                                        <button onClick={() => removeStage(idx)} className="text-gray-400 hover:text-red-500" title="Remove Stage" aria-label="Remove Stage">
                                            <X size={16} />
@@ -421,6 +423,7 @@ export default function WorkflowTab() {
                                             checked={stage.requiresManualSignoff}
                                             onChange={e => updateStage(idx, { requiresManualSignoff: e.target.checked })}
                                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white dark:bg-gray-900"
+                                            aria-label={`Require human approval for stage ${idx + 1}`}
                                         />
                                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Require Human Approval (ABR Board Gate)</span>
                                       </label>

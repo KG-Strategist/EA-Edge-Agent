@@ -192,6 +192,7 @@ export default function DataTable<T extends Record<string, any>>({
                 ref={fileInputRef}
                 onChange={handleImport}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Import JSON"
                 title="Import JSON"
               />
               <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -208,6 +209,7 @@ export default function DataTable<T extends Record<string, any>>({
                 placeholder={searchPlaceholder}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
+                aria-label={searchPlaceholder}
                 className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               />
             </div>

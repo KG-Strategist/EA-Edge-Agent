@@ -1,0 +1,21 @@
+LLM Starter Model — Local Provenance
+====================================
+
+The bespoke GGUF inside this directory is a derivative work of a
+permissive open-source base model. It is tracked via Git LFS (see
+`../../.gitattributes`).
+
+  ea-niti-core-1.1b-q4.gguf
+    Bespoke name : ea-niti-core-1.1b-q4
+    Base model   : TinyLlama-1.1B-Chat-v1.0 (Q4_0 GGUF)
+    Base URL     : https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf
+    Base licence : Apache License 2.0
+    Modifications: Renamed; metadata stamped; no fine-tuning,
+                   no weight edits, no distillation.
+
+The base model retains its original Apache 2.0 licence. See
+`../../NOTICE.txt` for the full repository attribution.
+
+To re-forge from a different permissive base, set
+`EA_NITI_BASE_MODEL_URL` and run:
+    node scripts/forge_bespoke_model.mjs

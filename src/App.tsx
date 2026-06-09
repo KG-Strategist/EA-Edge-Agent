@@ -25,13 +25,13 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [adminSubView, setAdminSubView] = useState('layers');
   const [vaultLocked, setVaultLocked] = useState(false);
+
   const downloadStateRef = useRef(downloadState);
 
   useEffect(() => {
     downloadStateRef.current = downloadState;
   }, [downloadState]);
 
-  // Index Redirect Mechanism (Router-like behavior)
   useEffect(() => {
     if (currentView === 'expert-config' && !['layers', 'principles', 'service-domains', 'metamodel', 'categories', 'tags'].includes(adminSubView)) {
       setAdminSubView('layers');
@@ -67,7 +67,6 @@ function AppContent() {
       Logger.info(`[App] Boot engine deferred until vault unlock. authStatus=${authStatus}`);
     }
 
-    // Eager ping: Detect Local Daemon on startup (non-blocking, async)
     localDaemon.pingDaemon();
 
     const handleNavigate = (e: Event) => {
@@ -80,15 +79,14 @@ function AppContent() {
     return () => window.removeEventListener('EA_NAVIGATE', handleNavigate);
   }, [authStatus, setAuthStatus]);
 
-  // Kill switch: surface contextual toast when network is disabled mid-download
   useEffect(() => {
     const handleKillSwitch = () => {
       const state = downloadStateRef.current;
       if (state.isActive && state.status === 'Downloading') {
         const isEmbedding = state.progressText?.toLowerCase().includes('embedding');
         const message = isEmbedding
-          ? 'Network was disabled — embedding downloads halted. Re-enable network to resume.'
-          : 'Network was disabled — LLM model weights preserved. Re-enable network to resume.';
+          ? 'Network was disabled - embedding downloads halted. Re-enable network to resume.'
+          : 'Network was disabled - LLM model weights preserved. Re-enable network to resume.';
 
         addNotification(message, 'warning', 0);
       }
@@ -97,7 +95,6 @@ function AppContent() {
     return () => window.removeEventListener('APP_NETWORK_FORCE_KILLED', handleKillSwitch);
   }, [addNotification]);
 
-  // TASK 6: If vault is locked, show AuthGate to allow re-authentication
   if (vaultLocked) {
     return (
       <AuthGate 
@@ -135,16 +132,16 @@ function AppContent() {
   return (
     <>
       <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-        <Navbar 
-          currentView={currentView} 
-          setCurrentView={setCurrentView} 
+        <Navbar
+          currentView={currentView}
+          setCurrentView={setCurrentView}
           adminSubView={adminSubView}
           setAdminSubView={setAdminSubView}
         />
         <div className="flex-1 flex flex-col mt-16 md:mt-0">
-          <Header 
-            currentView={currentView} 
-            setCurrentView={setCurrentView} 
+          <Header
+            currentView={currentView}
+            setCurrentView={setCurrentView}
             adminSubView={adminSubView}
             setAdminSubView={setAdminSubView}
           />
@@ -160,7 +157,6 @@ function AppContent() {
         <ModelConsentModal />
         <BackupConsentModal />
         <NetworkGatekeeperModal />
-        
       </Suspense>
     </>
   );
