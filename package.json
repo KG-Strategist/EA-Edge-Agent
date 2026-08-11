@@ -41,7 +41,9 @@
     "harness:gate": "node .opencode/harness/gate-runner.mjs",
     "harness:gate:release": "node .opencode/harness/gate-runner.mjs --release",
     "harness:memory": "node .opencode/harness/repo-memory.mjs",
-    "harness:loop": "node .opencode/harness/graph-loop.mjs"
+    "harness:loop": "node .opencode/harness/graph-loop.mjs",
+    "memory:context": "node .memory/scripts/context-loader.mjs",
+    "memory:graph": "node .memory/scripts/context-loader.mjs --full"
   },
   "engines": {
     "node": ">=20.0.0 <23.0.0"

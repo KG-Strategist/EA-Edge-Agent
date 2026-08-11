@@ -74,8 +74,8 @@ export function buildRepoState() {
   const deadRefs = ['PHASE_14B_14H_MEMORY.md', '00_LIVE_BUG_TRACKER.md', 'PROJECT_STATUS.md', 'architecture.md']
     .filter(ref => !fileExists(ref));
 
-  // Check docs-internal/tsd
-  const tsdDir = 'docs-internal/tsd';
+  // Check .artefacts/docs-internal/tsd
+  const tsdDir = '.artefacts/docs-internal/tsd';
   const tsdExists = fileExists(tsdDir);
   const tsdCount = tsdExists ? run(`find ${tsdDir} -name "*.md" | wc -l`).trim() : '0';
 

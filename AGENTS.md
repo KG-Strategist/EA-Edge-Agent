@@ -8,7 +8,8 @@
 - **OCR lockfile gate:** `npm run verify:ocr` validates `public/ocr/ocr.lock.json`. `EA_NITI_OCR_STRICT=1` rejects placeholder SHAs — mandatory for release.
 - **Bespoke LLM:** Default at `public/models/ea-niti-core-1.1b-q4.gguf`. Override base with `EA_NITI_BASE_MODEL_URL=... npm run setup:local`.
 - **WASM / Rust:** Rust source lives in `src-rust/`. Build with `npm run build:wasm` (engine) or `npm run build:wasm:ocr` (OCR). Pre-compiled output in `src/lib/wasm/pkg/` and `src/lib/wasm/ocr/pkg/`.
-- **Read TSD specs before touching Rust or architecture.** `docs-internal/tsd/` has type definitions for every major subsystem. Read the relevant TSD before modifying `src-rust/src/`, WASM bindings, or core engine files. The deep dive is at `docs-internal/tsd/09_RUST_ENGINE_DEEP_DIVE/`.
+- **Read TSD specs before touching Rust or architecture.** `.artefacts/docs-internal/tsd/` has type definitions for every major subsystem. Read the relevant TSD before modifying `src-rust/src/`, WASM bindings, or core engine files. The deep dive is at `.artefacts/docs-internal/tsd/09_RUST_ENGINE_DEEP_DIVE/`.
+- **Project Memory (graph).** `.memory/` contains the ODF-like node-edge graph — 40+ nodes mapping every component, file, decision, issue, spec, and model. Load context for any file: `npm run memory:context -- src/lib/aiEngine.ts`. Dump full graph: `npm run memory:graph`. Always load context before modifying unfamiliar code.
 
 ## Architecture
 - **5-Layer flow (downward only):** Presentation → State → Engine → Worker → Data.

@@ -90,8 +90,9 @@ Thumbs.db
 *.code-workspace
 
 # --- [7] Private Docs & Local Scripts ---
-/docs-internal/
-/ml-outputs/
+/artefacts/
+/.artefacts/
+/.memory/
 /scripts/private_execution/
 debug-*.mjs
 # Stale local scratch
