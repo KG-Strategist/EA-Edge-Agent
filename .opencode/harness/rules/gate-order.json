@@ -1,0 +1,14 @@
+{
+  "gates": [
+    { "name": "lint", "command": "npm run lint", "description": "ESLint flat config, zero warnings" },
+    { "name": "a11y", "command": "npm run test:a11y", "description": "Form-control accessible-name audit" },
+    { "name": "verify:corpus", "command": "npm run verify:corpus", "description": "Corpus integrity" },
+    { "name": "verify:ocr", "command": "npm run verify:ocr", "description": "OCR lockfile validation" },
+    { "name": "tsc", "command": "npx tsc --noEmit", "description": "TypeScript type check" },
+    { "name": "test", "command": "npm run test -- --no-file-parallelism", "description": "Vitest unit tests (sequential, matches CI)" },
+    { "name": "build", "command": "npm run build", "description": "Production build via buildExcludeLarge.mjs" },
+    { "name": "e2e:smoke", "command": "npm run test:e2e:sovereign-smoke", "description": "Playwright sovereign engine smoke gate" }
+  ],
+  "singleTest": "npx vitest run src/__tests__/some-test.test.ts",
+  "note": "vitest config includes only **/*.test.ts / **/*.test.tsx, NOT .spec.ts"
+}

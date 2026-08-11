@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, nightly]
   pull_request:
-    branches: [main]
+    branches: [main, nightly]
 
 # Cancel in-flight runs for the same branch / PR.
 concurrency:
@@ -76,7 +76,7 @@ jobs:
           CI: '1'
 
   strict:
-    name: setup:local (idempotency)
+    name: setup:local (bootstrap file presence check)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: ci

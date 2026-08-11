@@ -1,0 +1,23 @@
+{
+  "never": [
+    "force-push (git push --force)",
+    "edit LFS binaries (.bin.gz, .gguf, .safetensors) directly",
+    "edit src-rust/ without reading TSD spec first",
+    "bypass checkNetworkConsent() before network calls",
+    "bypass validateEndpointUrl() for SSRF protection",
+    "store PII (emails, real names, addresses)",
+    "hardcode db.version(N+1) — always use this.version(this.nextVersionAfter(N))",
+    "edit .bin.gz SHAs by hand — run node scripts/ocrArtifacts.mjs unlock",
+    "use console.log — use logger.ts",
+    "import React in engine files",
+    "use tesseract.js — use runOCR from src/lib/ocrEngine.ts",
+    "use new URL(template literal) with import.meta.url — use fetch() with absolute paths"
+  ],
+  "always": [
+    "call epistemicShadow.interrupt() on user prompts",
+    "read TSD spec before modifying Rust/WASM or core engine files",
+    "use EA_NITI_OCR_STRICT=1 for release-grade runs",
+    "run all 8 gates in order before any PR",
+    "prefer runtime verification over trusting doc footers"
+  ]
+}

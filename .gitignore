@@ -31,10 +31,11 @@ scripts/tiny-model-builder/
 .cache/
 
 # --- [2] Public Markdown Policy ---
-*.md
+/*.md
 !README.md
 !RELEASE_NOTES.md
 !TESTING_GUIDE.md
+!AGENTS.md
 
 # --- [3] Corpus Sources & Generated Runtime Brain ---
 /public/dataAssets/
@@ -42,25 +43,20 @@ scripts/tiny-model-builder/
 /public/baseline_corpus.bin.gz
 /public/lexicon.json
 /public/lexicon_roles.json
-corpus-artifacts/
+/corpus-artifacts/
+/data/
 
 # Phase 14b-h OCR training runtime (Python + MLX)
 .venv/
-data/synthetic/images/
-data/synthetic/images_short/
-data/synthetic/ea_text_lines.jsonl
-data/synthetic/ea_text_lines_short.jsonl
-data/synthetic/gt.jsonl
-data/synthetic/gt_short.jsonl
-data/public/coco_text/images/
-data/final/
-data/vocab/
-artifacts/checkpoints/
-artifacts/tensor/
-artifacts/mapping/
-artifacts/logs/
-scripts/training/__pycache__/
-scripts/training/models/__pycache__/
+/data/synthetic/images/
+/data/synthetic/images_short/
+/data/synthetic/ea_text_lines.jsonl
+/data/synthetic/ea_text_lines_short.jsonl
+/data/synthetic/gt.jsonl
+/data/synthetic/gt_short.jsonl
+/data/public/coco_text/images/
+/data/final/
+/data/vocab/
 **/__pycache__/
 
 # Large local models and generated binaries
@@ -94,9 +90,15 @@ Thumbs.db
 *.code-workspace
 
 # --- [7] Private Docs & Local Scripts ---
-/artefacts/
+/docs-internal/
+/ml-outputs/
 /scripts/private_execution/
 debug-*.mjs
+# Stale local scratch
+3722c00f7168_aug000.jpg
+memory.md
+features.md
+master-instructions.md
 
 # --- [8] Tool Output Snapshots ---
 tsc_output.txt
@@ -104,7 +106,7 @@ eslint_out.json
 int_res.txt
 ts_errors.txt
 
-# --- [9] Rust Source Lives In A Separate Repo ---
+# --- [9] Rust Source (local dev, WASM build outputs are tracked) ---
 /src-rust/
 
 # --- [10] Keep Compiled WASM Runtime Trackable ---
