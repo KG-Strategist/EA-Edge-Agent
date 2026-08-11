@@ -99,7 +99,7 @@ EA-NITI rejects external policy binaries like OPA/Rego. Compliance logic and off
 - **Bitfield Projection SDK:** `bitfieldSDK.ts` exposes ZOH operations
 - **Streaming Token API:** `prefill_prompt()` + `generate_next_token()` + `decode_single_token()`
 
-### Strike 4.0 — Air-Gap & Bespoke Runtime
+### Change Logs — Air-Gap & Bespoke Runtime
 - **One-Command Bootstrap:** `npm run setup:local` performs LFS pull + npm ci + bespoke LLM forge + lockfile unlock + integrity verify in a single shot.
 - **Bespoke LLM Forge:** `scripts/forge_bespoke_model.mjs` downloads the permissive `TinyLlama-1.1B-Chat-v1.0-GGUF` base (Apache 2.0), validates the `GGUF` magic, and renames it to `public/models/ea-niti-core-1.1b-q4.gguf` under EA-NITI provenance. Default `sovereignModelUrl` is now this local asset — no HF dependency at runtime.
 - **Lockfile-Backed OCR Runtime:** `public/ocr/ocr.lock.json` declares detector, recognizer, vocab, grammar, runtime + GGUF assets with `path/role/required/byteLength/sha256/license/source/format`. `verify:ocr` rejects any placeholder SHA in strict mode (`EA_NITI_OCR_STRICT=1`).
@@ -187,7 +187,7 @@ npm run verify:corpus
 npm run dev
 ```
 
-### 🛰️ One-Command Local Setup (v1.1.4-beta — Strike 4.0 Air-Gap Release)
+### 🛰️ One-Command Local Setup (v1.1.4-beta — Air-Gap Release)
 
 EA-NITI ships with a single bootstrap that pulls the bespoke OCR runtime,
 the EA-NITI-Core forge (Apache 2.0 base, MIT-forked), and the corpus
