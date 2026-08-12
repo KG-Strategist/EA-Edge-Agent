@@ -68,3 +68,11 @@ npm run test:e2e:sovereign-smoke  # Playwright smoke gate with mock GGUF fixture
 - **`pdfjs-dist`** excluded from `optimizeDeps` and resolved via legacy alias (`pdfjs-dist/legacy` → `node_modules/pdfjs-dist/legacy/build/pdf.mjs`).
 - **OCR hydration gate:** `OcrWasmRuntime.isLoaded()` true only when `engine.isLoaded() && hydratedAssets.size >= 2` (detector + recognizer). Never bypass.
 - **OCR never throws** to UI callers — returns best-effort text with internal error flags.
+
+## Visual Testing & Autonomous Loop
+- **Visual test suite:** `npm run test:visual` — screenshots all routes, runs Lighthouse, compares against baseline, reviews for quality issues.
+- **Lighthouse audit:** `npm run test:lighthouse <url>` — standalone Lighthouse accessibility/performance/best-practices audit.
+- **Autonomous loop:** `npm run harness:autonomous` — runs graph-loop every 30 minutes for 48 hours. Each cycle: refresh → recon → plan → apply → gate → visual-test → ocr-eval → commit.
+- **Graph loop:** `npm run harness:loop` — single cycle of the autonomous loop.
+- **Screenshots baseline:** `test-results/e2e/screenshots/` — current screenshots. `test-results/e2e/screenshots-baseline/` — baseline for diff.
+- **OCR eval:** `python3 scripts/ocr-eval/evaluate_all_checkpoints.py` — evaluates OCR checkpoints against ground truth, outputs TSV to `test-results/e2e/reports/ocr-eval.tsv`.

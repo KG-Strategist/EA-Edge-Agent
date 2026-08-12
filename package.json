@@ -42,6 +42,7 @@
     "harness:gate:release": "node .opencode/harness/gate-runner.mjs --release",
     "harness:memory": "node .opencode/harness/repo-memory.mjs",
     "harness:loop": "node .opencode/harness/graph-loop.mjs",
+    "harness:autonomous": "bash scripts/autonomous-loop.sh",
     "memory:context": "node .memory/scripts/context-loader.mjs",
     "memory:graph": "node .memory/scripts/context-loader.mjs --full"
   },
