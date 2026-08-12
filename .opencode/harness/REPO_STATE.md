@@ -1,14 +1,14 @@
 # REPO_STATE.md — Generated Source of Truth
-> Generated: 2026-08-11 10:22:21 | Branch: nightly | Commit: 19
+> Generated: 2026-08-12 14:37:03 | Branch: nightly | Commit: 20
 > Do not edit by hand. Regenerate with: node .opencode/harness/repo-memory.mjs
 
 ## Current State
 - **Version:** 1.1.4-beta
 - **Branch:** nightly
-- **Last commit:** 6b8589d chore: privatize .artefacts/ and .memory/, reorganize internal docs
-- **Total commits:** 19
+- **Last commit:** 4ba6738 chore: regenerate REPO_STATE.md from runtime truth
+- **Total commits:** 20
 - **Node engine:** >=20.0.0 <23.0.0
-- **Dirty tree:** 3 modified, 0 untracked
+- **Dirty tree:** 2 modified, 5 untracked
 - **LFS objects:** 13 tracked (0
 0 pointer files)
 
@@ -42,7 +42,7 @@
 - **EA_NITI_OCR_STRICT:** set in CI env
 
 ## Package Scripts
-- build:wasm, build:wasm:ocr, build:lexicon, build:corpus, build:training-corpus, build:brain-kb, validate:corpus, verify:corpus, verify:ocr, fetch:corpus, unpack:corpus, pack:corpus, setup:local, predev, dev, prebuild, build, lint, preview, test, test:a11y, test:e2e:sovereign, test:e2e:sovereign-smoke, pretest:e2e:sovereign-gguf, test:e2e:sovereign-gguf, pretest:e2e:sovereign-gguf:headed, test:e2e:sovereign-gguf:headed, pretest:e2e:sovereign-gguf:chrome, test:e2e:sovereign-gguf:chrome, test:watch, test:coverage, cleanup:test-files, harness:gate, harness:gate:release, harness:memory, harness:loop, memory:context, memory:graph
+- build:wasm, build:wasm:ocr, build:lexicon, build:corpus, build:training-corpus, build:brain-kb, validate:corpus, verify:corpus, verify:ocr, fetch:corpus, unpack:corpus, pack:corpus, setup:local, predev, dev, prebuild, build, lint, preview, test, test:a11y, test:e2e:sovereign, test:e2e:sovereign-smoke, pretest:e2e:sovereign-gguf, test:e2e:sovereign-gguf, pretest:e2e:sovereign-gguf:headed, test:e2e:sovereign-gguf:headed, pretest:e2e:sovereign-gguf:chrome, test:e2e:sovereign-gguf:chrome, test:visual, test:lighthouse, test:watch, test:coverage, cleanup:test-files, harness:gate, harness:gate:release, harness:memory, harness:loop, memory:context, memory:graph
 
 ## Harness
 - **Gate runner:** node .opencode/harness/gate-runner.mjs

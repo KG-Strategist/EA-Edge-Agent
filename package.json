@@ -35,6 +35,8 @@
     "test:e2e:sovereign-gguf:headed": "playwright test src/__tests__/e2e/sovereign-local.spec.ts --project=chromium --headed",
     "pretest:e2e:sovereign-gguf:chrome": "node scripts/checkSovereignE2eModel.mjs",
     "test:e2e:sovereign-gguf:chrome": "playwright test src/__tests__/e2e/sovereign-local.spec.ts --project=chrome --headed",
+    "test:visual": "node .opencode/harness/visual-test.mjs",
+    "test:lighthouse": "node .opencode/harness/lighthouse-audit.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "cleanup:test-files": "node remove-test-files.js",
