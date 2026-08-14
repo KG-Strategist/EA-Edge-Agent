@@ -201,6 +201,42 @@ function nodeGate(planResult) {
 }
 
 // ═══════════════════════════════════════════════════
+// NODE: VISUAL_TEST
+// Run visual testing harness (screenshots, Lighthouse, diff)
+// ═══════════════════════════════════════════════════
+async function nodeVisualTest() {
+  log('VISUAL_TEST: running visual test suite...');
+  try {
+    const { runVisualTest } = await import('./visual-test.mjs');
+    const result = await runVisualTest();
+    log(`VISUAL_TEST: ${result.passed ? 'PASS' : 'FAIL'}`);
+    return result;
+  } catch (err) {
+    log(`VISUAL_TEST: error — ${err.message}`);
+    return { passed: false, error: err.message };
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// NODE: OCR_EVAL
+// Run OCR model evaluation across checkpoints
+// ═══════════════════════════════════════════════════
+function nodeOcrEval() {
+  log('OCR_EVAL: running checkpoint evaluation...');
+  try {
+    const result = run('python3 scripts/ocr-eval/evaluate_all_checkpoints.py 2>&1');
+    if (result) {
+      log(`OCR_EVAL: completed`);
+      log(result.split('\n').slice(-5).join('\n'));
+    }
+    return { passed: true };
+  } catch (err) {
+    log(`OCR_EVAL: error — ${err.message}`);
+    return { passed: false, error: err.message };
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // NODE: COMMIT & PR
 // Stage, commit, push, open PR
 // ═══════════════════════════════════════════════════
@@ -328,15 +364,27 @@ async function main() {
   if (apply.applied) {
     gateResult = nodeGate(plan);
   } else if (plan.planId && plan.tier < 3) {
-    // Even if nothing was applied (no drift to fix), still run gates on current state
     gateResult = nodeGate(plan);
   } else {
     gateResult = { passed: true, summary: 'No changes to gate' };
   }
 
+  // Node 5b: VISUAL_TEST (after gates pass)
+  let visualResult = { passed: true, summary: 'skipped' };
+  if (gateResult.passed) {
+    visualResult = await nodeVisualTest();
+  }
+
+  // Node 5c: OCR_EVAL (after gates pass)
+  let ocrResult = { passed: true, summary: 'skipped' };
+  if (gateResult.passed) {
+    ocrResult = nodeOcrEval();
+  }
+
   // Node 6: COMMIT & PR
   let commitResult = { committed: false };
-  if (gateResult.passed && apply.applied) {
+  const allPassed = gateResult.passed && visualResult.passed && ocrResult.passed;
+  if (allPassed && apply.applied) {
     commitResult = nodeCommitPR(plan);
   }
 
@@ -349,6 +397,8 @@ async function main() {
   console.log(`  ║   Duration: ${duration}s`.padEnd(45) + '║');
   console.log(`  ║   Drift: ${recon.hasDrift ? 'YES' : 'NO'}`.padEnd(45) + '║');
   console.log(`  ║   Gates: ${gateResult.passed ? 'PASS' : 'FAIL'}`.padEnd(45) + '║');
+  console.log(`  ║   Visual: ${visualResult.passed ? 'PASS' : 'FAIL'}`.padEnd(45) + '║');
+  console.log(`  ║   OCR Eval: ${ocrResult.passed ? 'PASS' : 'FAIL'}`.padEnd(45) + '║');
   console.log(`  ║   Committed: ${commitResult.committed ? 'YES' : 'NO'}`.padEnd(45) + '║');
   console.log('  ╚══════════════════════════════════════════╝');
   console.log('');
@@ -358,6 +408,8 @@ async function main() {
     duration,
     drift: recon.hasDrift,
     gatesPassed: gateResult.passed,
+    visualPassed: visualResult.passed,
+    ocrPassed: ocrResult.passed,
     committed: commitResult.committed,
   };
 }
