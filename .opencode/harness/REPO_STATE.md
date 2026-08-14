@@ -1,14 +1,14 @@
 # REPO_STATE.md — Generated Source of Truth
-> Generated: 2026-08-14 16:05:28 | Branch: nightly | Commit: 23
+> Generated: 2026-08-14 19:01:26 | Branch: nightly | Commit: 24
 > Do not edit by hand. Regenerate with: node .opencode/harness/repo-memory.mjs
 
 ## Current State
 - **Version:** 1.1.4-beta
 - **Branch:** nightly
-- **Last commit:** 604db6f fix: wire visual_test + ocr_eval nodes into graph-loop + merge-back to nightly
-- **Total commits:** 23
+- **Last commit:** 6c6bffe harness: auto-fix drift [plan-2026-08-14T16-05-28]
+- **Total commits:** 24
 - **Node engine:** >=20.0.0 <23.0.0
-- **Dirty tree:** 0 modified, 0 untracked
+- **Dirty tree:** 3 modified, 2 untracked
 - **LFS objects:** 13 tracked (0
 0 pointer files)
 
