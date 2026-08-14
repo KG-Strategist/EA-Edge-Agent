@@ -1,15 +1,15 @@
 # REPO_STATE.md — Generated Source of Truth
-> Generated: 2026-08-14 20:52:55 | Branch: nightly | Commit: 27
+> Generated: 2026-08-14 21:24:34 | Branch: nightly | Commit: 27
 > Do not edit by hand. Regenerate with: node .opencode/harness/repo-memory.mjs
 
 ## Current State
 - **Version:** 1.1.4-beta
 - **Branch:** nightly
-- **Last commit:** 036fd5e fix: add git lfs pull to refresh step (branch switches drop LFS assets)
+- **Last commit:** b5e9098 harness: auto-fix drift [plan-2026-08-14T20-52-56]
 - **Total commits:** 27
 - **Node engine:** >=20.0.0 <23.0.0
-- **Dirty tree:** 0 modified, 3 untracked
-- **LFS objects:** 14 tracked (0
+- **Dirty tree:** 0 modified, 0 untracked
+- **LFS objects:** 13 tracked (0
 0 pointer files)
 
 ## Critical Files
