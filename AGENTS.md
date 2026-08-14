@@ -54,7 +54,7 @@ npm run test:e2e:sovereign-smoke  # Playwright smoke gate with mock GGUF fixture
 - **Release signoff (real GGUF):** `EA_NITI_E2E_GGUF_PATH=/path/to/model.gguf EA_NITI_E2E_MODEL_ID=local-model npm run test:e2e:sovereign-gguf`. The `pretest:e2e:sovereign-gguf` hook runs `scripts/checkSovereignE2eModel.mjs` first — it hard-fails before Playwright if the GGUF path isn't set/resolved.
 - **Headless CI** cannot validate real WebGPU/GGUF — manual hardware validation required for UI/release-signoff features.
 - **CI vs local:** CI pins Node 20 and runs unit tests with `--no-file-parallelism` (sequential). Local `npm run test` parallelizes. If a test passes locally but fails in CI, suspect ordering/state-leak between files first.
-- **E2E in `src/__tests__/e2e/` only.** Playwright config sets `fullyParallel: false` + `workers: 1` — sequential by design. Don't try to parallelize via the CLI; the config forces 1 worker. Dev server auto-starts on port 3000.
+- **E2E in `src/__tests__/e2e/` only.** Playwright config sets `fullyParallel: false` + `workers: 1` — sequential by design. Don't try to parallelize via the CLI; the config forces 1 worker. Dev server auto-starts on port 3000. `outputDir` is set to `test-results/e2e/playwright` to avoid Playwright wiping our visual test reports.
 
 ## Toolchain Quirks
 - **Dev server:** port 3000 (not 5173). `Cross-Origin-Embedder-Policy: require-corp` + `Cross-Origin-Opener-Policy: same-origin` set for WASM threading.
