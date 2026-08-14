@@ -54,6 +54,9 @@ while true; do
     TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S")
     LOG_FILE="$LOG_DIR/autonomous-cycle-$CYCLE_COUNT-$TIMESTAMP.log"
 
+    # Recreate log dir if deleted by cleanup scripts
+    mkdir -p "$LOG_DIR"
+
     echo "═══════════════════════════════════════════════════════"
     echo "CYCLE #$CYCLE_COUNT at $TIMESTAMP"
     echo "Elapsed: ${ELAPSED}s / ${MAX_DURATION}s"
