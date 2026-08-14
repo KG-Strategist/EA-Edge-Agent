@@ -65,6 +65,10 @@ function nodeRefresh() {
     log('REFRESH: git pull failed (offline or no remote)');
   }
 
+  log('REFRESH: restoring LFS assets (branch switches can drop them)...');
+  const lfsPull = run('git lfs pull 2>&1 | tail -5');
+  if (lfsPull) log(lfsPull.split('\n').slice(-2).join('\n'));
+
   log('REFRESH: running setup:local (idempotent)...');
   const setup = run('npm run setup:local 2>&1 | tail -20');
   if (setup) log(setup.split('\n').slice(-5).join('\n'));
