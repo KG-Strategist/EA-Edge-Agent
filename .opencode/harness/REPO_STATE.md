@@ -1,14 +1,14 @@
 # REPO_STATE.md — Generated Source of Truth
-> Generated: 2026-08-15 08:50:15 | Branch: nightly | Commit: 36
+> Generated: 2026-08-15 09:21:49 | Branch: nightly | Commit: 37
 > Do not edit by hand. Regenerate with: node .opencode/harness/repo-memory.mjs
 
 ## Current State
 - **Version:** 1.1.4-beta
 - **Branch:** nightly
-- **Last commit:** d430493 fix: add .build-stash to .gitignore (autonomous loop was committing it)
-- **Total commits:** 36
+- **Last commit:** 0e4ef8b harness: auto-fix drift [plan-2026-08-15T08-50-16]
+- **Total commits:** 37
 - **Node engine:** >=20.0.0 <23.0.0
-- **Dirty tree:** 1 modified, 3 untracked
+- **Dirty tree:** 0 modified, 0 untracked
 - **LFS objects:** 13 tracked (0
 0 pointer files)
 
