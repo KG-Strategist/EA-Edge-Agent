@@ -125,3 +125,4 @@ ts_errors.txt
 !src/lib/wasm/ocr/pkg/ocr_engine.d.ts
 !src/lib/wasm/ocr/pkg/ocr_engine_bg.wasm.d.ts
 !src/lib/wasm/ocr/pkg/package.json
+.build-stash/
