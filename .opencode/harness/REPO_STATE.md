@@ -1,12 +1,12 @@
 # REPO_STATE.md — Generated Source of Truth
-> Generated: 2026-08-17 00:41:15 | Branch: nightly | Commit: 76
+> Generated: 2026-08-17 01:12:46 | Branch: nightly | Commit: 77
 > Do not edit by hand. Regenerate with: node .opencode/harness/repo-memory.mjs
 
 ## Current State
 - **Version:** 1.1.4-beta
 - **Branch:** nightly
-- **Last commit:** 16e2b0e harness: auto-fix drift [plan-2026-08-16T22-38-30]
-- **Total commits:** 76
+- **Last commit:** d3c1bdf harness: auto-fix drift [plan-2026-08-17T00-41-16]
+- **Total commits:** 77
 - **Node engine:** >=20.0.0 <23.0.0
 - **Dirty tree:** 0 modified, 0 untracked
 - **LFS objects:** 13 tracked (0
