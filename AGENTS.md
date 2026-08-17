@@ -2,7 +2,7 @@
 
 ## Setup
 - **One-command bootstrap:** `npm run setup:local` (LFS pull + `npm ci` + LLM forge + OCR unlock + verify). Idempotent.
-- **Node:** `>=20.0.0 <23.0.0`. CI pins Node 20 exactly — a Node 22 local env can pass tests that CI will fail.
+- **Node:** `>=20.0.0 <23.0.0`. CI pins Node 22 (required by lighthouse@13.2.0). Local can use Node 20–22.
 - **Git LFS required before clone/pull.** Without it, corpus/OCR/model assets are pointer files, not real bytes.
 - **Corpus gate:** `npm run verify:corpus` runs automatically in `predev`/`prebuild`.
 - **OCR lockfile gate:** `npm run verify:ocr` validates `public/ocr/ocr.lock.json`. `EA_NITI_OCR_STRICT=1` rejects placeholder SHAs — mandatory for release.
