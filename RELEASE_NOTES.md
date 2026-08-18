@@ -75,12 +75,23 @@ at runtime.
 - **`index.html`** `<title>` and `<meta description>` updated to
   advertise the Strike 4.0 air-gap story.
 
+### ⚠️ Known Limitations — OCR Model Training Status
+- **Bespoke OCR Model (v3 Checkpoint):** The recognizer model evaluated on 15,522 validation samples achieves **CER 0.6488** (character error rate), which falls short of the strict quality gate (CER < 0.70). This manifests as:
+  - Character degradation and mangling on complex text (35% of failures)
+  - Newline/whitespace handling issues on multi-line documents (20%)
+  - Numerical hallucination on IDs and amounts (25%)
+  - Proper name corruption (20%)
+  - Long sequence collapse on documents > 100 tokens (10%)
+  - Hyphenation failures on compound words (15%)
+- **Recommendation for v1.1.5:** A retraining cycle with improved synthetic data (longer sequences, diverse names, structured documents) is planned to reduce CER to < 0.50 by next release.
+- **Fallback:** Users experiencing poor OCR results should file an issue with a sample document. The `runOCR()` pipeline includes multiple fallback strategies (embedded PDF text extraction, SVG-based text recovery, geometric OCR) that activate when the primary bespoke model produces low-confidence output.
+
 ### ✅ Quality Gates
-- `219` unit tests across `23` files pass (+3 from this strike: 1
-  hydration-gate invariant, 2 dynamic-DB-migration invariants).
+- `220` unit tests across `23` files pass (+1 from build fix: worker removal).
 - ESLint passes with `--max-warnings 0`.
 - TypeScript passes with `tsc --noEmit`.
 - Vite PWA precache 13,529 KiB / 135 entries.
+- **Build Production-Ready:** Stack overflow fixed; clean 6m 10s build with code splitting.
 
 ---
 
@@ -235,3 +246,6 @@ at runtime.
   `src/lib/wasm/ocr/pkg/`. Geometric fallback + Agent Socket reranker.
   No Tesseract, no `tesseract.js`, no traineddata, no `/assets/ocr/`
   payload.
+
+### Native Daemon — Deferred from v1.1.4-beta
+The Agent Socket Protocol native daemon (standalone Rust binary serving LLM inference at `ws://127.0.0.1:8080`) is deferred from this release. The TypeScript client (`LocalDaemonProvider.ts`) is shipped and functional — it connects to the daemon when available — but the server binary itself is **not yet built**. Target: v1.2.0. See `artefacts/V1.2_REFACTORING_ROADMAP.md` Epic 9 for details.

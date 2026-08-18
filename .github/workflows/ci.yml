@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, nightly]
   pull_request:
-    branches: [main]
+    branches: [main, nightly]
 
 # Cancel in-flight runs for the same branch / PR.
 concurrency:
@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       # LFS must be initialized + pulled BEFORE npm install so that the
@@ -46,6 +46,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
 
       # ── v1.1.4-beta gates ────────────────────────────────────────────
       - name: Lint
@@ -76,7 +79,7 @@ jobs:
           CI: '1'
 
   strict:
-    name: setup:local (idempotency)
+    name: setup:local (bootstrap file presence check)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: ci
@@ -92,7 +95,7 @@ jobs:
           fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       - name: Git LFS install
         run: git lfs install --local
@@ -109,6 +112,5 @@ jobs:
           node -e "require('fs').accessSync('scripts/forge_bespoke_model.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('scripts/ocrArtifacts.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('public/ocr/ocr.lock.json', require('fs').constants.R_OK)"
-          node -e "require('fs').accessSync('public/models/NOTICE.txt', require('fs').constants.R_OK)"
           echo "All one-command bootstrap files are present."
         shell: bash

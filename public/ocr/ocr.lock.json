@@ -37,10 +37,10 @@
       "role": "recognizer",
       "required": true,
       "byteLength": 663384,
-      "sha256": "00b5ab9e0bc41398771f29b1a52d8117f05449dfd1e32a65f0aa814870f54542",
+      "sha256": "fbd6a1102a2fee6dd01ef8a439ddfa473b4fc71b0894ccedd3b803615aa9140a",
       "license": "MIT",
       "source": "bespoke Phase 14c/14f MLX training on internal synthetic EA corpus",
-      "format": "Stored-gzip TENSOR v2 int8 ViT-Lite-128 recognizer (BPE-512 CTC, 256 patches)"
+      "format": "TENSOR v2 int8 ViT-Lite-128 recognizer (BPE-512 CTC, 256 patches, NHWC)"
     },
     {
       "path": "public/ocr/ocr_vocab.json.gz",
@@ -50,7 +50,7 @@
       "byteLength": 38399,
       "sha256": "16fe98ba44973394a8f5bf57a93e73d29a7bea3ea2a3f7d64e842e3d925c7121",
       "license": "MIT",
-      "format": "Stored-gzip JSON BPE-512 tokenizer metadata for CTC decode"
+      "format": "Gzipped JSON BPE-512 tokenizer metadata for CTC decode"
     },
     {
       "path": "public/ocr/ocr_grammar.json.gz",
