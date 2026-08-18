@@ -47,7 +47,7 @@
     "memory:graph": "node .memory/scripts/context-loader.mjs --full"
   },
   "engines": {
-    "node": ">=20.0.0 <23.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.4",
