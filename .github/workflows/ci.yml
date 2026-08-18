@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
       # ── v1.1.4-beta gates ────────────────────────────────────────────
       - name: Lint
         run: npm run lint
