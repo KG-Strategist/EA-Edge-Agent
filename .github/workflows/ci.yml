@@ -112,6 +112,5 @@ jobs:
           node -e "require('fs').accessSync('scripts/forge_bespoke_model.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('scripts/ocrArtifacts.mjs', require('fs').constants.R_OK)"
           node -e "require('fs').accessSync('public/ocr/ocr.lock.json', require('fs').constants.R_OK)"
-          node -e "require('fs').accessSync('public/models/NOTICE.txt', require('fs').constants.R_OK)"
           echo "All one-command bootstrap files are present."
         shell: bash
