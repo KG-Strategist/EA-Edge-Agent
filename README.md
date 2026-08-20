@@ -163,10 +163,10 @@ See [TESTING_GUIDE.md](TESTING_GUIDE.md) for the complete testing protocol inclu
 ## 🚀 Developer Setup
 
 ### Prerequisites
-- Node.js 20+ (below 23)
+- Node.js 20+ (CI pins Node 22; local dev requires Node ≤22 for Vite compatibility)
 - Git LFS 3.x+ installed before cloning. The repository stores compressed runtime brain assets with Git LFS; without it, Git will check out tiny pointer files instead of the required corpus payloads.
 - Modern browser with WebGPU support enabled (Chrome 113+, Edge 113+)
-- The compiled WASM runtime is included in `src/lib/wasm/pkg/`. Rust source lives in a separate private engine repository and is not required for normal app setup.
+- The compiled WASM runtime is included in `src/lib/wasm/pkg/`. Rust source in `src-rust/` is not required for normal app setup.
 
 ### Installation & Build
 ```bash

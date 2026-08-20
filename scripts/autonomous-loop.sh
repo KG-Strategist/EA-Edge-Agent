@@ -2,6 +2,10 @@
 # autonomous-loop.sh — Run graph-loop every 30 minutes for 48 hours.
 # Usage: ./scripts/autonomous-loop.sh
 
+# Node 22 is required — Node 26 deadlocks vite module transforms.
+export PATH="/opt/homebrew/Cellar/node@22/22.23.2/bin:$PATH"
+echo "Node: $(node --version)"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 LOG_DIR="$ROOT/test-results/e2e/reports"
@@ -60,9 +64,9 @@ while true; do
     echo "Log: $LOG_FILE"
     echo "═══════════════════════════════════════════════════════"
 
-    # Start vite dev server
+    # Start vite dev server (Node 22 required — Node 26 deadlocks vite)
     cd "$ROOT"
-    npx vite --port 3000 &>/tmp/vite-autonomous.log &
+    node .opencode/harness/bug-harness/serve-target.mjs --target=dev --port=3000 &>/tmp/vite-autonomous.log &
     VITE_PID=$!
 
     # Wait for dev server

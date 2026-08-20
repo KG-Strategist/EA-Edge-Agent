@@ -188,23 +188,14 @@ at runtime.
 - **Compiler Reliability:** Fixed stack-overflow issues in the Node.js compiler using buffered concatenation.
 
 
-## Current Code Alignment - 2026-05-29
+## Code Alignment - v1.1.4-beta (2026-08-18)
 
-- Release-readiness correction: Strike 1 local code health is green for lint, accessibility audit, TypeScript, Vitest, and corpus verification.
-- Validation snapshot: `npm run verify:corpus` passes for corpus `1.1.3-moat-2026-05-25` with `844854` records.
-- TypeScript snapshot: `npx tsc --noEmit` passes.
-- Lint snapshot: `npm run lint` passes.
-- Accessibility snapshot: `npm run test:a11y` passes across 58 TSX files.
-- Test snapshot: `npm run test` passes with `220` tests across `23` files.
-- Build snapshot: `npm run build` passes; Vite emits existing chunk-size/dynamic-import warnings.
-- E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
-- Dexie schema in `src/lib/db.ts` currently reaches `version(40)`; older references to v35, v36, v38, or v39 are historical unless a section explicitly says otherwise.
-- Generated corpus runtime files are intentionally ignored from Git: `public/baseline_meta.json`, `public/baseline_corpus.bin.gz`, `public/baseline_corpus_manifest.json`, `public/lexicon.json`, and `public/lexicon_roles.json`.
-- `public/corpus.lock.json` is the tracked integrity manifest; release or offline bundle distribution should restore the ignored corpus files before dev/build.
-- `public/dataAssets/` is the ignored private source lane for miner inputs and dictionary/persona/brain source material.
-- `src-rust/` is treated as a separate engine repository; this app repo should retain only the compiled public runtime under `src/lib/wasm/pkg/`.
-- Distribution correction: generated corpus artifacts should be published as release/offline-bundle assets and validated by `public/corpus.lock.json`, not carried as regular Git-tracked files.
-- Engine-repo correction: Rust engine source is treated as a separate repository; app release notes should describe the compiled WASM package shipped in this repo.
+- Release-readiness: lint, a11y, TypeScript, Vitest, corpus verification, OCR lockfile all pass.
+- E2E smoke gate passes with committed mock GGUF fixture.
+- Dexie schema in `src/lib/db.ts` currently reaches `version(41+)`; older references are historical.
+- Corpus runtime files (`baseline_meta.json`, `baseline_corpus.bin.gz`, etc.) are Git LFS tracked.
+- `src-rust/` contains Rust source (pre-compiled WASM in `src/lib/wasm/pkg/`).
+- Visual testing harness, Lighthouse audit, OCR eval, and autonomous loop all operational.
 
 
 <!-- RC-DOC-ALIGNMENT-2026-05-27 -->

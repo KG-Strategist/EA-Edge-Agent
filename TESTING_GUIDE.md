@@ -32,11 +32,11 @@ already real. See the **🛰️ One-Command Local Setup** section in
 
 ## Prerequisites
 
-- **Node.js 20+ (below 23)** — Runtime for Vite dev server and build tooling
+- **Node.js 20+** (`.nvmrc` pins 22; Vite dev server deadlocks on Node 26 — use Node 22)
 - **Git LFS 3.x+** — Required before clone/pull so compressed corpus assets are real files rather than LFS pointer text.
 - **Modern browser with WebGPU** — Chrome 113+, Edge 113+
 - **Corpus artifacts** — Required compressed runtime files are verified by `npm run verify:corpus`. Clone with Git LFS and run `git lfs pull`; release/offline bundles remain a fallback for non-Git users.
-- **Compiled WASM runtime** — Included under `src/lib/wasm/pkg/`. Rust source is maintained in a separate engine repository and is not part of normal public setup.
+- **Compiled WASM runtime** — Included under `src/lib/wasm/pkg/`. Rust source is in `src-rust/` (not required for normal setup).
 
 ## Unit Tests
 
@@ -105,7 +105,7 @@ The default Sovereign E2E command is the smoke gate: it uses the committed mock 
 
 ## WASM Runtime
 
-The public app uses the compiled WASM package in `src/lib/wasm/pkg/`. Do not rebuild Rust as part of normal public validation. Rebuilds happen in the separate Rust engine repository, then the compiled package is copied back into this app repo.
+The public app uses the compiled WASM package in `src/lib/wasm/pkg/`. Do not rebuild Rust as part of normal public validation. Rust source lives in `src-rust/` and rebuilds use `npm run build:wasm`.
 
 ## CI Pipeline
 
@@ -174,7 +174,7 @@ trips the build. A second job (`strict`) sanity-checks that every
 - **No WebGPU tests in CI** — WebGPU requires actual GPU hardware; CI runners are headless. Manual testing required on WebGPU-enabled browsers.
 - **No real GGUF model file in Git** — Large model files are not committed. `npm run test:e2e:sovereign-smoke` is CI-safe with mock GGUF fixtures; `npm run test:e2e:sovereign-gguf` is the real local-model release-signoff gate.
 - **Sovereign Engine E2E model source** — `npm run test:e2e:sovereign-gguf` requires `EA_NITI_E2E_GGUF_PATH` and validates the local GGUF header before launching Playwright. This keeps the production gate deterministic and avoids live model downloads unless explicitly opted in.
-- **WASM engine source is separate** — This repo validates the compiled package. It does not compile Rust source in public CI.
+- **WASM engine source is in `src-rust/`** — This repo validates the compiled package. Rust rebuilds are optional (`npm run build:wasm`).
 - **GitHub source ZIP caveat** — Source archives do not include LFS objects by default. Use `git clone` with Git LFS, enable LFS archive inclusion in repository settings, or test against a release/offline bundle.
 - **Epistemic Shadow timing** — Background distillation is idle-dependent; test results may vary based on system load.
 
@@ -226,7 +226,7 @@ the Admin panel shows live hydration status.
 - E2E smoke snapshot: `npm run test:e2e:sovereign-smoke` passes with the committed mock GGUF fixture.
 - CI expectation remains lint, a11y audit, corpus verification, TypeScript, tests, build, and Sovereign smoke E2E; local checks run in this pass are green.
 - Corpus verification is now an explicit prerequisite for dev/build through `predev` and `prebuild`, so failures in missing/invalid Git LFS corpus artifacts are expected to stop local startup early.
-- Public validation should not run `npm run build:wasm` as a normal requirement; Rust source is separate and the app repo validates the compiled package in `src/lib/wasm/pkg/`.
+- Public validation should not run `npm run build:wasm` as a normal requirement; Rust source is in `src-rust/` and the app repo validates the compiled package in `src/lib/wasm/pkg/`.
 - E2E/model-download tests should distinguish OPFS model cache behavior from corpus artifact restoration; corpus files are build/runtime knowledge artifacts, while GGUF model files are user-consented model-cache assets.
 
 
