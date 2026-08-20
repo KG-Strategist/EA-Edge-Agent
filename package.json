@@ -57,6 +57,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "overrides": {
+    "esbuild": "0.21.5"
+  },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.4",
     "canvas": "^3.2.3",

@@ -98,6 +98,6 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['@electric-sql/pglite', 'pdfjs-dist']
+    exclude: ['@electric-sql/pglite', 'pdfjs-dist', 'src-rust', '@ffmpeg/ffmpeg', 'tesseract.js']
   }
 });
