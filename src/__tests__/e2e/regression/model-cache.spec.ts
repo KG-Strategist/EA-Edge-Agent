@@ -121,18 +121,18 @@ test.describe('Model Cache Lifecycle', () => {
 
     await completeAirGappedAuth(page);
 
-    // Open chat
-    const chatBtn = page.locator('[data-testid="agentchat-open-button"], button:has-text("Chat"), button[aria-label*="chat" i]');
+    // BUG-006 FIX: Use exact data-testid selectors
+    const chatBtn = page.locator('[data-testid="agentchat-open-button"]');
     if (await chatBtn.count() > 0) {
       await chatBtn.first().click();
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1000);
     }
 
     // Send a message
-    const chatInput = page.locator('textarea, input[placeholder*="message" i], input[placeholder*="type" i], [data-testid*="chat-input"]');
+    const chatInput = page.locator('[data-testid="agentchat-message-input"]');
     if (await chatInput.count() > 0) {
       await chatInput.first().fill('Hello');
-      const sendBtn = page.locator('button:has-text("Send"), button[aria-label*="send" i]');
+      const sendBtn = page.locator('[data-testid="agentchat-send-button"]');
       if (await sendBtn.count() > 0) {
         await sendBtn.first().click();
         await page.waitForTimeout(5000);

@@ -1680,8 +1680,9 @@ export class EADatabase extends Dexie {
 export const db = new EADatabase();
 
 /**
- * Prunes old chat threads to maintain storage efficiency.
- * Automatically deletes the oldest thread and its associated messages if count > 50.
+ * BUG-007 FIX: Prunes old chat threads with safe transaction boundaries.
+ * Each record deletion is individually try/caught to prevent transaction abortion
+ * on uninitialized legacy records or orphaned references.
  */
 export async function pruneOldChats(): Promise<void> {
   try {
@@ -1692,10 +1693,25 @@ export async function pruneOldChats(): Promise<void> {
         .first();
 
       if (oldest?.id) {
-        // Delete all messages associated with oldest thread
-        await db.chat_messages.where('threadId').equals(oldest.id).delete();
-        // Delete the thread itself
-        await db.chat_threads.delete(oldest.id);
+        const threadId = oldest.id;
+        // BUG-007 FIX: Wrap in explicit transaction with per-record error isolation
+        await db.transaction('rw', [db.chat_messages, db.chat_threads], async () => {
+          try {
+            await db.chat_messages.where('threadId').equals(threadId).delete();
+          } catch (msgErr) {
+            // Individual message batch deletion failed — log but don't abort thread cleanup
+            import('./logger').then(({ Logger }) => {
+              Logger.warn('[pruneOldChats] Message batch deletion error:', msgErr);
+            }).catch(() => {});
+          }
+          try {
+            await db.chat_threads.delete(threadId);
+          } catch (threadErr) {
+            import('./logger').then(({ Logger }) => {
+              Logger.warn('[pruneOldChats] Thread deletion error:', threadErr);
+            }).catch(() => {});
+          }
+        });
       }
     }
   } catch (e) {

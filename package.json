@@ -20,7 +20,7 @@
     "pack:corpus": "node scripts/corpusArtifacts.mjs pack",
     "setup:local": "node scripts/setupLocal.mjs",
     "predev": "npm run verify:corpus && npm run verify:ocr",
-    "dev": "vite",
+    "dev": "node -v | grep -q 'v22' && vite || echo 'ERROR: Use npm run dev:node22 (Node 22 required, Node 26 deadlocks Vite)' && exit 1",
     "dev:node22": "PATH=\"/opt/homebrew/Cellar/node@22/22.23.2/bin:$PATH\" npm run dev",
     "test:e2e:headed": "playwright test src/__tests__/e2e/regression/ --project=chromium --headed",
     "test:e2e:headed:chrome": "playwright test src/__tests__/e2e/regression/ --project=chrome --headed",
