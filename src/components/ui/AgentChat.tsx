@@ -413,11 +413,11 @@ export default function AgentChat() {
 
   return (
     <>
-      {/* Floating Entry Button */}
+      {/* Floating Entry Button — BUG-003 FIX: immediate show/hide, no transition race */}
       <button
         onClick={() => { setIsOpen(true); setIsMinimized(false); }}
         data-testid="agentchat-open-button"
-        className={`${isOpen && !isMinimized ? 'scale-0' : 'scale-100'} transition-transform duration-300 fixed bottom-6 right-6 w-14 h-14 bg-gray-900 dark:bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-purple-700 z-40 ring-4 ring-white dark:ring-gray-900 border border-gray-700/50 dark:border-purple-500`}
+        className={`${isOpen && !isMinimized ? 'scale-0 pointer-events-none' : 'scale-100 pointer-events-auto'} fixed bottom-6 right-6 w-14 h-14 bg-gray-900 dark:bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-purple-700 z-40 ring-4 ring-white dark:ring-gray-900 border border-gray-700/50 dark:border-purple-500`}
         aria-label="Open Chat"
         title="Open Chat"
       >
@@ -425,8 +425,8 @@ export default function AgentChat() {
         <div className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900 dark:border-purple-600"></div>
       </button>
 
-      {/* Chat Pane */}
-      <div className={`fixed bottom-6 right-6 w-96 h-[600px] max-h-[85vh] bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 flex flex-col transition-all duration-300 origin-bottom-right ${isOpen && !isMinimized ? 'scale-100 opacity-100' : 'scale-95 opacity-0 pointer-events-none translate-y-20'}`}>
+      {/* Chat Pane — BUG-003 FIX: Remove CSS transition race; use immediate visibility when open */}
+      <div className={`fixed bottom-6 right-6 w-96 h-[600px] max-h-[85vh] bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 flex flex-col origin-bottom-right ${isOpen && !isMinimized ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-95 opacity-0 pointer-events-none translate-y-20'}`}>
         
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 rounded-t-2xl">
