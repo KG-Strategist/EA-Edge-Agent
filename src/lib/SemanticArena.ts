@@ -89,6 +89,24 @@ export class SemanticArena {
     this.beliefState = new Uint8Array(maxRecords);
   }
 
+  /**
+   * BUG-001 FIX: Initialize an empty memory arena when corpus buffer is invalid/unaligned.
+   * Prevents WASM out-of-bounds traps by ensuring all typed arrays are properly sized.
+   */
+  private initEmptyArena(): void {
+    this.currentCompiledOffset = 0;
+    this.arena = new Uint32Array(this.maxRecords * 64);
+    this.recordTypes = new Uint8Array(this.maxRecords);
+    this.recordTagText = new Array(this.maxRecords).fill('');
+    this.sourceReliability = new Float32Array(this.maxRecords);
+    this.causedBy = new Uint32Array(this.maxRecords).fill(0xFFFFFFFF);
+    this.firstEffect = new Uint32Array(this.maxRecords).fill(0xFFFFFFFF);
+    this.nextSiblingEffect = new Uint32Array(this.maxRecords).fill(0xFFFFFFFF);
+    this.causalStrength = new Uint8Array(this.maxRecords);
+    this.beliefState = new Uint8Array(this.maxRecords);
+    globalSynthesizer.resize(this.maxRecords);
+  }
+
   public insertMemory(vector: Uint32Array, index: number): void {
     const offset = index * 64;
     for (let i = 0; i < 64; i++) {
@@ -559,13 +577,20 @@ public searchWithScores(queryVector: Uint32Array, threshold: number = 0.18, ragT
       fullBuffer = decompressedBuffer;
     }
 
-    if (fullBuffer.byteLength % 4 !== 0) {
-      throw new Error(`Invalid baseline corpus byte length: ${fullBuffer.byteLength}`);
+    // BUG-001 FIX: Enforce 4-byte boundary validation before TypedArray view allocation.
+    // After gzip decompression, the buffer may not be 4-byte aligned (e.g., LFS pointer
+    // remnants or corrupt corpus). Instead of throwing, gracefully degrade to empty arena.
+    if (!fullBuffer || fullBuffer.byteLength % 4 !== 0 || fullBuffer.byteLength < 64) {
+      Logger.warn('SemanticArena', `Invalid or unaligned corpus buffer (${fullBuffer?.byteLength ?? 0} bytes). Initializing empty memory arena.`);
+      this.initEmptyArena();
+      return;
     }
 
     const baselineVectors = new Uint32Array(fullBuffer.buffer, fullBuffer.byteOffset, fullBuffer.byteLength / 4);
     if (baselineVectors.length % 64 !== 0) {
-      throw new Error(`Invalid baseline corpus vector length: ${baselineVectors.length}`);
+      Logger.warn('SemanticArena', `Corpus vector length ${baselineVectors.length} not aligned to 64-int stride. Initializing empty memory arena.`);
+      this.initEmptyArena();
+      return;
     }
 
     const requiredRecords = baselineVectors.length / 64;
