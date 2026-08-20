@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, CustomAgent, MitraProfile } from '../../lib/db';
-import { CheckCircle2, AlertTriangle, Activity, Plus, Edit, Archive as ArchiveIcon, ToggleLeft, ToggleRight, Loader2, X, Zap, Bot, Brain, Users, Trash2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Activity, Plus, Edit, Archive as ArchiveIcon, ToggleLeft, ToggleRight, Loader2, X, Zap, Bot, Brain, Users, Trash2, FolderUp } from 'lucide-react';
 import CreatableDropdown from '../ui/CreatableDropdown';
 import CacheButton from '../ui/CacheButton';
 import AIRewriteButton from '../ui/AIRewriteButton';
@@ -197,13 +197,18 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
     // Primary gate: respect app-level network consent (IndexedDB)
     const networkAllowed = await checkNetworkConsent();
     if (!networkAllowed) {
-       addNotification('Network access is disabled. Enable it in Network & Privacy Settings to download models.', 'warning', 5000);
+       // BUG-005 FIX: When network is disabled (air-gap mode), suggest sideload as primary path
+       addNotification('Network disabled. Use the Sideload GGUF button in Model Sandbox to load models from local media.', 'warning', 6000);
+       // Offer to navigate directly to sideload page
+       window.dispatchEvent(new CustomEvent('EA_NAVIGATE', {
+         detail: { view: 'system-pref', subView: 'models' }
+       }));
        return;
     }
 
     // Soft warning: browser reports offline but user has consented — warn but don't block
     if (!navigator.onLine) {
-       addNotification('Browser reports offline. If the download fails, check your connection and retry.', 'warning', 5000);
+       addNotification('Browser reports offline. If the download fails, consider sideloading a GGUF from local media.', 'warning', 5000);
     }
 
     // Check if user already consented to this exact model (Strike 4.8)
@@ -770,17 +775,24 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
                 <div>
                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Select OPFS Model</label>
                    {offlineModels.length === 0 ? (
-                     <div className="mt-2 text-sm text-gray-400">
-                       No local GGUF files are registered in the OPFS Model Library.
+                     <div className="mt-2">
+                       <div className="text-sm text-gray-400 mb-3">
+                         No local GGUF files are registered in the OPFS Model Library.
+                       </div>
+                       {/* BUG-005 FIX: Prominent sideload CTA for air-gap users */}
                        <button
                          type="button"
                          onClick={() => window.dispatchEvent(new CustomEvent('EA_NAVIGATE', {
                            detail: { view: 'system-pref', subView: 'models' }
                          }))}
-                         className="ml-2 text-blue-500 hover:underline cursor-pointer"
+                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
                        >
-                         Sideload GGUF &rarr;
+                         <FolderUp size={16} />
+                         Sideload GGUF from Local Media
                        </button>
+                       <p className="text-[10px] text-gray-500 mt-2 text-center">
+                         Stream a .gguf file directly to OPFS — no network required.
+                       </p>
                      </div>
                    ) : (
                      <select
