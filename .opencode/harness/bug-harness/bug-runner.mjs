@@ -8,7 +8,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..', '..', '..', '..');
+const ROOT = join(__dirname, '..', '..', '..');
 const REPORT_DIR = join(ROOT, 'test-results', 'e2e', 'reports', 'bugs');
 const BACKLOG = join(ROOT, 'BUG_BACKLOG.md');
 

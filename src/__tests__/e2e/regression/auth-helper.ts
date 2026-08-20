@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
 
 /**
  * Shared auth helper — navigates through the 5-step air-gapped signup flow.
