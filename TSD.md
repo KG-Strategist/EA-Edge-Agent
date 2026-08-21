@@ -325,11 +325,22 @@ EA-NITI is a **5-layer downward-only dependency architecture**:
 
 ---
 
+### 2.18 Gap-Fill Specs (TSD-113 → TSD-116)
+
+| TSD | Title | File | Status |
+|-----|-------|------|--------|
+| 113 | OCR Pipeline | `tsd/16_LIB_UTILITIES/TSD-113_OCR_Pipeline.md` | 🟢 |
+| 114 | Telemetry | `tsd/16_LIB_UTILITIES/TSD-114_Telemetry.md` | 🟢 |
+| 115 | Crypto Utils | `tsd/01_INFRASTRUCTURE/TSD-115_Crypto_Utils.md` | 🟢 |
+| 116 | OCR Reranker | `tsd/16_LIB_UTILITIES/TSD-116_OCR_Reranker.md` | 🟢 |
+
+---
+
 ## 3. Summary Statistics
 
 | Category | TSD Range | Count | Status |
 |----------|-----------|-------|--------|
-| Infrastructure | 001–004 | 4 | 🟢 |
+| Infrastructure | 001–004, 115 | 5 | 🟢 |
 | Semantic Pipeline | 005–009 | 5 | 🟢 |
 | Inference Engines | 010–014 | 5 | 🟢 |
 | NSI Workflow | 015–019 | 5 | 🟢 |
@@ -340,13 +351,13 @@ EA-NITI is a **5-layer downward-only dependency architecture**:
 | Rust Engine Deep Dive | 039–043 | 5 | 🟢 |
 | Testing | 044–048 | 5 | 🟢 |
 | Future Roadmap | 049–057 | 9 | 🔵 |
-| Library Utilities | 058–072 | 15 | 🟢 |
+| Library Utilities | 058–072, 113–114, 116 | 18 | 🟢 |
 | Hooks | 073–075 | 3 | 🟢 |
 | Admin Components | 076–093 | 18 | 🟢 |
 | Widgets | 094–097 | 4 | 🟢 |
 | E2E Tests | 098–099 | 2 | 🟢 |
 | UI Components (extended) | 100–112 | 13 | 🟢 |
-| **Total** | **001–112** | **112** | **🟢 103 / 🔵 9** |
+| **Total** | **001–116** | **116** | **🟢 107 / 🔵 9** |
 
 ---
 
@@ -374,4 +385,4 @@ EA-NITI is a **5-layer downward-only dependency architecture**:
 
 ---
 
-*Source: `.artefacts/docs-internal/tsd/` (17 subdirectories, 112 TSD files)*
+*Source: `.artefacts/docs-internal/tsd/` (17 subdirectories, 116 TSD files)*
