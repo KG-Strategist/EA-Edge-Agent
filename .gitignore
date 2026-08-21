@@ -36,6 +36,9 @@ scripts/tiny-model-builder/
 !RELEASE_NOTES.md
 !TESTING_GUIDE.md
 !AGENTS.md
+!ROADMAP.md
+!BRD.md
+!TSD.md
 
 # --- [3] Corpus Sources & Generated Runtime Brain ---
 /public/dataAssets/
