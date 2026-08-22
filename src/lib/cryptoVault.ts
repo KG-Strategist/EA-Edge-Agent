@@ -19,7 +19,7 @@ export function isVaultUnlocked(): boolean {
   return activeDEK !== null;
 }
 
-export function getVaultKey(): string | null {
+export function getVaultKey(): string {
   if (!activeDEK) {
     throw new VaultLockedError();
   }
@@ -63,9 +63,6 @@ async function getCryptoKey(dekHex: string, extractable = false): Promise<Crypto
 
 export async function encryptBlob(blob: Blob): Promise<Blob> {
   const dekHex = getVaultKey();
-  if (!dekHex) {
-    throw new Error('CRITICAL: Vault locked. No Data Encryption Key available.');
-  }
 
   const key = await getCryptoKey(dekHex);
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -84,9 +81,6 @@ export async function encryptBlob(blob: Blob): Promise<Blob> {
 
 export async function decryptBlob(blob: Blob): Promise<Blob> {
   const dekHex = getVaultKey();
-  if (!dekHex) {
-    throw new Error('Vault decryption key not available');
-  }
 
   const arrayBuffer = await blob.arrayBuffer();
   if (arrayBuffer.byteLength <= 12) {
@@ -112,9 +106,6 @@ export async function decryptBlob(blob: Blob): Promise<Blob> {
 
 export async function encryptString(text: string): Promise<string> {
   const dekHex = getVaultKey();
-  if (!dekHex) {
-    throw new Error('CRITICAL: Vault locked. No Data Encryption Key available.');
-  }
 
   const key = await getCryptoKey(dekHex);
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -134,9 +125,6 @@ export async function encryptString(text: string): Promise<string> {
 
 export async function decryptString(ciphertext: string): Promise<string> {
   const dekHex = getVaultKey();
-  if (!dekHex) {
-    throw new Error('Vault decryption key not available');
-  }
   if (!ciphertext.includes(':')) {
     throw new Error('Invalid ciphertext format');
   }
@@ -182,9 +170,6 @@ async function getHmacCryptoKey(dekHex: string): Promise<CryptoKey> {
 
 export async function initializeHmacKey(): Promise<void> {
   const dekHex = getVaultKey();
-  if (!dekHex) {
-    throw new Error('CRITICAL: Vault locked. No Data Encryption Key available for HMAC.');
-  }
   activeHmacKey = await getHmacCryptoKey(dekHex);
 }
 
