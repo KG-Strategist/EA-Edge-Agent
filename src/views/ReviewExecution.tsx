@@ -627,7 +627,7 @@ addLog('Fetching architecture principles and BIAN domain context...');
   );
 
   return (
-    <div className="w-full max-w-5xl mx-auto pb-20">
+    <div data-testid="review-execution-view" className="w-full max-w-5xl mx-auto pb-20">
       {/* Header */}
       <div className="mb-6 flex items-center gap-4">
         <button

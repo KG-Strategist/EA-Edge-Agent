@@ -175,7 +175,7 @@ export default function IntakeWizard({ onClose }: { onClose?: () => void }) {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto pb-20">
+    <div data-testid="intake-wizard-view" className="w-full max-w-5xl mx-auto pb-20">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Review Intake Wizard</h2>
         <p className="text-gray-600 dark:text-gray-400">Submit new architecture artifacts for automated review.</p>

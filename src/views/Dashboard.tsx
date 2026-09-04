@@ -70,7 +70,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="w-full pb-10">
+    <div data-testid="dashboard-view" className="w-full pb-10">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
           {isEditMode ? (

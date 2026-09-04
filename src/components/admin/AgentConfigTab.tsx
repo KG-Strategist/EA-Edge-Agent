@@ -851,7 +851,7 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
   );
 
   return (
-    <div data-testid="agent-config-tab" className="flex flex-col h-full space-y-6 overflow-y-auto">
+    <div data-testid="agent-config-tab" className="flex flex-col h-full space-y-6 overflow-y-auto overflow-x-hidden">
       <PageHeader 
         icon={<Bot className="text-blue-500" />}
         title="Agent Configurations & Personas"
