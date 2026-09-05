@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { db } from '../../lib/db';
-import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
+import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw, KeyRound, ShieldCheck, Fingerprint } from 'lucide-react';
 import { requestDirectoryPermission } from '../../lib/fileSystemPermissions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import PageHeader from '../ui/PageHeader';
@@ -11,7 +11,15 @@ import { useLocalBackupState } from '../../hooks/useLocalBackupState';
 import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 import { recoverEncryptedMessages, VaultRecoveryResult } from '../../lib/secureDb';
-import { isVaultUnlocked } from '../../lib/cryptoVault';
+import { isVaultUnlocked, getVaultKeySafe } from '../../lib/cryptoVault';
+import {
+  registerDeviceCredential,
+  wrapDeviceDEK,
+  storeDeviceKey,
+  getStoredDeviceKey,
+  removeDeviceKey,
+  isWebAuthnSupported,
+} from '../../lib/webauthn';
 import { buildEncryptedEnvelope, parseBrainPayload, PORTABILITY_GROUPS, isPortableTable, applyTableSelection } from '../../lib/brainPayload';
 import OcrHealthWidget from './OcrHealthWidget';
 
@@ -51,6 +59,72 @@ export default function SystemTab() {
   const [syncToast, setSyncToast] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [isRestoringPermission, setIsRestoringPermission] = useState(false);
+
+  // ── Device Biometrics (v1.2 M3) ──────────────────────────────────────
+  const [deviceKeyState, setDeviceKeyState] = useState<'unknown' | 'registered' | 'none' | 'unsupported'>('unknown');
+  const [isRegisteringDevice, setIsRegisteringDevice] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isWebAuthnSupported()) {
+        if (!cancelled) setDeviceKeyState('unsupported');
+        return;
+      }
+      const record = await getStoredDeviceKey();
+      if (!cancelled) setDeviceKeyState(record ? 'registered' : 'none');
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleRegisterDevice = async () => {
+    if (!isVaultUnlocked()) {
+      addNotification('Unlock the vault before registering device biometrics.', 'error', 5000);
+      return;
+    }
+    const dek = getVaultKeySafe();
+    if (!dek) {
+      addNotification('Vault key unavailable.', 'error', 5000);
+      return;
+    }
+    setIsRegisteringDevice(true);
+    try {
+      const { credentialId, prfBytes } = await registerDeviceCredential(identity?.username || 'local-user');
+      const wrapped = await wrapDeviceDEK(prfBytes, dek);
+      await storeDeviceKey({
+        credentialId,
+        ...wrapped,
+        createdAt: new Date().toISOString(),
+        rpId: window.location.hostname,
+      });
+      setDeviceKeyState('registered');
+      await db.audit_logs.add({
+        timestamp: new Date(),
+        pseudokey: identity?.username || 'Unknown User',
+        action: 'UPDATE',
+        tableName: 'system_security',
+        details: JSON.stringify({ event: 'DEVICE_KEY_REGISTER', status: 'Success' })
+      });
+      addNotification('Device biometrics registered. You can now unlock with biometrics.', 'success', 5000);
+    } catch (e: any) {
+      addNotification(e?.message || 'Device registration failed.', 'error', 5000);
+    } finally {
+      setIsRegisteringDevice(false);
+    }
+  };
+
+  const handleRemoveDevice = async () => {
+    await removeDeviceKey();
+    setDeviceKeyState(isWebAuthnSupported() ? 'none' : 'unsupported');
+    await db.audit_logs.add({
+      timestamp: new Date(),
+      pseudokey: identity?.username || 'Unknown User',
+      action: 'UPDATE',
+      tableName: 'system_security',
+      details: JSON.stringify({ event: 'DEVICE_KEY_REMOVE', status: 'Success' })
+    });
+    addNotification('Device biometrics removed.', 'success', 5000);
+  };
 
   const { isConfigured, backupPath, backupDirectoryHandle, isPermissionSuspended } = useLocalBackupState();
 
@@ -823,6 +897,48 @@ try {
 
       {/* ── Bespoke OCR Health ──────────────────────────────────────── */}
       <OcrHealthWidget />
+
+      {/* ── Device Biometrics (v1.2 M3) ─────────────────────────────── */}
+      <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6">
+        <div className="flex items-start gap-3">
+          <Fingerprint size={20} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-400 mb-1">Device Biometrics</h3>
+            <p className="text-sm text-emerald-700 dark:text-emerald-500/80 mb-4">
+              Bind this device&apos;s authenticator (fingerprint, face, hardware key) to your vault via WebAuthn PRF.
+              The PRF secret never leaves the authenticator — only an encrypted copy of the vault key is stored.
+            </p>
+            {deviceKeyState === 'unsupported' && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">WebAuthn is not supported in this browser.</p>
+            )}
+            {deviceKeyState === 'registered' && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-1 rounded-full">
+                  Device registered
+                </span>
+                <button
+                  onClick={handleRemoveDevice}
+                  aria-label="Remove device biometrics"
+                  className="px-4 py-2 bg-white dark:bg-gray-800 border border-emerald-300 dark:border-emerald-700 hover:border-emerald-500 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Remove Device
+                </button>
+              </div>
+            )}
+            {(deviceKeyState === 'none' || deviceKeyState === 'unknown') && (
+              <button
+                onClick={handleRegisterDevice}
+                disabled={isRegisteringDevice}
+                aria-label="Register device biometrics"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                {isRegisteringDevice ? <Loader2 size={14} className="animate-spin" /> : <Fingerprint size={14} />}
+                Register This Device
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ── Vault Recovery ──────────────────────────────────────────── */}
       <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-6">

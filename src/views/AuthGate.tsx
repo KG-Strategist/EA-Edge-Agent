@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, KeyRound, AlertTriangle, Fingerprint, Lock, Loader2, Wifi, Globe, ServerOff, Info, CheckCircle2, Moon, Sun, ArrowLeft, Server, UserPlus, FolderKey, Zap, Eye, EyeOff, Plane, Network } from 'lucide-react';
-import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback, restoreAuthenticatedSession, unlockVaultWithPin } from '../lib/authEngine';
+import { registerLocalUser, registerHybridUser, loginWith2FA, loginWithSSO, getCurrentUser, generatePseudonym, initiateOAuthLogin, handleOAuthCallback, isOAuthCallback, restoreAuthenticatedSession, unlockVaultWithPin, unlockVaultWithDeviceKey } from '../lib/authEngine';
 import Logo from '../components/ui/Logo';
 import { db, GlobalSetting } from '../lib/db';
 import { securePutGlobalSetting } from '../lib/secureDb';
 import { GlobalSettingSchema } from '../lib/validation';
 import { UserIdentity, useStateContext } from '../context/StateContext';
+import { assertDeviceCredential, unwrapDeviceDEK, getStoredDeviceKey, isWebAuthnSupported } from '../lib/webauthn';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Logger } from '../lib/logger';
 
@@ -107,6 +108,8 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
 
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  // v1.2 M3: device-biometric unlock availability for the UNLOCK_VAULT view
+  const [deviceKeyAvailable, setDeviceKeyAvailable] = useState(false);
   const [isTempLoginMode, setIsTempLoginMode] = useState(false);
   const [isRecoveryContext, setIsRecoveryContext] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -581,8 +584,52 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
     }
   };
 
-  const handleSSOLogin = async (providerIdMock: string) => {
+  // v1.2 M3: probe for a registered device key when the unlock view appears
+  useEffect(() => {
+    if (view !== 'UNLOCK_VAULT') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const available = isWebAuthnSupported() && (await getStoredDeviceKey()) !== null;
+        if (!cancelled) setDeviceKeyAvailable(available);
+      } catch {
+        if (!cancelled) setDeviceKeyAvailable(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [view]);
+
+  const handleDeviceUnlock = async () => {
     setError('');
+    setIsProcessing(true);
+    try {
+      const record = await getStoredDeviceKey();
+      if (!record) {
+        setError('No device key registered on this device.');
+        return;
+      }
+      const prfBytes = await assertDeviceCredential(record.credentialId);
+      const dekHex = await unwrapDeviceDEK(prfBytes, record);
+      const id = pseudokey || getCurrentUser() || '';
+      if (!id) {
+        setError('No local identity found for device unlock.');
+        return;
+      }
+      const unlocked = await unlockVaultWithDeviceKey(id, dekHex);
+      if (!unlocked) {
+        setError('Device key does not match this identity.');
+        return;
+      }
+      setAuthStatus('unlocked');
+      await dispatchAuthSuccess(id);
+    } catch (err: any) {
+      setError(err.message || 'Device unlock failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSSOLogin = async (providerIdMock: string) => {    setError('');
     setIsProcessing(true);
     try {
       const successPseudonym = await loginWithSSO(providerIdMock);
@@ -867,6 +914,12 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: (identi
                 <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-gradient-to-r dark:from-blue-600 dark:to-blue-500 text-white font-bold rounded-lg px-6 py-3 text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                   {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <FolderKey className="w-5 h-5" />} Unlock Vault
                 </button>
+
+                {deviceKeyAvailable && (
+                  <button type="button" onClick={handleDeviceUnlock} disabled={isProcessing} aria-label="Unlock vault with device biometrics" title="Unlock vault with device biometrics" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-6 py-3 text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Fingerprint className="w-5 h-5" />} Unlock with Biometrics
+                  </button>
+                )}
 
                 <button type="button" onClick={() => { setAuthStatus('anonymous'); setPseudokey(''); setPin(''); setView('LOGIN'); }} className="w-full text-xs font-semibold text-gray-500 dark:text-blue-300/70 hover:text-blue-600 dark:hover:text-blue-300 transition-colors">
                   Use full passphrase login instead

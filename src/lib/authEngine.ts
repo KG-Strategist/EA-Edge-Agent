@@ -2,6 +2,7 @@ import { db } from './db';
 import {
   initializeVault,
   initializeHmacKey,
+  importDeviceDEK,
   signHMAC,
   verifyHMAC,
   createSealedVaultSession,
@@ -199,6 +200,35 @@ export async function unlockVaultWithPin(pseudokey: string, pin: string): Promis
     action: 'LOGIN',
     tableName: 'users',
     details: 'Vault PIN unlock'
+  });
+
+  return true;
+}
+
+/**
+ * Unlock the vault with a device-bound DEK unwrapped via WebAuthn PRF
+ * (v1.2 M3). Authenticator possession is the factor — no PIN required.
+ * The user record must exist; the DEK is imported directly.
+ */
+export async function unlockVaultWithDeviceKey(pseudokey: string, dekHex: string): Promise<boolean> {
+  const user = await db.users.where('pseudokey').equals(pseudokey).first();
+  if (!user) return false;
+
+  try {
+    importDeviceDEK(dekHex);
+  } catch {
+    return false;
+  }
+  await initializeHmacKey();
+  await saveSession(pseudokey);
+  sessionStorage.removeItem(PIN_UNLOCK_REQUIRED_KEY);
+
+  await db.audit_logs.add({
+    timestamp: new Date(),
+    pseudokey,
+    action: 'LOGIN',
+    tableName: 'users',
+    details: 'Vault device-key (WebAuthn PRF) unlock'
   });
 
   return true;

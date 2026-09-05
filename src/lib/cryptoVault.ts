@@ -39,6 +39,17 @@ export function clearVault(): void {
   activeDEK = null;
 }
 
+/**
+ * Import a device-bound DEK (e.g., unwrapped via WebAuthn PRF). Validates
+ * format; the caller must have proven authenticator possession.
+ */
+export function importDeviceDEK(dekHex: string): void {
+  if (!/^[0-9a-f]{32,}$/i.test(dekHex)) {
+    throw new Error('Invalid device key format.');
+  }
+  activeDEK = dekHex;
+}
+
 // Convert string to ArrayBuffer
 function getMessageEncoding(message: string) {
   const enc = new TextEncoder();
