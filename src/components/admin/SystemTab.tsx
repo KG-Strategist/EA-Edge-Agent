@@ -11,6 +11,8 @@ import { useLocalBackupState } from '../../hooks/useLocalBackupState';
 import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 import { recoverEncryptedMessages, VaultRecoveryResult } from '../../lib/secureDb';
+import { isVaultUnlocked } from '../../lib/cryptoVault';
+import { buildEncryptedEnvelope, parseBrainPayload } from '../../lib/brainPayload';
 import OcrHealthWidget from './OcrHealthWidget';
 
 export default function SystemTab() {
@@ -350,12 +352,26 @@ try {
           dump[table.name] = await table.toArray();
         })
       );
+
+      const tableNames = tablesToExport.map((table) => table.name);
+      let filename: string;
+      let fileContent: string;
+      let encrypted = false;
+      if (isVaultUnlocked()) {
+        const envelope = await buildEncryptedEnvelope(JSON.stringify(dump), tableNames);
+        fileContent = JSON.stringify(envelope);
+        filename = `niti_brain_export_${new Date().toISOString().split('T')[0]}.enc.json`;
+        encrypted = true;
+      } else {
+        fileContent = JSON.stringify(dump, null, 2);
+        filename = `niti_brain_export_${new Date().toISOString().split('T')[0]}.json`;
+      }
       
-      const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+      const blob = new Blob([fileContent], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `niti_brain_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -364,8 +380,14 @@ try {
         pseudokey: identity?.username || 'Unknown User',
         action: 'UPDATE',
         tableName: 'system_portability',
-        details: JSON.stringify({ event: 'EXPORT_BRAIN', status: 'Success' })
+        details: JSON.stringify({ event: 'EXPORT_BRAIN', status: 'Success', encrypted })
       });
+
+      setExportToast(
+        encrypted
+          ? `Export Complete: Encrypted payload (AES-256-GCM, ${tableNames.length} tables).`
+          : `Export Complete: ${tableNames.length} tables (UNENCRYPTED legacy payload — unlock vault for encryption).`
+      );
       
       setTimeout(() => setExportToast(null), 3000);
     } catch (e) {
@@ -399,31 +421,14 @@ try {
       try {
         const text = e.target?.result as string;
         
-        let dump;
+        // Accepts AES-256-GCM encrypted envelopes (requires unlocked vault)
+        // and legacy plaintext dumps.
+        let dump: Record<string, any[]>;
         try {
-          dump = JSON.parse(text);
-        } catch {
-          throw new Error('Invalid NITI Brain Payload: File is not a valid JSON document.');
-        }
-        
-        // Strict Schema Validation
-        if (!dump || typeof dump !== 'object') {
-          throw new Error('Invalid NITI Brain Payload: Root element is not a JSON object.');
-        }
-
-        const requiredTopLevelKeys = [
-          'architecture_categories',
-          'master_categories',
-          'content_metamodel',
-          'architecture_layers',
-          'architecture_principles',
-          'service_domains'
-        ];
-
-        // Ensure at least one known architectural array exists in the payload, preventing random JSON uploads
-        const hasAnyValidKey = requiredTopLevelKeys.some(key => Array.isArray(dump[key]));
-        if (!hasAnyValidKey) {
-            throw new Error('Invalid NITI Brain Payload: Missing core architectural entities (e.g., principles, layers).');
+          const parsed = await parseBrainPayload(text);
+          dump = parsed.dump;
+        } catch (parseErr: any) {
+          throw new Error(parseErr?.message || 'Invalid NITI Brain Payload.');
         }
         
         await db.transaction('rw', 
@@ -478,7 +483,7 @@ try {
       <PageHeader 
         icon={<BrainCircuit className="text-indigo-500" />}
         title="State Portability (NITI Brain Transfer)"
-        description="Export your agent's entirely localized knowledge base (Categories, Domains, Taxonomies, Templates, Workflow Pipelines, Principles) into a raw JSON struct. Use this to seed new NITI installations without re-training standard metadata manually."
+        description="Export your agent's entirely localized knowledge base (Categories, Domains, Taxonomies, Templates, Workflow Pipelines, Principles) into an AES-256-GCM encrypted payload when the vault is unlocked, or a raw JSON struct otherwise. Use this to seed new NITI installations without re-training standard metadata manually."
       />
 
       <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800/50 p-6">
