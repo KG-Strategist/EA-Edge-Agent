@@ -12,6 +12,7 @@ import WorkflowTab from '../components/admin/WorkflowTab';
 import TemplatesTab from '../components/admin/TemplatesTab';
 import SystemTab from '../components/admin/SystemTab';
 import TrainingEventsTable from '../components/admin/TrainingEventsTable';
+import WikiTab from '../components/admin/WikiTab';
 import UserAccessTab from '../components/admin/UserAccessTab';
 import AuditWorkspaceTab from '../components/admin/AuditWorkspaceTab';
 import GlobalGuardrailsTab from '../components/admin/GlobalGuardrailsTab';
@@ -36,7 +37,7 @@ export default function AdminPanel({ adminSubView, setAdminSubView: _setAdminSub
             {activeTab === 'workflows' && <WorkflowTab />}
             {activeTab === 'templates' && <TemplatesTab />}
             {activeTab === 'network' && <NetworkIntegrationTab />}
-            {activeTab === 'knowledge' && <TrainingEventsTable />}
+            {activeTab === 'knowledge' && (<div className="space-y-8 min-w-0"><WikiTab /><TrainingEventsTable /></div>)}
             {activeTab === 'web-providers' && <WebProvidersTab />}
             {activeTab === 'system' && <SystemTab />}
             {activeTab === 'users' && <UserAccessTab />}
