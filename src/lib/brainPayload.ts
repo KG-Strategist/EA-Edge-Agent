@@ -16,6 +16,68 @@ export const BRAIN_LEGACY_MIN_KEYS = [
   'service_domains',
 ];
 
+// ── Selective Sync (v1.2 M2): entity groups for scoped export ─────────────────
+
+export interface PortabilityGroup {
+  id: string;
+  label: string;
+  tables: string[];
+}
+
+export const PORTABILITY_GROUPS: PortabilityGroup[] = [
+  {
+    id: 'taxonomy',
+    label: 'Taxonomy',
+    tables: ['architecture_categories', 'master_categories', 'bespoke_tags'],
+  },
+  {
+    id: 'architecture',
+    label: 'Architecture',
+    tables: ['content_metamodel', 'architecture_layers', 'architecture_principles', 'service_domains'],
+  },
+  {
+    id: 'templates',
+    label: 'Templates & Workflows',
+    tables: ['prompt_templates', 'report_templates', 'review_workflows'],
+  },
+  {
+    id: 'config',
+    label: 'Configuration',
+    tables: ['app_settings', 'threat_models'],
+  },
+];
+
+/** Tables excluded from portability dumps (vectors, sessions, caches, logs). */
+export const PORTABILITY_BLACKLIST = ['vector', 'embedding', 'session', 'history', 'cache', 'audit', 'logs'];
+
+export function isPortableTable(name: string): boolean {
+  const lower = name.toLowerCase();
+  return !PORTABILITY_BLACKLIST.some((pattern) => lower.includes(pattern));
+}
+
+/**
+ * Intersect an explicit selection with available tables, preserving
+ * PORTABILITY_GROUPS order and dropping unknown names.
+ */
+export function applyTableSelection(available: string[], selected: string[]): string[] {
+  const availableSet = new Set(available);
+  const selectedSet = new Set(selected);
+  const ordered: string[] = [];
+  for (const group of PORTABILITY_GROUPS) {
+    for (const table of group.tables) {
+      if (availableSet.has(table) && selectedSet.has(table) && !ordered.includes(table)) {
+        ordered.push(table);
+      }
+    }
+  }
+  for (const table of available) {
+    if (selectedSet.has(table) && !ordered.includes(table)) {
+      ordered.push(table);
+    }
+  }
+  return ordered;
+}
+
 export interface EncryptedBrainEnvelope {
   format: typeof BRAIN_ENCRYPTED_FORMAT;
   version: number;

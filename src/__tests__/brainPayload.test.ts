@@ -3,6 +3,9 @@ import { initializeVault, clearVault } from '../lib/cryptoVault';
 import {
   buildEncryptedEnvelope,
   parseBrainPayload,
+  applyTableSelection,
+  isPortableTable,
+  PORTABILITY_GROUPS,
   BRAIN_ENCRYPTED_FORMAT,
   BRAIN_ENVELOPE_VERSION,
 } from '../lib/brainPayload';
@@ -83,5 +86,65 @@ describe('brainPayload envelope (v1.2 M1)', () => {
     const envelope = await buildEncryptedEnvelope(JSON.stringify(SAMPLE_DUMP), Object.keys(SAMPLE_DUMP));
     const future = { ...envelope, version: 999 };
     await expect(parseBrainPayload(JSON.stringify(future))).rejects.toThrow(/version/i);
+  });
+});
+
+describe('selective sync helpers (v1.2 M2)', () => {
+  beforeEach(async () => {
+    clearVault();
+    await initializeVault(PIN, SALT);
+  });
+
+  afterEach(() => {
+    clearVault();
+  });
+
+  const available = [
+    'architecture_categories', 'master_categories', 'bespoke_tags',
+    'content_metamodel', 'architecture_layers', 'architecture_principles', 'service_domains',
+    'prompt_templates', 'report_templates', 'review_workflows',
+    'app_settings', 'threat_models', 'custom_table',
+  ];
+
+  it('covers every known portable table in a group', () => {
+    const grouped = new Set(PORTABILITY_GROUPS.flatMap((g) => g.tables));
+    for (const table of available) {
+      if (table === 'custom_table') continue;
+      expect(grouped.has(table)).toBe(true);
+    }
+  });
+
+  it('returns group-ordered intersection of available and selected', () => {
+    const selected = ['threat_models', 'architecture_principles', 'custom_table', 'nope_missing'];
+    expect(applyTableSelection(available, selected)).toEqual([
+      'architecture_principles',
+      'threat_models',
+      'custom_table',
+    ]);
+  });
+
+  it('returns empty array when nothing is selected', () => {
+    expect(applyTableSelection(available, [])).toEqual([]);
+  });
+
+  it('blacklists vector/session/cache/audit/log tables', () => {
+    expect(isPortableTable('review_embeddings_vector')).toBe(false);
+    expect(isPortableTable('review_sessions')).toBe(false);
+    expect(isPortableTable('model_cache')).toBe(false);
+    expect(isPortableTable('audit_logs')).toBe(false);
+    expect(isPortableTable('architecture_principles')).toBe(true);
+  });
+
+  it('scoped envelopes round-trip with only selected tables', async () => {
+    const scoped = applyTableSelection(available, ['architecture_principles', 'app_settings']);
+    const dump: Record<string, unknown[]> = {
+      architecture_principles: [{ id: 'p1' }],
+      app_settings: [{ key: 'k' }],
+    };
+    const envelope = await buildEncryptedEnvelope(JSON.stringify(dump), scoped);
+    expect(envelope.tables).toEqual(scoped);
+    const parsed = await parseBrainPayload(JSON.stringify(envelope));
+    expect(parsed.encrypted).toBe(true);
+    expect(Object.keys(parsed.dump).sort()).toEqual(['app_settings', 'architecture_principles']);
   });
 });

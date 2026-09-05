@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { db } from '../../lib/db';
 import { Download, Upload, Loader2, History, Calendar, BrainCircuit, AlertTriangle, Trash2, FolderOutput, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
 import { requestDirectoryPermission } from '../../lib/fileSystemPermissions';
@@ -12,7 +12,7 @@ import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 import { recoverEncryptedMessages, VaultRecoveryResult } from '../../lib/secureDb';
 import { isVaultUnlocked } from '../../lib/cryptoVault';
-import { buildEncryptedEnvelope, parseBrainPayload } from '../../lib/brainPayload';
+import { buildEncryptedEnvelope, parseBrainPayload, PORTABILITY_GROUPS, isPortableTable, applyTableSelection } from '../../lib/brainPayload';
 import OcrHealthWidget from './OcrHealthWidget';
 
 export default function SystemTab() {
@@ -22,6 +22,30 @@ export default function SystemTab() {
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // ── Selective Sync (v1.2 M2): entity-scoped export selection ──────────
+  const exportableTables = useMemo(
+    () => db.tables.filter((table) => isPortableTable(table.name)).map((table) => table.name),
+    []
+  );
+  const [selectedTables, setSelectedTables] = useState<string[]>(exportableTables);
+
+  const toggleTable = useCallback((name: string) => {
+    setSelectedTables((prev) =>
+      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]
+    );
+  }, []);
+
+  const toggleGroup = useCallback((tables: string[], select: boolean) => {
+    setSelectedTables((prev) => {
+      const next = new Set(prev);
+      for (const t of tables) {
+        if (select) next.add(t);
+        else next.delete(t);
+      }
+      return [...next];
+    });
+  }, []);
 
   // ── Local Backup State ─────────────────────────────────────────────
   const [syncToast, setSyncToast] = useState<string | null>(null);
@@ -337,14 +361,14 @@ try {
   const handleExportBrain = async () => {
     setIsExporting(true);
     try {
-      const BLACKLIST_PATTERNS = ['vector', 'embedding', 'session', 'history', 'cache', 'audit', 'logs'];
-      
-      const tablesToExport = db.tables.filter(table => {
-        const name = table.name.toLowerCase();
-        return !BLACKLIST_PATTERNS.some(pattern => name.includes(pattern));
-      });
+      const tableNames = applyTableSelection(exportableTables, selectedTables);
+      if (tableNames.length === 0) {
+        addNotification('Select at least one entity group to export.', 'error', 5000);
+        return;
+      }
+      const tablesToExport = db.tables.filter((table) => tableNames.includes(table.name));
 
-      setExportToast(`Discovery Complete: Exporting ${tablesToExport.length} Master Data Tables...`);
+      setExportToast(`Discovery Complete: Exporting ${tablesToExport.length} selected tables...`);
       
       const dump: Record<string, any[]> = {};
       await Promise.all(
@@ -353,7 +377,6 @@ try {
         })
       );
 
-      const tableNames = tablesToExport.map((table) => table.name);
       let filename: string;
       let fileContent: string;
       let encrypted = false;
@@ -452,15 +475,25 @@ try {
           if (dump.threat_models) await db.threat_models.bulkPut(dump.threat_models);
         });
         
+        const restoredTables = [
+          'architecture_categories', 'master_categories', 'content_metamodel',
+          'architecture_layers', 'architecture_principles', 'service_domains',
+          'bespoke_tags', 'prompt_templates', 'report_templates',
+          'review_workflows', 'app_settings', 'threat_models',
+        ].filter((key) => Array.isArray(dump[key]));
+        if (Array.isArray(dump.bian_domains) && !restoredTables.includes('service_domains')) {
+          restoredTables.push('service_domains');
+        }
+
         await db.audit_logs.add({
           timestamp: new Date(),
           pseudokey: identity?.username || 'Unknown User',
           action: 'UPDATE',
           tableName: 'system_portability',
-          details: JSON.stringify({ event: 'IMPORT_MERGE', status: 'Success' })
+          details: JSON.stringify({ event: 'IMPORT_MERGE', status: 'Success', restoredTables })
         });
 
-        addNotification("NITI Brain state successfully restored! The agent interface will reload to apply changes.", 'success', 5000);
+        addNotification(`NITI Brain state restored (${restoredTables.length} entities: ${restoredTables.join(', ')}). The agent interface will reload to apply changes.`, 'success', 5000);
         window.location.reload();
       } catch (err: any) {
         setImportError(err.message || 'Validation failed');
@@ -516,13 +549,72 @@ try {
             </div>
          </div>
 
-         {/* Localized Error Banner for Validation */}
-         {importError && (
+          {/* Localized Error Banner for Validation */}
+          {importError && (
             <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg">
                 <p className="text-sm text-red-700 dark:text-red-400 font-medium">Import Aborted</p>
                 <p className="text-xs text-red-600 dark:text-red-300 mt-1">{importError}</p>
             </div>
-         )}
+          )}
+
+          {/* Selective Sync (v1.2 M2): entity-scoped export selection */}
+          <div className="mt-4 rounded-lg border border-indigo-200 dark:border-indigo-800/50 bg-white/60 dark:bg-gray-900/40 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                Entities to export ({selectedTables.length}/{exportableTables.length})
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedTables(exportableTables)}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Select all
+                </button>
+                <button
+                  onClick={() => setSelectedTables([])}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {PORTABILITY_GROUPS.map((group) => {
+                const present = group.tables.filter((t) => exportableTables.includes(t));
+                if (present.length === 0) return null;
+                const allChecked = present.every((t) => selectedTables.includes(t));
+                return (
+                  <fieldset key={group.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-2.5">
+                    <legend className="sr-only">{group.label}</legend>
+                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        onChange={(e) => toggleGroup(present, e.target.checked)}
+                        className="accent-indigo-600"
+                        aria-label={`${group.label} group`}
+                      />
+                      {group.label}
+                    </label>
+                    <div className="mt-2 space-y-1.5">
+                      {present.map((table) => (
+                        <label key={table} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedTables.includes(table)}
+                            onChange={() => toggleTable(table)}
+                            className="accent-indigo-600"
+                            aria-label={`Export ${table}`}
+                          />
+                          <span className="font-mono">{table}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                );
+              })}
+            </div>
+          </div>
 
          {/* Export Telemetry Toast */}
          {exportToast && (
