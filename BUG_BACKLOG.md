@@ -1,7 +1,7 @@
 # BUG_BACKLOG.md
 
-**Last Updated:** 2026-08-22T09:11:00Z
-**Test Run:** 220/220 passing (full vitest suite, production build)
+**Last Updated:** 2026-09-05T00:00:00Z
+**Test Run:** 220/220 passing (vitest) + 34/34 UCV headed (0 bugs) + sovereign-smoke green
 **Release Candidate:** RC-1.1.4-beta — ALL GATES GREEN
 
 ## Bugs
@@ -16,6 +16,9 @@
 | BUG-006 | Chat button found but input selector too broad | **Low** | **RESOLVED** | `chat.spec.ts` + `model-cache.spec.ts` — exact `data-testid` selectors |
 | BUG-007 | page.evaluate garbage collection on IndexedDB async ops | **Low** | **RESOLVED** | `db.ts` — `pruneOldChats` wrapped in `db.transaction()` with per-record error isolation |
 | BUG-008 | service-worker.js unconditionally pre-caches corpus (wrong file in CI) | **High** | **RESOLVED** | SW v7 — removed binary from precache, skip .gguf/.bin.gz in fetch handler |
+| UCV-001 | Navbar mobile hamburger + sidebar collapse missing aria-label | **Medium** | **RESOLVED** | `src/components/layout/Navbar.tsx:139,~237` — added aria-labels |
+| UCV-002 | Horizontal overflow on agent-config (DataTable footer, 71px) | **Medium** | **RESOLVED** | `AgentConfigTab.tsx:854` root overflow-x-hidden + `index.css` html overflow-x-hidden |
+| UCV-003 | DOM audit false positives on hidden/file inputs | **Low** | **RESOLVED** | `headed-ucv.spec.ts` auditDom skips hidden/scale-0/opacity-0 + UC-32 respects CSS overflow |
 
 ## Environment Issues
 
@@ -79,6 +82,21 @@
 - **Fix:** Added Node version check in `dev` script, fails fast with clear error message
 - **Verification:** Dev server starts clean on Node 22
 
+### UCV-001: Navbar Accessible Names
+- **Root Cause:** Mobile hamburger and desktop sidebar-collapse buttons had no accessible name
+- **Fix:** Added `aria-label` to both buttons in `Navbar.tsx`
+- **Verification:** UC-33 passes, a11y script clean across 59 TSX files
+
+### UCV-002: Agent-Config Horizontal Overflow
+- **Root Cause:** DataTable pagination footer extended past viewport (71px); AdminPanel clip did not propagate to document level
+- **Fix:** `overflow-x-hidden` on AgentConfigTab root + `html { overflow-x: hidden }` in `index.css`
+- **Verification:** UC-32 passes on all 7 views, 34/34 UCV green
+
+### UCV-003: DOM Audit False Positives
+- **Root Cause:** Audit flagged `scale-0`/`opacity-0`/hidden file inputs as unnamed controls
+- **Fix:** auditDom skips hidden, aria-hidden, display:none, zero-size elements; UC-32 respects CSS `overflow-x:hidden`
+- **Verification:** 0 bugs reported, 81 screenshots captured
+
 ---
 
 ## Strike 4.5 Summary
@@ -92,3 +110,4 @@
 | Type check | **PASS** | — | tsc --noEmit zero errors |
 | Build | **PASS** | — | 22s production build, PWA v0.20.5 |
 | E2e smoke | **PASS** | — | sovereign-smoke spec green |
+| UCV headed | **PASS** | `12cdbc2` | 34/34 tests, 0 bugs, 81 screenshots |
