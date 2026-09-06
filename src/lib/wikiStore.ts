@@ -127,7 +127,9 @@ export async function listPages(): Promise<WikiPage[]> {
   try {
     const dir = await wikiDir(false);
     const pages: WikiPage[] = [];
-    for await (const [name, handle] of dir.values()) {
+    for await (const entry of dir.entries()) {
+      const name = entry[0];
+      const handle = entry[1];
       if (typeof name !== 'string' || !name.endsWith('.md')) continue;
       try {
         const file = await handle.getFile();
