@@ -22,7 +22,7 @@
 
 ## Stage 1: MVP 1.1 — Core Foundations (RC Locked)
 
-**Current Release:** v1.1.4-beta | **Status:** 🟢 Deployed
+**Current Release:** v1.2.0 | **Status:** 🟢 Deployed
 
 | Feature | Description | Status |
 |---------|-------------|--------|
@@ -38,13 +38,14 @@
 - v1.1.1 — Hotfix stabilization
 - v1.1.2 — Security hardening
 - v1.1.3 — Strike 4.2 VRAM Handoff (57 TSDs created, NSI State Machine, RAG Integration, MITRA Logical Swarm, Epistemic Shadow)
-- v1.1.4-beta — Current HEAD
+- v1.1.4-beta — Air-Gap Locked
+- v1.2.0 — Context & Personas (Encrypted Payloads, Biometrics, Selective Syncing, NITI-Pedia)
 
 ---
 
 ## Stage 1.2: MVP 1.2 — Context & Personas
 
-**Target:** v1.2.0 | **Status:** 🟠 In Progress
+**Target:** v1.2.0 | **Status:** 🟢 Deployed
 
 | Feature | Description | Status |
 |---------|-------------|--------|
@@ -54,10 +55,10 @@
 | Full RAG Loop Closed | Store + retrieve review embeddings for cross-review contextual memory | 🟢 (v1.1.3) |
 | MITRA Logical Swarm | Multi-persona agents (Legal, HR, SecOps, EA) on single model | 🟢 (v1.1.3) |
 | KV Cache Isolation Gatekeeper | Persona flush on switch across all callers | 🟢 (v1.1.3) |
-| Zero-Trust Biometrics | FIDO2/WebAuthn PRF decryption for device-bound data keys | 🟠 |
-| Selective Syncing | Entity-scoped export/import rather than full DB snapshots | 🟠 |
-| Encrypted Payloads | AES-256 encrypted exported JSON knowledge bases | 🟠 |
-| NITI-Pedia (Autonomous Edge Wiki) | OPFS-backed markdown knowledge base with Chat & Ask RAG overlay | 🟠 |
+| Zero-Trust Biometrics | FIDO2/WebAuthn PRF decryption for device-bound data keys | 🟢 (v1.2.0) |
+| Selective Syncing | Entity-scoped export/import rather than full DB snapshots | 🟢 (v1.2.0) |
+| Encrypted Payloads | AES-256 encrypted exported JSON knowledge bases | 🟢 (v1.2.0) |
+| NITI-Pedia (Autonomous Edge Wiki) | OPFS-backed markdown knowledge base with Chat & Ask RAG overlay | 🟢 (v1.2.0) |
 
 ---
 
@@ -181,7 +182,7 @@
 | Corpus Integrity | `npm run verify:corpus` | 🟢 |
 | OCR Lockfile | `npm run verify:ocr` | 🟢 |
 | Type Check | `npx tsc --noEmit` | 🟢 |
-| Unit Tests | `npm run test` | 🟢 (175 tests, 171 pass) |
+| Unit Tests | `npm run test` | 🟢 (251 tests) |
 | Production Build | `npm run build` | 🟢 |
 | E2E Smoke | `npm run test:e2e:sovereign-smoke` | 🟢 |
 | Visual Regression | `npm run test:visual` | 🟢 |
@@ -213,4 +214,4 @@ All features must respect the downward-only dependency law:
 
 ---
 
-*Last Updated: 2026-08-21 | Source: `.artefacts/docs-internal/04-features/EANITI_FEATURES.md` + `.artefacts/docs-internal/06-roadmap/V1.2_REFACTORING_ROADMAP.md`*
+*Last Updated: 2026-09-06 | Source: `.artefacts/docs-internal/04-features/EANITI_FEATURES.md` + `.artefacts/docs-internal/06-roadmap/V1.2_REFACTORING_ROADMAP.md`*
