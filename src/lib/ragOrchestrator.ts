@@ -1,5 +1,6 @@
 import { db } from './db';
 import { ArenaSearchResult, globalArena, globalSynthesizer, vectoriser, parser } from './SemanticArena';
+import { globalGraphStore, MultiHopResult, EvidenceTrail } from './graphStore';
 
 // TASK 2: Exact Word Match Helper (Regex word-boundary checks with plural tolerance)
 function exactWordMatch(text: string, keyword: string): boolean {
@@ -248,6 +249,33 @@ export async function processQuery(userPrompt: string, chatHistory: {role: strin
 const searchTerms = [parsed.Subject, parsed.Target].filter((t): t is string => t !== null);
 
 if (searchTerms.length > 0) {
+  // Try multi-hop graph traversal before Dexie fallback
+  if (parsed.Subject) {
+    const seedId = globalGraphStore.findNodeBySubject(parsed.Subject);
+    if (seedId >= 0) {
+      const graphResult = globalGraphStore.multiHopBFS(seedId, 3, 5);
+      if (graphResult.trails.length > 0) {
+        const trailTexts = graphResult.trails.slice(0, 3).map((trail, i) => {
+          const pathStr = trail.nodes.map(n => `${n.subject} ${n.predicate} ${n.object}`).join(' → ');
+          return `${i + 1}. ${pathStr}`;
+        });
+        const facts = graphResult.trails[0].nodes.slice(1).map(node => ({
+          subject: node.subject,
+          intent: node.predicate,
+          target: node.object,
+          sourceSentence: `${node.subject} ${node.predicate} ${node.object}`,
+          source: 'arena' as const,
+        }));
+        return {
+          text: `Graph relationships:\n${trailTexts.join('\n')}`,
+          status: 'hit',
+          topScore: graphResult.trails[0]?.score,
+          facts,
+        };
+      }
+    }
+  }
+
   try {
     const principles = await db.architecture_principles.toArray();
     for (const principle of principles) {
@@ -272,6 +300,101 @@ if (searchTerms.length > 0) {
 }
 
 return { text: "I do not have source-backed structural data for that query yet.", status: 'fallback', facts: [] };
+}
+
+// ---------------------------------------------------------------------------
+// GraphRAG Multi-Hop Query — 3-depth BFS traversal with evidence ranking
+// ---------------------------------------------------------------------------
+
+/**
+ * Multi-hop graph traversal from a seed subject.
+ * Combines vector search (SemanticArena) with graph traversal (GraphStore)
+ * to produce chained evidence trails for complex queries.
+ */
+export async function multiHopQuery(
+  userPrompt: string,
+  maxDepth: number = 3,
+  maxTrails: number = 5,
+): Promise<ProcessQueryResult & { trails?: EvidenceTrail[] }> {
+  const parsed = parser.parse(userPrompt);
+  if (!parsed.Subject) {
+    return { text: 'I need a subject to explore graph relationships.', status: 'fallback', facts: [], trails: [] };
+  }
+
+  // 1. Find seed node in GraphStore
+  let seedId = globalGraphStore.findNodeBySubject(parsed.Subject);
+  if (seedId < 0 && parsed.Target) {
+    seedId = globalGraphStore.findNodeByTriplet(parsed.Subject, undefined, parsed.Target);
+  }
+
+  // 2. If no graph node found, try vector search and index the result
+  if (seedId < 0) {
+    const queryVector = vectoriser.vectorise(parsed);
+    const matches = globalArena.searchWithScores(queryVector, 0.18).slice(0, 3);
+
+    if (matches.length > 0) {
+      // Index top match into graph store for future traversal
+      const top = matches[0];
+      seedId = globalGraphStore.addNode(
+        top.subject || parsed.Subject || '',
+        top.intent || parsed.Intent || '',
+        top.target || parsed.Target || '',
+        top.beliefState || 2,
+        'arena-vector',
+      );
+    }
+  }
+
+  if (seedId < 0) {
+    return {
+      text: `I don't have graph data for "${parsed.Subject}". Try asking about a known architectural concept.`,
+      status: 'fallback',
+      facts: [],
+      trails: [],
+    };
+  }
+
+  // 3. Multi-hop BFS traversal
+  const result: MultiHopResult = globalGraphStore.multiHopBFS(seedId, maxDepth, maxTrails);
+
+  if (result.trails.length === 0) {
+    const node = globalGraphStore.getNode(seedId);
+    return {
+      text: `I know about ${node?.subject || parsed.Subject}, but I don't have multi-hop relationships for it yet.`,
+      status: 'fallback',
+      facts: [],
+      trails: [],
+    };
+  }
+
+  // 4. Format evidence trails as response
+  const trailTexts = result.trails.slice(0, 3).map((trail, i) => {
+    const pathStr = trail.nodes.map(n => n.subject).join(' → ');
+    const edgeStr = trail.edges.map(e => `[${e.type}]`).join(' ');
+    const scoreStr = `(confidence: ${(trail.score * 100).toFixed(0)}%)`;
+    return `${i + 1}. ${pathStr} ${edgeStr} ${scoreStr}`;
+  });
+
+  const facts = result.trails.flatMap(trail =>
+    trail.nodes.slice(1).map(node => ({
+      subject: node.subject,
+      intent: node.predicate,
+      target: node.object,
+      sourceSentence: `${node.subject} ${node.predicate} ${node.object}`,
+      score: trail.score,
+      weightedScore: trail.score,
+      beliefState: node.beliefState,
+      source: 'arena' as const,
+    })),
+  );
+
+  return {
+    text: `Multi-hop relationships for **${parsed.Subject}** (${result.totalNodesVisited} nodes explored):\n\n${trailTexts.join('\n')}`,
+    status: 'hit',
+    topScore: result.trails[0]?.score,
+    facts,
+    trails: result.trails,
+  };
 }
 
 // Backward compatibility for existing code
