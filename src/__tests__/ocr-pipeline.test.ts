@@ -310,3 +310,90 @@ describe('OCR pipeline — runtime wiring', () => {
     expect(snap.hydratedAssetPaths.sort()).toEqual(['detector', 'recognizer']);
   });
 });
+
+describe('OCR preprocessing — pixel normalization', () => {
+  it('normalizeContrast returns same-size RGBA output', async () => {
+    const { normalizeContrast } = await import('../lib/ocr/preprocessor');
+    const width = 4;
+    const height = 4;
+    // Create a low-contrast image (all pixels near RGB 100,100,100).
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
+      pixels[i * 4] = 100;
+      pixels[i * 4 + 1] = 100;
+      pixels[i * 4 + 2] = 100;
+      pixels[i * 4 + 3] = 255;
+    }
+    const out = normalizeContrast(pixels, width, height);
+    expect(out.length).toBe(pixels.length);
+    expect(out).not.toBe(pixels); // new allocation
+  });
+
+  it('normalizeContrast stretches contrast for a gradient image', async () => {
+    const { normalizeContrast } = await import('../lib/ocr/preprocessor');
+    const width = 10;
+    const height = 1;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    // Create a gradient from 0 to 255.
+    for (let x = 0; x < width; x++) {
+      const v = Math.round((x / (width - 1)) * 255);
+      pixels[x * 4] = v;
+      pixels[x * 4 + 1] = v;
+      pixels[x * 4 + 2] = v;
+      pixels[x * 4 + 3] = 255;
+    }
+    const out = normalizeContrast(pixels, width, height);
+    // After normalization, the darkest pixel should be near 0 and brightest near 255.
+    expect(out[0]).toBeLessThan(50);  // dark end stretched down
+    expect(out[(width - 1) * 4]).toBeGreaterThan(200); // bright end stretched up
+  });
+
+  it('adaptiveThreshold produces binary output (0 or 255)', async () => {
+    const { adaptiveThreshold } = await import('../lib/ocr/preprocessor');
+    const width = 8;
+    const height = 8;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    // Fill with mid-gray.
+    for (let i = 0; i < width * height; i++) {
+      pixels[i * 4] = 128;
+      pixels[i * 4 + 1] = 128;
+      pixels[i * 4 + 2] = 128;
+      pixels[i * 4 + 3] = 255;
+    }
+    // Draw a dark horizontal bar in the middle (y=3..4).
+    for (let y = 3; y <= 4; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        pixels[idx] = 30;
+        pixels[idx + 1] = 30;
+        pixels[idx + 2] = 30;
+      }
+    }
+    const out = adaptiveThreshold(pixels, width, height, 5, 10);
+    expect(out.length).toBe(pixels.length);
+    // Every pixel should be either 0 or 255.
+    for (let i = 0; i < width * height; i++) {
+      expect(out[i * 4] === 0 || out[i * 4] === 255).toBe(true);
+    }
+  });
+
+  it('preprocessRasterPage returns new page with same dimensions', async () => {
+    const { preprocessRasterPage } = await import('../lib/ocr/preprocessor');
+    const width = 6;
+    const height = 6;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
+      pixels[i * 4] = 80;
+      pixels[i * 4 + 1] = 80;
+      pixels[i * 4 + 2] = 80;
+      pixels[i * 4 + 3] = 255;
+    }
+    const page = { pageIndex: 0, width, height, pixels };
+    const out = preprocessRasterPage(page);
+    expect(out.width).toBe(width);
+    expect(out.height).toBe(height);
+    expect(out.pageIndex).toBe(0);
+    expect(out.pixels).not.toBe(pixels); // new allocation
+    expect(out.pixels.length).toBe(pixels.length);
+  });
+});

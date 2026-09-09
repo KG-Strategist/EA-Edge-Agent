@@ -13,14 +13,14 @@ import { getOcrWasmRuntime, RuntimeProcessOutcome } from './wasmRuntime';
 export { OCR_DEFAULT_LIMITS } from './types';
 export type { OcrMode, OcrBlock, OcrLimits, OcrOptions, OcrResult, TableReconstruction, RasterPage, RunOcrDetailedInput } from './types';
 export { OcrValidationError } from './types';
-export { isLikelyTextual, isEmbeddedPdfTextHealthy, reconstructTable, rotateRasterPixels, detectBlobKind, validateBlobForOcr } from './preprocessor';
+export { isLikelyTextual, isEmbeddedPdfTextHealthy, reconstructTable, rotateRasterPixels, detectBlobKind, validateBlobForOcr, normalizeContrast, adaptiveThreshold, preprocessRasterPage } from './preprocessor';
 export { extractSanitizedSvgText, extractEmbeddedPdfText, rasterizePdfPages, decodeImageBlob } from './extractor';
 export { geometricOcr } from './geometric';
 
 // Internal imports for the orchestration functions below.
 import type { OcrMode, OcrResult, OcrBlock, OcrLimits, RasterPage } from './types';
 import { OCR_DEFAULT_LIMITS, OcrValidationError } from './types';
-import { isEmbeddedPdfTextHealthy, reconstructTable, detectBlobKind, validateBlobForOcr } from './preprocessor';
+import { isEmbeddedPdfTextHealthy, reconstructTable, detectBlobKind, validateBlobForOcr, preprocessRasterPage } from './preprocessor';
 import { extractSanitizedSvgText, extractEmbeddedPdfText, rasterizePdfPages, decodeImageBlob } from './extractor';
 import { geometricOcr } from './geometric';
 import type { RunOcrDetailedInput } from './types';
@@ -134,7 +134,8 @@ async function aggregateRasterResults(
   let wasmPages = 0;
   let geometryPages = 0;
 
-  for (const page of pages) {
+  for (const rawPage of pages) {
+    const page = preprocessRasterPage(rawPage);
     const outcome: RuntimeProcessOutcome = await runtime.processPage(page);
     if (outcome.engineLoaded) {
       wasmLoaded = true;

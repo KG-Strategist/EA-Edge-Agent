@@ -114,4 +114,26 @@ describe('OCR reranker — daemon available', () => {
     expect(reranked.text).toBe('Banking domain v2');
     expect(reranked.internalFlags.some((f) => f.includes('rejected-out-of-scope'))).toBe(true);
   });
+
+  it('applies calibrated confidence boost (not flat +0.1)', async () => {
+    // Daemon returns identical text → high Jaccard → small boost.
+    daemonGenerateMock.mockResolvedValue('Banking domain v2');
+    const result = makeResult([{ text: 'Banking domain v2', confidence: 0.6 }]);
+    const reranked = await rerankOcrCandidates(result, new Blob(), { timeoutMs: 500 });
+    expect(reranked.mode).toBe('llm-reranked');
+    // With Jaccard ~1.0, boost should be ~0.02, not 0.1.
+    expect(reranked.confidence).toBeGreaterThan(0.6);
+    expect(reranked.confidence).toBeLessThan(0.65);
+  });
+
+  it('applies larger boost for corrected text (lower Jaccard)', async () => {
+    // Daemon returns a corrected version (typo fix) → moderate Jaccard → larger boost.
+    daemonGenerateMock.mockResolvedValue('Banking domain v2.1');
+    const result = makeResult([{ text: 'Banking domain v2', confidence: 0.6 }]);
+    const reranked = await rerankOcrCandidates(result, new Blob(), { timeoutMs: 500 });
+    expect(reranked.mode).toBe('llm-reranked');
+    // "v2.1" tokenizes to ["v2","1"] vs ["v2"], Jaccard ~0.4 → boost ~0.05–0.15.
+    expect(reranked.confidence).toBeGreaterThan(0.64);
+    expect(reranked.confidence).toBeLessThan(0.80);
+  });
 });
