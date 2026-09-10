@@ -10,6 +10,7 @@ import { useArchive } from '../../hooks/useArchive';
 import DataTable from '../ui/DataTable';
 import { SUPPORTED_MLC_MODELS } from '../../lib/constants';
 import PageHeader from '../ui/PageHeader';
+import RagTuningPanel from './RagTuningPanel';
 import { Logger } from '../../lib/logger';
 import { useNotification } from '../../context/NotificationContext';
 import { validateEndpointUrl, checkNetworkConsent } from '../../lib/networkGuard';
@@ -941,6 +942,9 @@ id: 'tinyllama-1.1b-chat-v1.0-q4_0',
           <strong>Auto:</strong> Uses Daemon if connected, falls back to Wasm. <strong>Wasm:</strong> Sovereign Engine only. <strong>Daemon:</strong> Local Daemon only. <strong>Off:</strong> No background learning.
         </p>
       </div>
+
+      {/* RAG tuning (Stage 1.3): hardware-agnostic prompt/ingestion budgets */}
+      <RagTuningPanel />
 
       {/* MITRA persona profiles — user-configurable sub-agents */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm shrink-0">

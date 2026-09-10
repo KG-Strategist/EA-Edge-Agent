@@ -813,6 +813,12 @@ if (!maxPromptCharsSetting) {
   await db.app_settings.put({ key: 'maxPromptChars', value: 8000 });
 }
 
+// ── RAG Ingestion Config: ragContextChars (stored context window per record) ─
+const ragContextCharsSetting = await db.app_settings.get('ragContextChars');
+if (!ragContextCharsSetting) {
+  await db.app_settings.put({ key: 'ragContextChars', value: 1000 });
+}
+
 // ── Phase 1.3.1: Sovereign Engine OPFS Config ────────────────────────────────
 
 const opfsQuotaSetting = await db.app_settings.get('opfsStorageQuotaMB');
