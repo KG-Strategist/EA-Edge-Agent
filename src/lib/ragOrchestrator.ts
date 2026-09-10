@@ -1,6 +1,6 @@
 import { db } from './db';
 import { ArenaSearchResult, globalArena, globalSynthesizer, vectoriser, parser } from './SemanticArena';
-import { globalGraphStore, MultiHopResult, EvidenceTrail } from './graphStore';
+import { globalGraphStore, hydrateGraphStore, MultiHopResult, EvidenceTrail, HydrationStats } from './graphStore';
 
 // TASK 2: Exact Word Match Helper (Regex word-boundary checks with plural tolerance)
 function exactWordMatch(text: string, keyword: string): boolean {
@@ -249,8 +249,10 @@ export async function processQuery(userPrompt: string, chatHistory: {role: strin
 const searchTerms = [parsed.Subject, parsed.Target].filter((t): t is string => t !== null);
 
 if (searchTerms.length > 0) {
-  // Try multi-hop graph traversal before Dexie fallback
+  // Try multi-hop graph traversal before Dexie fallback.
+  // Lazy-hydrate the graph from production memory first (once, fail-silent).
   if (parsed.Subject) {
+    await ensureGraphHydrated();
     const seedId = globalGraphStore.findNodeBySubject(parsed.Subject);
     if (seedId >= 0) {
       const graphResult = globalGraphStore.multiHopBFS(seedId, 3, 5);
@@ -303,6 +305,48 @@ return { text: "I do not have source-backed structural data for that query yet."
 }
 
 // ---------------------------------------------------------------------------
+// GraphRAG production hydration — lazy, once-per-session, fail-silent.
+// The global graph starts empty; the first graph query bulk-loads the most
+// recent semantic_memory triplets (capped) so multi-hop BFS traverses real
+// production data. Never throws: Dexie absence (unit tests) or empty tables
+// simply yield null and the caller falls through to existing fallbacks.
+// ---------------------------------------------------------------------------
+
+let graphHydrationAttempted = false;
+
+/** Test-only reset for the hydration once-flag. */
+export function __resetGraphHydrationForTests(): void {
+  graphHydrationAttempted = false;
+}
+
+/**
+ * Bulk-load recent semantic_memory rows into the global graph store.
+ * Returns hydration stats, or null when already attempted / no data /
+ * persistence unavailable. Safe to call on every graph query.
+ */
+export async function ensureGraphHydrated(limit: number = 500): Promise<HydrationStats | null> {
+  if (graphHydrationAttempted) return null;
+  graphHydrationAttempted = true;
+  try {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(2000, Math.floor(limit))) : 500;
+    const rows = await db.semantic_memory.orderBy('createdAt').reverse().limit(safeLimit).toArray();
+    if (rows.length === 0) return null;
+    return hydrateGraphStore(
+      globalGraphStore,
+      rows.map((r) => ({
+        subject: r.subject,
+        predicate: r.predicate,
+        object: r.object,
+        beliefState: r.beliefState,
+        source: r.source ?? 'semantic-memory',
+      })),
+    );
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GraphRAG Multi-Hop Query — 3-depth BFS traversal with evidence ranking
 // ---------------------------------------------------------------------------
 
@@ -320,6 +364,9 @@ export async function multiHopQuery(
   if (!parsed.Subject) {
     return { text: 'I need a subject to explore graph relationships.', status: 'fallback', facts: [], trails: [] };
   }
+
+  // Lazy-hydrate the graph from production memory first (once, fail-silent).
+  await ensureGraphHydrated();
 
   // 1. Find seed node in GraphStore
   let seedId = globalGraphStore.findNodeBySubject(parsed.Subject);

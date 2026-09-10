@@ -1,7 +1,7 @@
 # BUG_BACKLOG.md
 
 **Last Updated:** 2026-09-10T00:00:00Z
-**Test Run:** 290/290 passing (vitest) + 34/34 UCV headed (0 bugs) + sovereign-smoke green
+**Test Run:** 295/295 passing (vitest) + 34/34 UCV headed (0 bugs) + sovereign-smoke green
 **Release Candidate:** v1.2.0 — DEPLOYED (GitHub Release live)
 
 ## Bugs
