@@ -354,6 +354,20 @@ export class GraphStore {
   get nodeSize(): number { return this.nodeCount; }
   get edgeSize(): number { return this.edgeCount; }
 
+  /**
+   * Check whether a directed edge already exists (O(degree) scan).
+   * Used by hydration to avoid duplicate shared-entity links.
+   */
+  hasEdge(from: number, to: number): boolean {
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return false;
+    if (from < 0 || from >= this.maxNodes || !this.nodeExists[from]) return false;
+    let eIdx = this.firstEdge[from];
+    while (eIdx !== NULL_POINTER) {
+      if (this.edgeTo[eIdx] === to) return true;
+      eIdx = this.nextEdge[eIdx];
+    }
+    return false;
+  }
   // ---------------------------------------------------------------------------
   // Internal scoring
   // ---------------------------------------------------------------------------
@@ -383,3 +397,126 @@ export class GraphStore {
 // ---------------------------------------------------------------------------
 
 export const globalGraphStore = new GraphStore();
+
+// ---------------------------------------------------------------------------
+// Production hydration — bulk-load triplets (e.g. Dexie semantic_memory
+// rows) into a store, linking nodes that share an entity so multi-hop BFS
+// can traverse them. Pure function over plain data: no DB imports here,
+// so unit tests and workers stay dependency-free. Callers (ragOrchestrator)
+// own the once-flag, the row fetching, and the fail-silent contract.
+// Idempotent: existing triplets are skipped, never duplicated.
+// ---------------------------------------------------------------------------
+
+export interface GraphTriplet {
+  subject: string;
+  predicate: string;
+  object: string;
+  beliefState?: number;
+  source?: string;
+}
+
+export interface HydrationStats {
+  nodesAdded: number;
+  nodesSkipped: number;
+  edgesAdded: number;
+  truncated: boolean;
+}
+
+export interface HydrationOptions {
+  /** Hard ceiling on triplets consumed per call (default 1000). */
+  maxNodes?: number;
+  /** Link nodes sharing an entity with bidirectional 'implies' edges. */
+  linkSharedEntities?: boolean;
+  /** Default belief when the triplet carries none (default 2 = verified). */
+  defaultBelief?: number;
+}
+
+function normalizeEntity(value: unknown): string {
+  return String(value ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim();
+}
+
+/**
+ * Bulk-load triplets into `store`. Returns counts; never throws —
+ * malformed rows are skipped and capacity exhaustion sets `truncated`.
+ */
+export function hydrateGraphStore(
+  store: GraphStore,
+  triplets: GraphTriplet[],
+  options: HydrationOptions = {},
+): HydrationStats {
+  const stats: HydrationStats = { nodesAdded: 0, nodesSkipped: 0, edgesAdded: 0, truncated: false };
+  if (!Array.isArray(triplets) || triplets.length === 0) return stats;
+
+  const maxNodes = Number.isFinite(options.maxNodes)
+    ? Math.max(0, Math.floor(options.maxNodes as number))
+    : 1000;
+  const linkShared = options.linkSharedEntities !== false;
+  const defaultBelief = Number.isFinite(options.defaultBelief) ? (options.defaultBelief as number) : 2;
+
+  const consumed = triplets.slice(0, maxNodes);
+  if (triplets.length > consumed.length) stats.truncated = true;
+
+  // Entity index for shared-entity linking: entity -> node ids.
+  // Includes pre-existing nodes so cross-call hydration still links.
+  const entityIndex = new Map<string, number[]>();
+
+  for (const t of consumed) {
+    const subject = normalizeEntity(t.subject);
+    const predicate = normalizeEntity(t.predicate);
+    const object = normalizeEntity(t.object);
+    if (!subject || !predicate || !object) {
+      stats.nodesSkipped += 1;
+      continue;
+    }
+    let id = store.findNodeByTriplet(subject, predicate, object);
+    if (id >= 0) {
+      stats.nodesSkipped += 1;
+    } else {
+      id = store.addNode(
+        t.subject.trim(),
+        t.predicate.trim(),
+        t.object.trim(),
+        Number.isFinite(t.beliefState) ? (t.beliefState as number) : defaultBelief,
+        typeof t.source === 'string' && t.source ? t.source : 'semantic-memory',
+      );
+      if (id < 0) {
+        stats.truncated = true; // store full — stop consuming
+        break;
+      }
+      stats.nodesAdded += 1;
+    }
+    if (linkShared) {
+      for (const entity of new Set([subject, predicate, object])) {
+        const bucket = entityIndex.get(entity);
+        if (bucket) {
+          if (!bucket.includes(id)) bucket.push(id);
+        } else {
+          entityIndex.set(entity, [id]);
+        }
+      }
+    }
+  }
+
+  if (linkShared) {
+    for (const ids of entityIndex.values()) {
+      const unique = [...new Set(ids)];
+      for (let a = 0; a < unique.length; a++) {
+        for (let b = a + 1; b < unique.length; b++) {
+          // Bidirectional: shared-entity relatedness is symmetric, and BFS
+          // follows outgoing edges — both directions must be traversable.
+          // hasEdge guards keep re-hydration idempotent on the edge side.
+          if (!store.hasEdge(unique[a], unique[b])) {
+            if (store.addEdge(unique[a], unique[b], 'implies', 128) >= 0) stats.edgesAdded += 1;
+            else stats.truncated = true;
+          }
+          if (!store.hasEdge(unique[b], unique[a])) {
+            if (store.addEdge(unique[b], unique[a], 'implies', 128) >= 0) stats.edgesAdded += 1;
+            else stats.truncated = true;
+          }
+        }
+      }
+    }
+  }
+
+  return stats;
+}
