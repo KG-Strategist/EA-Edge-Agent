@@ -1,5 +1,6 @@
 import { db } from './db';
 import { vectoriser } from './SemanticArena';
+import { getRagSetting } from './ragSettings';
 import { Logger } from './logger';
 
 // Lazy-load pdfjs to avoid circular dependency at module load time.
@@ -98,12 +99,13 @@ export async function initiateTrainingJob(
     const layers = await vectoriser.projectOrthogonalLayersToBitfields(rawText);
     
     let ingested = 0;
+    const contextChars = await getRagSetting('ragContextChars');
     for (const { vector, orthogonal } of layers) {
       await db.semantic_memory.add({
         subject: orthogonal.Subject || '',
         predicate: orthogonal.Intent || '',
         object: orthogonal.Target || '',
-        context: rawText.substring(0, 1000),
+        context: rawText.substring(0, contextChars),
         orthogonal_components: orthogonal,
         vector: vector.slice(),
         beliefState: 1,
