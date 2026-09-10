@@ -22,6 +22,7 @@ import {
 } from '../../lib/webauthn';
 import { buildEncryptedEnvelope, parseBrainPayload, PORTABILITY_GROUPS, isPortableTable, applyTableSelection } from '../../lib/brainPayload';
 import OcrHealthWidget from './OcrHealthWidget';
+import P2PSyncPanel from './P2PSyncPanel';
 
 export default function SystemTab() {
   const { identity, setIdentity } = useStateContext();
@@ -693,10 +694,13 @@ try {
          {/* Export Telemetry Toast */}
          {exportToast && (
             <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg">
-                <p className="text-sm text-green-700 dark:text-green-400 font-medium">{exportToast}</p>
+               <p className="text-sm text-green-700 dark:text-green-400 font-medium">{exportToast}</p>
             </div>
          )}
       </div>
+
+      {/* Peer-to-Peer Sync (Stage 2 early slice): QR/clipboard signaling, LAN only */}
+      <P2PSyncPanel />
 
       {/* ─── Task 1: Knowledge Sync History Table ─── */}
       <div className="bg-white dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
