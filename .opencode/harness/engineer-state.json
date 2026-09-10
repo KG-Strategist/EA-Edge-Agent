@@ -1,0 +1,75 @@
+{
+  "currentGoal": "autonomous-harness",
+  "lastGate": {
+    "passed": true,
+    "at": "2026-09-10T18:48:42.926Z",
+    "summary": "ALL 8 GATES PASSED"
+  },
+  "updated": "2026-09-10T18:48:42.926Z",
+  "version": 1,
+  "goals": [
+    {
+      "branch": "feat/autonomous-harness",
+      "cycles": 1,
+      "id": "autonomous-harness",
+      "notes": "",
+      "roadmap": "Harness (enabler)",
+      "status": "gated",
+      "title": "Bespoke autonomous engineer harness"
+    },
+    {
+      "branch": "feat/graph-hydration",
+      "cycles": 0,
+      "id": "graph-hydration",
+      "notes": "",
+      "roadmap": "Stage 4 GraphRAG (early slice)",
+      "status": "pending",
+      "title": "GraphStore production hydration (wire scaffold to real data)"
+    },
+    {
+      "branch": "feat/syncmesh-ui",
+      "cycles": 0,
+      "id": "syncmesh-ui",
+      "notes": "",
+      "roadmap": "Stage 2 WebRTC P2P Sync (early slice)",
+      "status": "pending",
+      "title": "SyncMesh UI wiring (connect orphaned engine to SystemTab)"
+    },
+    {
+      "branch": "feat/config-driven-rag",
+      "cycles": 0,
+      "id": "config-driven-rag",
+      "notes": "maxPromptChars already DB-backed; gap is RAG chunk settings",
+      "roadmap": "Stage 1.3 Config-Driven Intelligence",
+      "status": "pending",
+      "title": "Config-driven RAG intelligence (chunkSize/chunkOverlap + admin UI)"
+    },
+    {
+      "branch": "feat/agentchat-refactor",
+      "cycles": 0,
+      "id": "agentchat-refactor",
+      "notes": "Presentational split only; DOM and data-testids must be identical",
+      "roadmap": "Stage 1.3 Config-Driven Intelligence",
+      "status": "pending",
+      "title": "AgentChat component split (300-line rule)"
+    },
+    {
+      "branch": "feat/native-daemon",
+      "cycles": 0,
+      "id": "native-daemon",
+      "notes": "BLOCKED: src-rust/ is gitignored (separate engine repo) — no Rust edits can be committed from this repo",
+      "roadmap": "Stage 1.3 Native Rust Daemon (Epic 9)",
+      "status": "blocked",
+      "title": "Native Rust daemon binary target"
+    },
+    {
+      "branch": "feat/tauri-packaging",
+      "cycles": 0,
+      "id": "tauri-packaging",
+      "notes": "DEFERRED: heavyweight native toolchain; revisit after Stage 1.3",
+      "roadmap": "Stage 2 Native Desktop Packaging",
+      "status": "deferred",
+      "title": "Native desktop packaging (Tauri)"
+    }
+  ]
+}

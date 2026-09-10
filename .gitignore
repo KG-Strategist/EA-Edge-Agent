@@ -132,6 +132,7 @@ ts_errors.txt
 
 # --- [11] OpenCode Harness Temp Files ---
 .opencode/harness/plan-store/
+.opencode/harness/reviews/
 .opencode/harness/REPO_STATE.md
 .opencode/harness/PLANS_INDEX.md
 

@@ -60,7 +60,7 @@ function log(msg) {
 // ═══════════════════════════════════════════════════
 function nodeRefresh() {
   log('REFRESH: pulling latest...');
-  const pull = run('git pull --rebase origin nightly');
+  const pull = run('git pull --rebase origin main');
   if (pull === null) {
     log('REFRESH: git pull failed (offline or no remote)');
   }
@@ -267,18 +267,18 @@ function nodeCommitPR(planResult) {
   const pushResult = run(`git push origin ${branch} 2>&1`);
   if (pushResult === null) {
     log('COMMIT: push failed (no remote or auth issue)');
-    run('git checkout nightly');
+    run('git checkout main');
     run(`git branch -D ${branch}`);
     return { committed: false, reason: 'push-failed' };
   }
 
   log(`COMMIT: pushed to ${branch}`);
 
-  // Merge back into nightly so the next cycle sees the changes
-  run('git checkout nightly');
+  // Merge back into main so the next cycle sees the changes
+  run('git checkout main');
   const mergeResult = run(`git merge --no-ff -m "merge: harness/${planResult.planId || timestamp()}" ${branch} 2>&1`);
   if (mergeResult === null) {
-    log(`COMMIT: merge to nightly failed — falling back to fast-forward`);
+    log(`COMMIT: merge to main failed — falling back to fast-forward`);
     run(`git merge --ff-only ${branch} 2>&1`);
   } else {
     log(`COMMIT: merged ${branch} → nightly`);
