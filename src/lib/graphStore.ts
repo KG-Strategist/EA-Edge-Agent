@@ -49,8 +49,15 @@ export interface MultiHopResult {
 // ---------------------------------------------------------------------------
 
 const NULL_POINTER = 0xFFFFFFFF;
-const MAX_EDGES_DEFAULT = 2_000_000;
-const MAX_NODES_DEFAULT = 600_000;
+// Modest defaults keep the eager global singleton cheap to import
+// (<1MB typed arrays) on low-RAM devices. Pass explicit sizes for
+// larger graphs; addNode/addEdge return -1 past capacity.
+const MAX_EDGES_DEFAULT = 16_384;
+const MAX_NODES_DEFAULT = 4_096;
+// Hard caps for BFS bounds sanitization (WASM-trap prevention:
+// autoregressive loops must enforce ceiling boundaries).
+const MAX_BFS_DEPTH = 5;
+const MAX_TRAILS_CAP = 50;
 
 export class GraphStore {
   // Adjacency: for each node, head of singly-linked edge list
@@ -95,7 +102,9 @@ export class GraphStore {
   }
 
   /**
-   * Add a node to the graph. Returns the node ID.
+   * Add a node to the graph. Returns the node ID, or -1 past capacity.
+   * Belief states are clamped into the 0..3 range (0=empty, 1=unverified,
+   * 2=verified, 3=axiom) so Uint8 storage can never wrap on bad input.
    */
   addNode(subject: string, predicate: string, object: string, beliefState: number, source: string = 'arena'): number {
     if (this.nodeCount >= this.maxNodes) {
@@ -106,7 +115,9 @@ export class GraphStore {
     this.nodeSubject[id] = subject;
     this.nodePredicate[id] = predicate;
     this.nodeObject[id] = object;
-    this.nodeBelief[id] = beliefState;
+    this.nodeBelief[id] = Number.isFinite(beliefState)
+      ? Math.max(0, Math.min(3, Math.floor(beliefState)))
+      : 0;
     this.nodeSource[id] = source;
     this.nodeExists[id] = 1;
     this.nodeCount++;
@@ -114,9 +125,12 @@ export class GraphStore {
   }
 
   /**
-   * Add a directed edge between two nodes. Returns the edge index.
+   * Add a directed edge between two nodes. Returns the edge index,
+   * or -1 for out-of-range endpoints, unknown nodes, or a full pool.
    */
   addEdge(from: number, to: number, type: GraphEdge['type'] = 'causes', strength: number = 200): number {
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return -1;
+    if (from < 0 || to < 0 || from >= this.maxNodes || to >= this.maxNodes) return -1;
     if (this.edgeCount >= this.maxEdges) {
       Logger.warn('[GraphStore] maxEdges reached');
       return -1;
@@ -164,26 +178,21 @@ export class GraphStore {
   }
 
   /**
-   * Get edge metadata.
-   */
-  getEdge(idx: number): GraphEdge | null {
-    if (idx < 0 || idx >= this.edgeCount) return null;
-    const typeNames: GraphEdge['type'][] = ['causes', 'requires', 'implies', 'conflicts'];
-    return {
-      from: idx, // We don't store from; caller knows it
-      to: this.edgeTo[idx],
-      type: typeNames[this.edgeType[idx]] ?? 'causes',
-      strength: this.edgeStrength[idx],
-    };
-  }
-
-  /**
    * BFS multi-hop traversal from a seed node.
    * Returns evidence trails up to `maxDepth` hops.
+   * Bounds are sanitized (depth clamped to 0..5, trails to 1..50) so
+   * autoregressive loops can never breach memory vectors (WASM-trap
+   * prevention). Invalid seeds return an empty result, never throw.
    */
   multiHopBFS(seedId: number, maxDepth: number = 3, maxTrails: number = 10): MultiHopResult {
-    if (!this.nodeExists[seedId]) {
-      return { trails: [], queryNode: seedId, maxDepth, totalNodesVisited: 0 };
+    const depthCap = Number.isFinite(maxDepth)
+      ? Math.max(0, Math.min(MAX_BFS_DEPTH, Math.floor(maxDepth)))
+      : 3;
+    const trailCap = Number.isFinite(maxTrails)
+      ? Math.max(1, Math.min(MAX_TRAILS_CAP, Math.floor(maxTrails)))
+      : 10;
+    if (!Number.isInteger(seedId) || seedId < 0 || seedId >= this.maxNodes || !this.nodeExists[seedId]) {
+      return { trails: [], queryNode: seedId, maxDepth: depthCap, totalNodesVisited: 0 };
     }
 
     const visited = new Uint8Array(this.maxNodes);
@@ -201,7 +210,7 @@ export class GraphStore {
       const current = queue[head++];
       totalVisited++;
 
-      if (depth[current] >= maxDepth) continue;
+      if (depth[current] >= depthCap) continue;
 
       const neighbors = this.getNeighbors(current);
       for (const { neighborId, edgeIdx } of neighbors) {
@@ -252,16 +261,20 @@ export class GraphStore {
     // Sort by score descending, take top N
     trails.sort((a, b) => b.score - a.score);
     return {
-      trails: trails.slice(0, maxTrails),
+      trails: trails.slice(0, trailCap),
       queryNode: seedId,
-      maxDepth,
+      maxDepth: depthCap,
       totalNodesVisited: totalVisited,
     };
   }
 
   /**
-   * PageRank-lite: iterative scoring over the graph.
-   * Runs a fixed number of iterations (no convergence check — bounded cost).
+   * PageRank-lite: iterative scoring over the graph in O(n+e) per
+   * iteration. Each pass distributes every live node's score once over
+   * its outgoing edges (strength-weighted) instead of scanning all
+   * pairs — the previous O(n^2) formulation could never scale past
+   * toy graphs. Runs a fixed number of iterations (no convergence
+   * check — bounded cost). Dangling nodes keep only the base share.
    */
   computePageRank(): Float32Array {
     const n = this.nodeCount;
@@ -284,25 +297,21 @@ export class GraphStore {
     const initScore = n > 0 ? 1 / n : 0;
     for (let i = 0; i < n; i++) scores[i] = this.nodeExists[i] ? initScore : 0;
 
-    // Iterative PageRank
+    // Iterative PageRank — one edge sweep per iteration
     const temp = new Float32Array(n);
+    const base = n > 0 ? (1 - GraphStore.DAMPING) / n : 0;
     for (let iter = 0; iter < GraphStore.ITERATIONS; iter++) {
-      temp.fill(0);
-      for (let i = 0; i < n; i++) {
-        if (!this.nodeExists[i]) continue;
-        temp[i] = (1 - GraphStore.DAMPING) / n;
-        // Sum contributions from incoming edges
-        for (let j = 0; j < n; j++) {
-          if (!this.nodeExists[j] || outDegree[j] === 0) continue;
-          // Check if j -> i edge exists
-          let eIdx = this.firstEdge[j];
-          while (eIdx !== NULL_POINTER) {
-            if (this.edgeTo[eIdx] === i) {
-              temp[i] += GraphStore.DAMPING * (scores[j] / outDegree[j]) * (this.edgeStrength[eIdx] / 255);
-              break;
-            }
-            eIdx = this.nextEdge[eIdx];
+      for (let i = 0; i < n; i++) temp[i] = this.nodeExists[i] ? base : 0;
+      for (let j = 0; j < n; j++) {
+        if (!this.nodeExists[j] || outDegree[j] === 0 || scores[j] === 0) continue;
+        const contrib = (GraphStore.DAMPING * scores[j]) / outDegree[j];
+        let eIdx = this.firstEdge[j];
+        while (eIdx !== NULL_POINTER) {
+          const to = this.edgeTo[eIdx];
+          if (to < n && this.nodeExists[to]) {
+            temp[to] += contrib * (this.edgeStrength[eIdx] / 255);
           }
+          eIdx = this.nextEdge[eIdx];
         }
       }
       for (let i = 0; i < n; i++) scores[i] = temp[i];

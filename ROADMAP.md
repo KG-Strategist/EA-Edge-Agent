@@ -182,7 +182,7 @@
 | Corpus Integrity | `npm run verify:corpus` | 🟢 |
 | OCR Lockfile | `npm run verify:ocr` | 🟢 |
 | Type Check | `npx tsc --noEmit` | 🟢 |
-| Unit Tests | `npm run test` | 🟢 (251 tests) |
+| Unit Tests | `npm run test` | 🟢 (290 tests) |
 | Production Build | `npm run build` | 🟢 |
 | E2E Smoke | `npm run test:e2e:sovereign-smoke` | 🟢 |
 | Visual Regression | `npm run test:visual` | 🟢 |
@@ -214,4 +214,4 @@ All features must respect the downward-only dependency law:
 
 ---
 
-*Last Updated: 2026-09-06 | Source: `.artefacts/docs-internal/04-features/EANITI_FEATURES.md` + `.artefacts/docs-internal/06-roadmap/V1.2_REFACTORING_ROADMAP.md`*
+*Last Updated: 2026-09-10 | Source: `.artefacts/docs-internal/04-features/EANITI_FEATURES.md` + `.artefacts/docs-internal/06-roadmap/V1.2_REFACTORING_ROADMAP.md`*

@@ -1,8 +1,8 @@
 # BUG_BACKLOG.md
 
-**Last Updated:** 2026-09-05T00:00:00Z
-**Test Run:** 220/220 passing (vitest) + 34/34 UCV headed (0 bugs) + sovereign-smoke green
-**Release Candidate:** RC-1.1.4-beta — ALL GATES GREEN
+**Last Updated:** 2026-09-10T00:00:00Z
+**Test Run:** 290/290 passing (vitest) + 34/34 UCV headed (0 bugs) + sovereign-smoke green
+**Release Candidate:** v1.2.0 — DEPLOYED (GitHub Release live)
 
 ## Bugs
 
@@ -19,6 +19,8 @@
 | UCV-001 | Navbar mobile hamburger + sidebar collapse missing aria-label | **Medium** | **RESOLVED** | `src/components/layout/Navbar.tsx:139,~237` — added aria-labels |
 | UCV-002 | Horizontal overflow on agent-config (DataTable footer, 71px) | **Medium** | **RESOLVED** | `AgentConfigTab.tsx:854` root overflow-x-hidden + `index.css` html overflow-x-hidden |
 | UCV-003 | DOM audit false positives on hidden/file inputs | **Low** | **RESOLVED** | `headed-ucv.spec.ts` auditDom skips hidden/scale-0/opacity-0 + UC-32 respects CSS overflow |
+| BUG-009 | GraphStore eager 600k/2M allocation + O(n²) PageRank + dead getEdge | **High** | **RESOLVED** | `src/lib/graphStore.ts` — defaults 4096/16384, O(n+e) PageRank sweep, getEdge removed, BFS bounds sanitized |
+| BUG-010 | SyncMeshService defaults to Google STUN (air-gap violation) | **High** | **RESOLVED** | `src/lib/syncMeshService.ts` — host-only ICE default, public STUN gated behind `checkNetworkConsent()` |
 
 ## Environment Issues
 
@@ -37,6 +39,7 @@
 | DOC-003 | .opencode/harness/PLANS_INDEX.md | Claims "No plans yet" — ~70 plans exist | **RESOLVED** |
 | DOC-004 | cache-journey.spec.ts | Legacy text selectors (not data-testid) | **RESOLVED** — selectors updated in BUG-006 patch |
 | DOC-005 | REPO_STATE.md | Stale — generated before release commit | **RESOLVED** |
+| DOC-006 | RELEASE_NOTES_v1.2.0.md | Untracked (/*.md ignore) — v1.2.0 notes invisible in repo | **RESOLVED** — folded into tracked RELEASE_NOTES.md, stray file removed |
 
 ---
 
@@ -96,6 +99,21 @@
 - **Root Cause:** Audit flagged `scale-0`/`opacity-0`/hidden file inputs as unnamed controls
 - **Fix:** auditDom skips hidden, aria-hidden, display:none, zero-size elements; UC-32 respects CSS `overflow-x:hidden`
 - **Verification:** 0 bugs reported, 81 screenshots captured
+
+### BUG-009: GraphStore Eager Allocation + O(n²) PageRank + Dead getEdge
+- **Root Cause:** `new GraphStore()` defaulted to 600k nodes / 2M edges (~25MB typed arrays + 2.4M string slots) at import time via the `globalGraphStore` singleton, paid by every `ragOrchestrator` importer; `computePageRank()` scanned all pairs per iteration; `getEdge()` returned `from: idx` (edge index, not node) and had zero callers
+- **Fix:** Defaults cut to 4096/16384 (<1MB); belief states clamped 0..3; edge endpoints range-guarded; BFS depth clamped 0..5 and trails 1..50; PageRank rewritten to one O(n+e) edge sweep per iteration; `getEdge` deleted
+- **Verification:** 9 new tests (capacity, clamps, 50-node PageRank finiteness, dead-API absence); 290/290 pass; 8/8 gates green
+
+### BUG-010: SyncMeshService Default Google STUN
+- **Root Cause:** `ICE_SERVERS` hardcoded `stun:stun.l.google.com:19302`, so every `RTCPeerConnection` contacted an external server — violating the air-gap pillar with no consent gate
+- **Fix:** Host-only ICE (`iceServers: []`) is now the default; `createOffer`/`acceptOffer` accept `{ allowPublicStun }`, which consults `checkNetworkConsent()` first and falls back to host-only without consent; consent is never consulted on the default path (no Dexie touch in unit tests)
+- **Verification:** 3 new tests (host-only default, consent-fallback, no-consent-touch); 290/290 pass
+
+### DOC-006: Untracked v1.2.0 Release Notes
+- **Root Cause:** `RELEASE_NOTES_v1.2.0.md` matched the `/*.md` gitignore rule with no whitelist exception, so the v1.2.0 notes existed only locally while the GitHub Release pointed at the tag
+- **Fix:** Folded the full v1.2.0 section into tracked `RELEASE_NOTES.md`; removed the stray file
+- **Verification:** `git status` clean; GitHub Release v1.2.0 live
 
 ---
 

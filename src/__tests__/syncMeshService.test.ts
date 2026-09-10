@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('../lib/networkGuard', () => ({
+  checkNetworkConsent: vi.fn(async () => false),
+  validateEndpointUrl: vi.fn(async () => true),
+}));
+
 // Mock RTCPeerConnection and RTCDataChannel
 class MockRTCDataChannel {
   readyState = 'open';
@@ -12,11 +17,16 @@ class MockRTCDataChannel {
 }
 
 class MockRTCPeerConnection {
+  static instances: { config?: RTCConfiguration }[] = [];
   localDescription: RTCSessionDescription | null = null;
   remoteDescription: RTCSessionDescription | null = null;
   iceGatheringState = 'complete';
   ondatachannel: ((event: { channel: MockRTCDataChannel }) => void) | null = null;
   private channels: MockRTCDataChannel[] = [];
+
+  constructor(config?: RTCConfiguration) {
+    MockRTCPeerConnection.instances.push({ config });
+  }
 
   createOffer = vi.fn(async () => ({ type: 'offer', sdp: 'mock-offer-sdp' }));
   createAnswer = vi.fn(async () => ({ type: 'answer', sdp: 'mock-answer-sdp' }));
@@ -66,6 +76,7 @@ describe('SyncMeshService — device ID', () => {
 describe('SyncMeshService — signaling', () => {
   beforeEach(() => {
     (globalThis as any).RTCPeerConnection = MockGlobalRTCPeerConnection;
+    MockRTCPeerConnection.instances.length = 0;
   });
 
   it('creates an offer with correct structure', async () => {
@@ -77,6 +88,39 @@ describe('SyncMeshService — signaling', () => {
     expect(offer.sdp).toBeTruthy();
     expect(offer.deviceId).toBe(service.localDeviceId);
     expect(offer.timestamp).toBeGreaterThan(0);
+  });
+
+  it('defaults to host-only ICE (air-gap: no public STUN)', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const service = new SyncMeshService();
+    await service.createOffer();
+
+    const last = MockRTCPeerConnection.instances[MockRTCPeerConnection.instances.length - 1];
+    expect(last.config?.iceServers).toEqual([]);
+  });
+
+  it('falls back to host-only ICE when public STUN lacks network consent', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const { checkNetworkConsent } = await import('../lib/networkGuard');
+    vi.mocked(checkNetworkConsent).mockResolvedValueOnce(false);
+
+    const service = new SyncMeshService();
+    await service.createOffer({ allowPublicStun: true });
+
+    const last = MockRTCPeerConnection.instances[MockRTCPeerConnection.instances.length - 1];
+    expect(last.config?.iceServers).toEqual([]);
+    expect(checkNetworkConsent).toHaveBeenCalled();
+  });
+
+  it('never consults network consent on the default host-only path', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const { checkNetworkConsent } = await import('../lib/networkGuard');
+    vi.mocked(checkNetworkConsent).mockClear();
+
+    const service = new SyncMeshService();
+    await service.createOffer();
+
+    expect(checkNetworkConsent).not.toHaveBeenCalled();
   });
 
   it('accepts an offer and creates an answer', async () => {

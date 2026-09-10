@@ -1,5 +1,52 @@
 # EA-NITI Release Notes
 
+## v1.2.0 — Context & Personas Release
+*September 2026*
+
+The Context & Personas Release adds encrypted payload export, WebAuthn biometric device binding, selective entity syncing, and NITI-Pedia autonomous wiki — completing the four v1.2 milestones for enterprise knowledge management.
+
+### 🔐 M1: Encrypted Payloads (UC-41/UC-42)
+- **AES-256-GCM Encrypted Export** — Brain payload export now generates `.enc.json` files with authenticated encryption. Payload encrypted with vault-derived DEK, IV prepended to ciphertext, PBKDF2-wrapped passphrase for cross-device import.
+- **Encrypted Import Round-Trip** — Full decrypt-and-merge pipeline. Tampered payloads rejected with localized "Import Aborted" banner. Successful import triggers app reload with merged knowledge base.
+- **Envelope Format** — `niti-brain-encrypted` v1 envelope: `{format, version, tables, payload}`. Tables array lists all exported entity types. Payload is `iv:base64(ciphertext)`.
+
+### 🔗 M2: Selective Syncing (UC-40)
+- **Entity-Group Export UI** — System tab now presents grouped entity selection with Taxonomy, Architecture, Templates, and Configuration categories. Each group checkbox controls bulk selection.
+- **Portability Groups** — `PORTABILITY_GROUPS` taxonomy defines 30 portable entity types across 4 groups. `isPortableTable()` and `applyTableSelection()` filter Dexie tables for granular export.
+- **Selection Counter** — Live "Entities to export (N/M)" counter with Select All / Clear controls for precise entity scoping.
+
+### 🔒 M3: Device Biometrics (UC-43)
+- **WebAuthn PRF Ceremonies** — `src/lib/webauthn.ts` implements FIDO2 `prf` extension for device-bound Data Encryption Key (DEK) wrapping. Register → derive → assert flow with `wrapDeviceDEK()` / `unwrapDeviceDEK()`.
+- **Device Key Binding** — `app_settings.store.webauthn_device_key` persists the WebAuthn credential ID. `unlockVaultWithDeviceKey()` in `authEngine.ts` enables biometric vault unlock.
+- **Graceful Fallback** — PRF-unsupported authenticators receive localized error notification. AuthGate shows "Unlock with Biometrics" button that probes device capability before offering.
+
+### 📚 M4: NITI-Pedia Wiki (UC-44)
+- **OPFS-Backed Markdown Wiki** — `src/lib/wikiStore.ts` implements `niti-pedia/` directory with CRUD operations. Pages stored as `<slug>.md` files with `# Title` header parsing.
+- **Ask Overlay** — `askWiki(query)` performs deterministic keyword scoring via `rankPages()`. Results show ranked excerpts with score badges and copy-to-clipboard context assembly.
+- **AdminPanel Integration** — WikiTab mounted above TrainingEventsTable in knowledge management view. Full editor with title/body fields, save/edit/delete lifecycle.
+
+### 🧪 Quality Gates
+- v1.2 UCV: **8/8 pass, 0 bugs**
+- Legacy UCV: **34/34 pass, 0 bugs**
+- Unit tests: **251/251 pass**
+- Lint, a11y, corpus, ocr, tsc, build, e2e:smoke — all green
+
+### 🔧 Bug Fixes
+- **wikiStore.ts** — Fixed OPFS `dir.values()` iterator incompatibility in Chromium (changed to `dir.entries()`)
+- **headed-v12-ucv.spec.ts** — Added proper wait conditions for wiki save completion, filter expected decrypt errors in tamper rejection test
+
+### 📦 Deployment
+- PWA precache: 15 entries, 7305 KiB
+- Service Worker v7: excludes binary assets from precache
+- One-command setup: `npm run setup:local` (idempotent)
+
+### ⚠️ Known Limitations
+- **WebGPU Bind Groups** — FR-003 (v1.2.0 target) deferred to v1.3.0 pending hardware validation
+- **Native Rust Daemon** — FR-004 (v1.3.0 target) in planning phase
+- **OCR CER** — Character error rate at 0.6488 (target < 0.50). Retraining planned for v1.2.1
+
+---
+
 ## v1.1.4-beta — Strike 4.0 (Air-Gap Locked)
 *June 2026*
 

@@ -9,6 +9,7 @@
  */
 
 import { Logger } from './logger';
+import { checkNetworkConsent } from './networkGuard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,11 +61,48 @@ export interface SyncMeshCallbacks {
 // Configuration
 // ---------------------------------------------------------------------------
 
-const ICE_SERVERS: RTCConfiguration = {
+// Air-gap default: host-only candidates (LAN / mDNS). No external server
+// is ever contacted unless the caller explicitly opts into public STUN
+// AND the user granted network consent (see resolveIceConfig).
+const HOST_ONLY_ICE: RTCConfiguration = {
+  iceServers: [],
+};
+
+const PUBLIC_STUN_ICE: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
   ],
 };
+
+export interface SyncSignalingOptions {
+  /**
+   * Allow a public STUN server for NAT traversal. Default false.
+   * When true, network consent is checked first; without consent the
+   * service silently falls back to host-only ICE. UI callers must run
+   * their own consent UX before setting this flag.
+   */
+  allowPublicStun?: boolean;
+}
+
+/**
+ * Resolve the ICE configuration for a new peer connection.
+ * The default path is pure host-only and never touches Dexie or the
+ * network; consent is consulted only when public STUN is requested.
+ */
+async function resolveIceConfig(options: SyncSignalingOptions = {}): Promise<RTCConfiguration> {
+  if (!options.allowPublicStun) return HOST_ONLY_ICE;
+  let consented = false;
+  try {
+    consented = await checkNetworkConsent();
+  } catch {
+    consented = false;
+  }
+  if (!consented) {
+    Logger.warn('[SyncMesh] public STUN requested without network consent — using host-only ICE');
+    return HOST_ONLY_ICE;
+  }
+  return PUBLIC_STUN_ICE;
+}
 
 const DATA_CHANNEL_LABEL = 'ea-niti-sync';
 const DATA_CHANNEL_OPTIONS: RTCDataChannelInit = {
@@ -116,9 +154,11 @@ export class SyncMeshService {
   /**
    * Create an offer (SDP) for a peer to scan/copy.
    * Returns a SyncOffer that can be encoded as QR or clipboard text.
+   * Uses host-only ICE by default; pass { allowPublicStun: true }
+   * (after network consent) for NAT traversal.
    */
-  async createOffer(): Promise<SyncOffer> {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+  async createOffer(options: SyncSignalingOptions = {}): Promise<SyncOffer> {
+    const pc = new RTCPeerConnection(await resolveIceConfig(options));
     const peerId = `peer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const channel = pc.createDataChannel(DATA_CHANNEL_LABEL, DATA_CHANNEL_OPTIONS);
@@ -153,8 +193,8 @@ export class SyncMeshService {
    * Accept an offer and create an answer.
    * Returns a SyncAnswer that the offer creator can scan/copy.
    */
-  async acceptOffer(offer: SyncOffer): Promise<SyncAnswer> {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+  async acceptOffer(offer: SyncOffer, options: SyncSignalingOptions = {}): Promise<SyncAnswer> {
+    const pc = new RTCPeerConnection(await resolveIceConfig(options));
     const peerId = `peer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Set up data channel handler for the accepting side

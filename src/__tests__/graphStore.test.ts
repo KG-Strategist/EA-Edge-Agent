@@ -168,4 +168,73 @@ describe('GraphStore — PageRank-lite', () => {
     expect(scores[hub]).toBeGreaterThan(scores[leaf1]);
     expect(scores[hub]).toBeGreaterThan(scores[leaf2]);
   });
+
+  it('produces finite scores on a 50-node chain (O(n+e) scaling)', () => {
+    const g = new GraphStore(100, 500);
+    let prev = g.addNode('N0', 'x', 'Y', 2);
+    for (let i = 1; i < 50; i++) {
+      const cur = g.addNode(`N${i}`, 'x', 'Y', 2);
+      g.addEdge(prev, cur, 'causes', 200);
+      prev = cur;
+    }
+    const scores = g.computePageRank();
+    for (let i = 0; i < 50; i++) {
+      expect(Number.isFinite(scores[i])).toBe(true);
+      expect(scores[i]).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('GraphStore — capacity & input hygiene', () => {
+  it('uses modest defaults so the global singleton is cheap to import', () => {
+    const g = new GraphStore();
+    expect(g.nodeSize).toBe(0);
+    expect(g.edgeSize).toBe(0);
+    // Defaults must stay small enough for happy-dom / low-RAM devices:
+    // 4096 nodes / 16384 edges keeps typed arrays under ~1MB.
+    const id = g.addNode('SMOKE', 'x', 'Y', 2);
+    expect(id).toBe(0);
+  });
+
+  it('returns -1 past capacity instead of growing unbounded', () => {
+    const g = new GraphStore(2, 2);
+    expect(g.addNode('A', 'x', 'Y', 2)).toBe(0);
+    expect(g.addNode('B', 'x', 'Y', 2)).toBe(1);
+    expect(g.addNode('C', 'x', 'Y', 2)).toBe(-1);
+    expect(g.addEdge(0, 1, 'causes')).toBe(0);
+    expect(g.addEdge(1, 0, 'causes')).toBe(1);
+    expect(g.addEdge(0, 1, 'causes')).toBe(-1);
+  });
+
+  it('rejects out-of-range edge endpoints', () => {
+    const g = new GraphStore(4, 8);
+    g.addNode('A', 'x', 'Y', 2);
+    expect(g.addEdge(-1, 0, 'causes')).toBe(-1);
+    expect(g.addEdge(0, -1, 'causes')).toBe(-1);
+    expect(g.addEdge(0, 999999, 'causes')).toBe(-1);
+    expect(g.addEdge(3, 0, 'causes')).toBe(-1); // node 3 does not exist
+  });
+
+  it('clamps belief states into the 0..3 range', () => {
+    const g = new GraphStore(4, 8);
+    const id = g.addNode('A', 'x', 'Y', 99);
+    expect(g.getNode(id)!.beliefState).toBe(3);
+  });
+
+  it('sanitizes BFS bounds (negative seed, clamped depth/trails)', () => {
+    const g = new GraphStore(8, 16);
+    const n0 = g.addNode('A', 'x', 'B', 3);
+    const n1 = g.addNode('B', 'x', 'C', 2);
+    g.addEdge(n0, n1, 'causes', 200);
+
+    expect(g.multiHopBFS(-1, 3, 10).trails.length).toBe(0);
+    expect(g.multiHopBFS(n0, -5, 10).trails.length).toBe(0);
+    // Absurd trail caps are clamped, never unbounded
+    expect(g.multiHopBFS(n0, 3, 999999).trails.length).toBe(1);
+  });
+
+  it('exposes no dead getEdge API (orphaned stubs are banned)', () => {
+    const g = new GraphStore(4, 8);
+    expect((g as unknown as Record<string, unknown>).getEdge).toBeUndefined();
+  });
 });
