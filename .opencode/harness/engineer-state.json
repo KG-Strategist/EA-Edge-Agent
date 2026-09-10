@@ -1,11 +1,11 @@
 {
-  "currentGoal": "graph-hydration",
+  "currentGoal": null,
   "lastGate": {
     "passed": true,
     "at": "2026-09-10T18:51:42.184Z",
     "summary": "ALL 8 GATES PASSED"
   },
-  "updated": "2026-09-10T18:51:42.184Z",
+  "updated": "2026-09-10T19:02:27.762Z",
   "version": 1,
   "goals": [
     {
@@ -23,7 +23,7 @@
       "id": "graph-hydration",
       "notes": "",
       "roadmap": "Stage 4 GraphRAG (early slice)",
-      "status": "gated",
+      "status": "done",
       "title": "GraphStore production hydration (wire scaffold to real data)"
     },
     {
