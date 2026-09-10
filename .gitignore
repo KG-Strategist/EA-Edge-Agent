@@ -129,3 +129,17 @@ ts_errors.txt
 !src/lib/wasm/ocr/pkg/ocr_engine_bg.wasm.d.ts
 !src/lib/wasm/ocr/pkg/package.json
 .build-stash/
+
+# --- [11] OpenCode Harness Temp Files ---
+.opencode/harness/plan-store/
+.opencode/harness/REPO_STATE.md
+.opencode/harness/PLANS_INDEX.md
+
+# --- [12] Large Binary Assets (should not be in git) ---
+/public/models/*.gguf
+/public/baseline_corpus.bin.gz
+/public/baseline_meta.json.gz
+/public/lexicon.json.gz
+/public/lexicon_roles.json.gz
+/public/ocr/*.bin.gz
+/public/ocr/*.json.gz
