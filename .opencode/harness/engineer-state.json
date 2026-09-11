@@ -2,8 +2,8 @@
   "currentGoal": null,
   "lastGate": {
     "passed": true,
-    "at": "2026-09-10T19:40:54.157Z",
-    "summary": "ALL 8 GATES PASSED"
+    "at": "2026-09-10T20:15:00.000Z",
+    "summary": "Daemon E2E: 4/4 protocol ops green (connect, generate, abort, reset)"
   },
   "updated": "2026-09-10T19:40:54.158Z",
   "version": 1,
@@ -57,18 +57,20 @@
       "branch": "feat/native-daemon",
       "cycles": 0,
       "id": "native-daemon",
-      "notes": "BLOCKED: src-rust/ is gitignored (separate engine repo) — no Rust edits can be committed from this repo",
+      "notes": "WebSocket server on ws://127.0.0.1:8080 \u2014 GENERATE/INFERENCE_CHUNK/INFERENCE_COMPLETE/ABORT/RESET_SESSION all proven end-to-end. Daemon binary at daemon/target/release/eaniti-daemon. LocalDaemonProvider protocol fully matched.",
       "roadmap": "Stage 1.3 Native Rust Daemon (Epic 9)",
-      "status": "blocked",
-      "title": "Native Rust daemon binary target"
+      "status": "done",
+      "title": "Native Rust daemon binary target",
+      "commit": "pending",
+      "tests": 312
     },
     {
       "branch": "feat/tauri-packaging",
       "cycles": 0,
       "id": "tauri-packaging",
-      "notes": "DEFERRED: heavyweight native toolchain; revisit after Stage 1.3",
+      "notes": "UNBLOCKED by owner directive: attempt local Tauri build; only hardware purchases may block",
       "roadmap": "Stage 2 Native Desktop Packaging",
-      "status": "deferred",
+      "status": "pending",
       "title": "Native desktop packaging (Tauri)"
     }
   ]

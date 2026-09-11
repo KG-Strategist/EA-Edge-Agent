@@ -144,3 +144,4 @@ ts_errors.txt
 /public/lexicon_roles.json.gz
 /public/ocr/*.bin.gz
 /public/ocr/*.json.gz
+daemon/target/
