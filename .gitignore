@@ -145,3 +145,4 @@ ts_errors.txt
 /public/ocr/*.bin.gz
 /public/ocr/*.json.gz
 daemon/target/
+src-tauri/target/
