@@ -54,7 +54,16 @@ export interface SyncMeshCallbacks {
   onPeerConnected?: (peerId: string) => void;
   onPeerDisconnected?: (peerId: string) => void;
   onPayloadReceived?: (peerId: string, payload: SyncPayload) => void;
+  onBrainReceived?: (peerId: string, envelope: unknown) => void;
   onError?: (error: Error) => void;
+}
+
+interface ChunkFrame {
+  _chunk: true;
+  _transferId: string;
+  _index: number;
+  _total: number;
+  _data: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +131,7 @@ export class SyncMeshService {
   private deviceId: string;
   private callbacks: SyncMeshCallbacks;
   private abortControllers = new Map<string, AbortController>();
+  private receiveBuffer = new Map<string, { chunks: string[]; totalChunks: number; receivedAt: number }>();
 
   constructor(callbacks: SyncMeshCallbacks = {}) {
     this.deviceId = this.generateDeviceId();
@@ -266,7 +276,31 @@ export class SyncMeshService {
 
     channel.onmessage = (event) => {
       try {
-        const payload: SyncPayload = JSON.parse(event.data);
+        const raw = JSON.parse(event.data);
+
+        // Chunk reassembly: detect chunk frames and buffer until complete
+        if (raw && raw._chunk === true) {
+          const frame = raw as ChunkFrame;
+          const tid = frame._transferId;
+          if (!this.receiveBuffer.has(tid)) {
+            this.receiveBuffer.set(tid, { chunks: [], totalChunks: frame._total, receivedAt: Date.now() });
+          }
+          const buf = this.receiveBuffer.get(tid)!;
+          buf.chunks[frame._index] = frame._data;
+
+          // Check if all chunks received
+          const received = buf.chunks.filter(c => c !== undefined).length;
+          if (received === buf.totalChunks) {
+            this.receiveBuffer.delete(tid);
+            const fullJson = buf.chunks.join('');
+            const payload: SyncPayload = JSON.parse(fullJson);
+            this.callbacks.onPayloadReceived?.(peerId, payload);
+          }
+          return;
+        }
+
+        // Non-chunked payload (small messages)
+        const payload: SyncPayload = raw;
         this.callbacks.onPayloadReceived?.(peerId, payload);
       } catch (e) {
         Logger.warn(`[SyncMesh] Failed to parse payload from ${peerId}`, e);
@@ -287,8 +321,8 @@ export class SyncMeshService {
 
     const json = JSON.stringify(payload);
     if (json.length > MAX_PAYLOAD_SIZE) {
-      // Chunk the payload
-      const chunks = this.chunkPayload(json);
+      const transferId = `tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const chunks = this.chunkPayload(json, transferId);
       for (const chunk of chunks) {
         peer.channel.send(chunk);
       }
@@ -309,6 +343,55 @@ export class SyncMeshService {
       if (await this.sendPayload(peerId, payload)) sent++;
     }
     return sent;
+  }
+
+  // -------------------------------------------------------------------------
+  // Brain Payload Transfer
+  // -------------------------------------------------------------------------
+
+  /**
+   * Send an encrypted brain envelope to a specific peer.
+   * Wraps the envelope in a SyncPayload with type 'brain-export'.
+   */
+  async sendBrainPayload(peerId: string, envelope: unknown): Promise<boolean> {
+    return this.sendPayload(peerId, {
+      type: 'brain-export',
+      data: envelope,
+      metadata: {
+        deviceId: this.deviceId,
+        tableCount: 0,
+        recordCount: 0,
+        encrypted: true,
+        timestamp: Date.now(),
+      },
+    });
+  }
+
+  /**
+   * Broadcast an encrypted brain envelope to all connected peers.
+   */
+  async broadcastBrainPayload(envelope: unknown): Promise<number> {
+    return this.broadcastPayload({
+      type: 'brain-export',
+      data: envelope,
+      metadata: {
+        deviceId: this.deviceId,
+        tableCount: 0,
+        recordCount: 0,
+        encrypted: true,
+        timestamp: Date.now(),
+      },
+    });
+  }
+
+  /**
+   * Clean up stale receive buffers (older than 60s).
+   */
+  cleanupStaleBuffers(): void {
+    const stale = Date.now() - 60_000;
+    for (const [tid, buf] of this.receiveBuffer) {
+      if (buf.receivedAt < stale) this.receiveBuffer.delete(tid);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -384,12 +467,18 @@ export class SyncMeshService {
     });
   }
 
-  private chunkPayload(json: string): string[] {
+  private chunkPayload(json: string, transferId: string): string[] {
+    const totalChunks = Math.ceil(json.length / (MAX_PAYLOAD_SIZE - 200));
     const chunks: string[] = [];
-    const chunkSize = MAX_PAYLOAD_SIZE - 100; // Leave room for framing
+    const chunkSize = MAX_PAYLOAD_SIZE - 200;
     for (let i = 0; i < json.length; i += chunkSize) {
-      const chunk = json.slice(i, i + chunkSize);
-      chunks.push(JSON.stringify({ _chunk: true, _index: chunks.length, _data: chunk }));
+      chunks.push(JSON.stringify({
+        _chunk: true,
+        _transferId: transferId,
+        _index: chunks.length,
+        _total: totalChunks,
+        _data: json.slice(i, i + chunkSize),
+      }));
     }
     return chunks;
   }

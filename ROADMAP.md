@@ -182,7 +182,7 @@
 | Corpus Integrity | `npm run verify:corpus` | 🟢 |
 | OCR Lockfile | `npm run verify:ocr` | 🟢 |
 | Type Check | `npx tsc --noEmit` | 🟢 |
-| Unit Tests | `npm run test` | 🟢 (312 tests) |
+| Unit Tests | `npm run test` | 🟢 (315 tests) |
 | Production Build | `npm run build` | 🟢 |
 | E2E Smoke | `npm run test:e2e:sovereign-smoke` | 🟢 |
 | Visual Regression | `npm run test:visual` | 🟢 |

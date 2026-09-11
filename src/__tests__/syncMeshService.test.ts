@@ -208,4 +208,68 @@ describe('SyncMeshService — lifecycle', () => {
     const stats = await service.getStats('nonexistent');
     expect(stats).toBeNull();
   });
+
+  it('cleanupStaleBuffers removes old entries', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const service = new SyncMeshService();
+    // Inject a stale buffer entry
+    (service as any).receiveBuffer.set('stale-1', { chunks: [], totalChunks: 2, receivedAt: Date.now() - 120_000 });
+    (service as any).receiveBuffer.set('fresh-1', { chunks: [], totalChunks: 2, receivedAt: Date.now() });
+    service.cleanupStaleBuffers();
+    expect((service as any).receiveBuffer.has('stale-1')).toBe(false);
+    expect((service as any).receiveBuffer.has('fresh-1')).toBe(true);
+  });
+
+  it('chunk reassembly dispatches full payload when all chunks arrive', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const received: { peerId: string; payload: any }[] = [];
+    const service = new SyncMeshService({
+      onPayloadReceived: (peerId, payload) => received.push({ peerId, payload }),
+    });
+
+    // Create an offer to get a real channel wired up via setupDataChannel
+    const offer = await service.createOffer();
+    expect(offer.type).toBe('offer');
+
+    // Get the mock channel that was wired by createOffer
+    const peers = (service as any).peers as Map<string, any>;
+    const peerEntry = peers.values().next().value;
+    const mockChannel = peerEntry.channel;
+
+    // Simulate receiving 2 chunks
+    const fullPayload = { type: 'brain-export', data: { format: 'test' }, metadata: { deviceId: 'x', tableCount: 1, recordCount: 10, encrypted: true, timestamp: 1 } };
+    const fullJson = JSON.stringify(fullPayload);
+    const mid = Math.ceil(fullJson.length / 2);
+
+    const frame0 = JSON.stringify({ _chunk: true, _transferId: 't1', _index: 0, _total: 2, _data: fullJson.slice(0, mid) });
+    const frame1 = JSON.stringify({ _chunk: true, _transferId: 't1', _index: 1, _total: 2, _data: fullJson.slice(mid) });
+
+    mockChannel.onmessage({ data: frame0 });
+    expect(received.length).toBe(0); // Not complete yet
+
+    mockChannel.onmessage({ data: frame1 });
+    expect(received.length).toBe(1);
+    expect(received[0].payload.type).toBe('brain-export');
+  });
+
+  it('sendBrainPayload wraps envelope in brain-export SyncPayload', async () => {
+    const { SyncMeshService } = await import('../lib/syncMeshService');
+    const service = new SyncMeshService();
+    const mockChannel = new MockRTCDataChannel();
+    (service as any).peers.set('peer-1', {
+      id: 'peer-1',
+      connection: {},
+      channel: mockChannel,
+      state: 'connected',
+    });
+
+    const envelope = { format: 'niti-brain-encrypted', payload: 'abc' };
+    const result = await service.sendBrainPayload('peer-1', envelope);
+    expect(result).toBe(true);
+
+    const sent = JSON.parse(mockChannel.send.mock.calls[0][0]);
+    expect(sent.type).toBe('brain-export');
+    expect(sent.data).toEqual(envelope);
+    expect(sent.metadata.encrypted).toBe(true);
+  });
 });

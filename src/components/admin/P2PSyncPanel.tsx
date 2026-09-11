@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Radio, Copy, Link2, Send } from 'lucide-react';
+import { Radio, Copy, Link2, Send, Download, Upload } from 'lucide-react';
 import { SyncMeshService, SyncOffer, SyncAnswer, SyncPayload } from '../../lib/syncMeshService';
 import { useNotification } from '../../context/NotificationContext';
+import { buildEncryptedEnvelope } from '../../lib/brainPayload';
 import { Logger } from '../../lib/logger';
 
 interface ReceivedNote {
@@ -46,6 +47,8 @@ export default function P2PSyncPanel() {
   const [peers, setPeers] = useState<string[]>([]);
   const [received, setReceived] = useState<ReceivedNote[]>([]);
   const [busy, setBusy] = useState(false);
+  const [brainBusy, setBrainBusy] = useState(false);
+  const [receivedBrain, setReceivedBrain] = useState<{ peerId: string; envelope: unknown } | null>(null);
 
   const service = useMemo(
     () =>
@@ -60,6 +63,9 @@ export default function P2PSyncPanel() {
           setReceived((prev) =>
             [{ peerId, kind: payload.type, at: new Date().toLocaleTimeString() }, ...prev].slice(0, 5)
           );
+          if (payload.type === 'brain-export' && payload.data) {
+            setReceivedBrain({ peerId, envelope: payload.data });
+          }
         },
         onError: (error) => {
           addNotification(error.message || 'P2P sync error.', 'error', 5000);
@@ -158,6 +164,73 @@ export default function P2PSyncPanel() {
     refreshPeers();
   }, [service, addNotification, refreshPeers]);
 
+  const handleSendBrain = useCallback(async () => {
+    if (peers.length === 0) {
+      addNotification('Connect to a peer first.', 'info', 4000);
+      return;
+    }
+    setBrainBusy(true);
+    try {
+      const { db } = await import('../../lib/db');
+      const tables = db.tables.filter(t => {
+        const name = t.name;
+        return !/vector|embedding|session|history|cache|audit|logs/i.test(name);
+      });
+      const dump: Record<string, unknown[]> = {};
+      let totalRecords = 0;
+      for (const table of tables) {
+        const rows = await table.toArray();
+        dump[table.name] = rows;
+        totalRecords += rows.length;
+      }
+      const dumpJson = JSON.stringify(dump);
+      let envelope: unknown;
+      try {
+        envelope = await buildEncryptedEnvelope(dumpJson, Object.keys(dump));
+      } catch {
+        envelope = { format: 'niti-brain-plain', version: 1, exportedAt: new Date().toISOString(), tables: Object.keys(dump), payload: dumpJson };
+      }
+      const sent = await service.broadcastBrainPayload(envelope);
+      addNotification(
+        sent > 0 ? `Brain sent to ${sent} peer(s) (${totalRecords} records).` : 'No peers connected.',
+        sent > 0 ? 'success' : 'info',
+        5000
+      );
+    } catch (e) {
+      Logger.warn('[P2PSyncPanel] sendBrain failed', e);
+      addNotification('Failed to build brain payload.', 'error', 5000);
+    } finally {
+      setBrainBusy(false);
+    }
+  }, [peers, service, addNotification]);
+
+  const handleImportBrain = useCallback(async () => {
+    if (!receivedBrain) return;
+    setBrainBusy(true);
+    try {
+      const { parseBrainPayload } = await import('../../lib/brainPayload');
+      const { db } = await import('../../lib/db');
+      const parsed = await parseBrainPayload(JSON.stringify(receivedBrain.envelope));
+      const data = parsed.dump as Record<string, unknown[]>;
+      const tableNames = Object.keys(data);
+      await db.transaction('rw', db.tables, async () => {
+        for (const name of tableNames) {
+          const table = db.table(name);
+          if (table && Array.isArray(data[name]) && data[name].length > 0) {
+            await table.bulkPut(data[name]);
+          }
+        }
+      });
+      addNotification(`Brain imported from ${receivedBrain.peerId} (${tableNames.length} tables).`, 'success', 5000);
+      setReceivedBrain(null);
+    } catch (e) {
+      Logger.warn('[P2PSyncPanel] importBrain failed', e);
+      addNotification('Failed to import brain payload.', 'error', 5000);
+    } finally {
+      setBrainBusy(false);
+    }
+  }, [receivedBrain, addNotification]);
+
   return (
     <div className="bg-white dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
       <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
@@ -194,6 +267,24 @@ export default function P2PSyncPanel() {
             <Send size={16} />
             Ping peers
           </button>
+          <button
+            onClick={handleSendBrain}
+            disabled={brainBusy || peers.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <Upload size={16} />
+            Send Brain
+          </button>
+          {receivedBrain && (
+            <button
+              onClick={handleImportBrain}
+              disabled={brainBusy}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Download size={16} />
+              Import Brain from {receivedBrain.peerId.slice(0, 8)}
+            </button>
+          )}
         </div>
 
         {offerText && (
