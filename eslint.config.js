@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/lib/wasm/pkg', 'src/lib/wasm/ocr/pkg', 'src-rust/pkg'] },
+  { ignores: ['dist', 'src/lib/wasm/pkg', 'src/lib/wasm/ocr/pkg', 'src-rust/pkg', 'src-tauri'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
